@@ -30,9 +30,8 @@ import platform
 # import my packages
 from GUI import *
 
-
-# get right Operating System information
-# needed for the right separator
+# print different System settings:
+# operating system
 if platform.system() == 'Linux':
     print('Linux detected.')
 elif platform.system() == 'Windows':
@@ -42,7 +41,7 @@ elif platform.system() == 'Darwin':
 else:
     print('No valid operating system detected!')
 
-
+# start GUI
 if __name__ == '__main__':
     GUI = GUI()
     GUI.start()
