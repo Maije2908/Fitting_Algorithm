@@ -1,7 +1,7 @@
 # import packages
 import tkinter as tk
-
 import config
+from screeninfo import get_monitors
 
 '''
 ***********************************************************************************************************************
@@ -24,6 +24,15 @@ class GUI:
         self.root: tk.Tk = tk.Tk()
         self.root.wm_title('Fitting Program V2')
         self.root.config(bg='#FFFFFF')
+
+
+
+        from m in get_monitors():
+            print(str(m))
+
+
+
+
 
         # here starts the creation of the widgets
         self.create_drop_down()
@@ -82,7 +91,7 @@ class GUI:
         '''
 
         # Headline
-        label_spec = tk.Label(self.root, text="Specification", bg=config.BCKGND_COLOR)
+        label_spec = tk.Label(self.root, text="Specification", bg=config.BCKGND_COLOR, width=100)
         label_spec.config(font=config.HEADLINE_FONT)
         label_spec.grid(column=0, row=1, columnspan=2, sticky=tk.N, **config.SPEC_PADDING)
 
@@ -104,8 +113,6 @@ class GUI:
         entry_resistance.config(font=config.ENTRY_FONT)
         entry_resistance.grid(column=1, row=3, sticky=tk.W)
 
-
-
         # Saturation Table
         label_saturation = tk.Label(self.root, text="Saturation Table", bg=config.BCKGND_COLOR)
         label_saturation.config(font=config.ENTRY_FONT)
@@ -124,7 +131,6 @@ class GUI:
         entry_prominence = tk.Entry(self.root)
         entry_prominence.config(font=config.ENTRY_FONT)
         entry_prominence.grid(column=1, row=5, sticky=tk.W, **config.ENTRY_PADDING)
-
 
     def start(self):
         self.root.mainloop()
