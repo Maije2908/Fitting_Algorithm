@@ -1,10 +1,9 @@
-
-
 # import packages
 import tkinter as tk
 from tkinter import filedialog
 import config
 import os
+import re
 
 '''
 ***********************************************************************************************************************
@@ -23,9 +22,12 @@ NOTE: There are hardly any error-messages for wrong filetypes ect. The GUI shoul
 
 class GUI:
     def __init__(self):
-        #declare instance variables
+        # declare instance variables
+        self.entry_saturation = None
+        self.entry_value = None
+        self.entry_resistance = None
+        self.entry_prominence = None
         self.selected_s2p_files = [None]
-
 
         # Window config
         self.root: tk.Tk = tk.Tk()
@@ -55,9 +57,14 @@ class GUI:
         option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.N, )
 
     def create_specification_field(self):
+        # TODO: this might be obsolete since we are using the config file
         # Screen size
         screenwidth = self.root.winfo_screenwidth()
         screenheight = self.root.winfo_screenheight()
+
+        # validate command for inputs "register" is necessary so that the actual input is checked (would otherwise
+        # update after input)
+        vcmd = (self.root.register(self.entry_number_callback), "%P")
 
         # Headline
         label_spec = tk.Label(self.root, text="Specification", bg=config.BCKGND_COLOR)
@@ -69,18 +76,18 @@ class GUI:
         label_value.config(font=config.ENTRY_FONT)
         label_value.grid(column=0, row=2, sticky=tk.W, **config.ENTRY_PADDING)
 
-        entry_value = tk.Entry(self.root)
-        entry_value.config(font=config.ENTRY_FONT)
-        entry_value.grid(column=1, row=2, sticky=tk.W)
+        self.entry_value = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
+        self.entry_value.config(font=config.ENTRY_FONT)
+        self.entry_value.grid(column=1, row=2, sticky=tk.W)
 
         # initial resistance value
         label_resistance = tk.Label(self.root, text="\u03A9", bg=config.BCKGND_COLOR)
         label_resistance.config(font=config.ENTRY_FONT)
         label_resistance.grid(column=0, row=3, sticky=tk.W, **config.ENTRY_PADDING)
 
-        entry_resistance = tk.Entry(self.root)
-        entry_resistance.config(font=config.ENTRY_FONT)
-        entry_resistance.grid(column=1, row=3, sticky=tk.W)
+        self.entry_resistance = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
+        self.entry_resistance.config(font=config.ENTRY_FONT)
+        self.entry_resistance.grid(column=1, row=3, sticky=tk.W)
 
         # Saturation Table
         label_saturation = tk.Label(self.root, text="Saturation Table", bg=config.BCKGND_COLOR)
@@ -88,18 +95,18 @@ class GUI:
         label_saturation.grid(column=0, row=4, sticky=tk.W, **config.ENTRY_PADDING)
         # endregion
 
-        entry_saturation = tk.Entry(self.root)
-        entry_saturation.config(font=config.ENTRY_FONT)
-        entry_saturation.grid(column=1, row=4, sticky=tk.W, **config.ENTRY_PADDING)
+        self.entry_saturation = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
+        self.entry_saturation.config(font=config.ENTRY_FONT)
+        self.entry_saturation.grid(column=1, row=4, sticky=tk.W, **config.ENTRY_PADDING)
 
         # Prominence
         label_prominence = tk.Label(self.root, text="Prominence in °", bg=config.BCKGND_COLOR)
         label_prominence.config(font=config.ENTRY_FONT)
         label_prominence.grid(column=0, row=5, sticky=tk.W, **config.ENTRY_PADDING)
 
-        entry_prominence = tk.Entry(self.root)
-        entry_prominence.config(font=config.ENTRY_FONT)
-        entry_prominence.grid(column=1, row=5, sticky=tk.W, **config.ENTRY_PADDING)
+        self.entry_prominence = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
+        self.entry_prominence.config(font=config.ENTRY_FONT)
+        self.entry_prominence.grid(column=1, row=5, sticky=tk.W, **config.ENTRY_PADDING)
 
     def create_browse_button(self):
         browse_button = tk.Button(self.root, command=self.callback_browse_s2p_file, text="Select s2p File(s)")
@@ -111,6 +118,9 @@ class GUI:
         browse_button.config(font=config.ENTRY_FONT)
         browse_button.grid(column=0, row=7, sticky=tk.W, **config.ENTRY_PADDING)
 
+    ########################################################################################################################
+    # Button commands
+
     def callback_browse_s2p_file(self):
         filename = tk.filedialog.askopenfilename(title=
                                                  'Open Measured Data (Touchstone-Format)',
@@ -121,11 +131,32 @@ class GUI:
         for file_number in range(len(path_list)):
             path_list[file_number] = os.path.abspath(filename[file_number])
 
-        #set instance variable for s2p files to selected files
+        # set instance variable for s2p files to selected files
         self.selected_s2p_files = path_list
 
     def callback_run(self):
+        test = self.entry_value.get()
         return 0
+
+    ########################################################################################################################
+    # auxilliary functions
+
+    def entry_number_callback(self, checkstring):
+        # check function, invoked by the validationcommand of the entry-fields
+        # returns TRUE if the value entried is a number; can have a leading + or - and can have ONE decimal point (.)
+        # returns FALSE otherwise
+
+        # regular expression copied from: https://stackoverflow.com/questions/46116037/tkinter-restrict-entry-data-to-float
+        regex = re.compile(r"(\+|\-)?[0-9.]*$")
+        result = regex.match(checkstring)
+        checkval = (checkstring == ""
+                    or (checkstring.count('+') <= 1
+                        and checkstring.count('-') <= 1
+                        and checkstring.count('.') <= 1
+                        and result is not None
+                        and result.group(0) != ""))
+        return checkval
+
 
     def start(self):
         self.root.mainloop()
