@@ -21,13 +21,14 @@ NOTE: There are hardly any error-messages for wrong filetypes ect. The GUI shoul
 
 
 class GUI:
-    def __init__(self):
+    def __init__(self, iohandler_instance):
         # declare instance variables
         self.entry_saturation = None
         self.entry_value = None
         self.entry_resistance = None
         self.entry_prominence = None
-        self.selected_s2p_files = [None]
+        self.selected_s2p_files = None
+        self.iohandler = iohandler_instance
 
         # Window config
         self.root: tk.Tk = tk.Tk()
@@ -57,10 +58,6 @@ class GUI:
         option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.N, )
 
     def create_specification_field(self):
-        # TODO: this might be obsolete since we are using the config file
-        # Screen size
-        screenwidth = self.root.winfo_screenwidth()
-        screenheight = self.root.winfo_screenheight()
 
         # validate command for inputs "register" is necessary so that the actual input is checked (would otherwise
         # update after input)
@@ -118,7 +115,7 @@ class GUI:
         browse_button.config(font=config.ENTRY_FONT)
         browse_button.grid(column=0, row=7, sticky=tk.W, **config.ENTRY_PADDING)
 
-    ########################################################################################################################
+    ####################################################################################################################
     # Button commands
 
     def callback_browse_s2p_file(self):
@@ -132,13 +129,18 @@ class GUI:
             path_list[file_number] = os.path.abspath(filename[file_number])
 
         # set instance variable for s2p files to selected files
+        # EDIT: this might become obsolete since the iohandler loads the files directly
         self.selected_s2p_files = path_list
+
+
+
+        return 0
 
     def callback_run(self):
         test = self.entry_value.get()
         return 0
 
-    ########################################################################################################################
+    ####################################################################################################################
     # auxilliary functions
 
     def entry_number_callback(self, checkstring):
