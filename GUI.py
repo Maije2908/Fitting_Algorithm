@@ -1,6 +1,10 @@
+
+
 # import packages
 import tkinter as tk
+from tkinter import filedialog
 import config
+import os
 
 '''
 ***********************************************************************************************************************
@@ -19,6 +23,10 @@ NOTE: There are hardly any error-messages for wrong filetypes ect. The GUI shoul
 
 class GUI:
     def __init__(self):
+        #declare instance variables
+        self.selected_s2p_files = [None]
+
+
         # Window config
         self.root: tk.Tk = tk.Tk()
         self.root.wm_title('Fitting Program V2')
@@ -29,19 +37,22 @@ class GUI:
         print("Height: ", self.root.winfo_screenheight())
 
         # set window size
-        self.root.geometry("%dx%d" % (int(0.5*self.root.winfo_screenwidth()), int(0.75*self.root.winfo_screenheight())))
+        self.root.geometry(
+            "%dx%d" % (int(0.5 * self.root.winfo_screenwidth()), int(0.75 * self.root.winfo_screenheight())))
 
         # here starts the creation of the widgets
         self.create_drop_down()
         self.create_specification_field()
+        self.create_browse_button()
+        self.create_run_button()
 
     def create_drop_down(self):
         drop_down_var = tk.StringVar(self.root)
 
         option_menu = tk.OptionMenu(self.root, drop_down_var, *config.DROP_DOWN_ELEMENTS)
         max_drop_length = len(max(config.DROP_DOWN_ELEMENTS, key=len))
-        option_menu.config(font=config.DROP_DOWN_FONT, width=max_drop_length+5, height=config.DROP_DOWN_HEIGHT)
-        option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.N,)
+        option_menu.config(font=config.DROP_DOWN_FONT, width=max_drop_length + 5, height=config.DROP_DOWN_HEIGHT)
+        option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.N, )
 
     def create_specification_field(self):
         # Screen size
@@ -89,6 +100,32 @@ class GUI:
         entry_prominence = tk.Entry(self.root)
         entry_prominence.config(font=config.ENTRY_FONT)
         entry_prominence.grid(column=1, row=5, sticky=tk.W, **config.ENTRY_PADDING)
+
+    def create_browse_button(self):
+        browse_button = tk.Button(self.root, command=self.callback_browse_s2p_file, text="Select s2p File(s)")
+        browse_button.config(font=config.ENTRY_FONT)
+        browse_button.grid(column=0, row=6, sticky=tk.W, **config.ENTRY_PADDING)
+
+    def create_run_button(self):
+        browse_button = tk.Button(self.root, command=self.callback_run, text="Run (dummy)")
+        browse_button.config(font=config.ENTRY_FONT)
+        browse_button.grid(column=0, row=7, sticky=tk.W, **config.ENTRY_PADDING)
+
+    def callback_browse_s2p_file(self):
+        filename = tk.filedialog.askopenfilename(title=
+                                                 'Open Measured Data (Touchstone-Format)',
+                                                 filetypes=((".s2p", "*.s2p*"),
+                                                            ("all files", "*.*")), multiple=True)
+
+        path_list = [None] * len(filename)
+        for file_number in range(len(path_list)):
+            path_list[file_number] = os.path.abspath(filename[file_number])
+
+        #set instance variable for s2p files to selected files
+        self.selected_s2p_files = path_list
+
+    def callback_run(self):
+        return 0
 
     def start(self):
         self.root.mainloop()

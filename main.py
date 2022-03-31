@@ -7,9 +7,9 @@
 #
 # =====================================================================================================================
 
+import os
 #    main packages and author information
 import sys
-import os
 
 #   information of author printed if console is used
 __author__ = ' '
@@ -30,6 +30,7 @@ import platform
 # import my packages
 from GUI import *
 
+
 # print different System settings:
 # operating system
 if platform.system() == 'Linux':
@@ -44,4 +45,4 @@ else:
 # start GUI
 if __name__ == '__main__':
     GUI = GUI()
-    GUI.start()
+    GUI.start() #i was thinking to put the start method in the constructor, but that
