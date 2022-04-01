@@ -8,13 +8,15 @@
 # handling easier
 
 
-class S2pFile:
+class SNpFile:
 
-    def __init__(self):
-        self.data = 2
+    def __init__(self, sNpdata, sNname):
+        self.data = sNpdata
+        self.name = sNname
 
-    def set_data(self, s2pdata):
-        self.data = s2pdata
+    def set_data(self, sNpdata, sNname):
+        self.data = sNpdata
+        self.name = sNname
         return 0
 
     def get_data(self):

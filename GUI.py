@@ -115,6 +115,11 @@ class GUI:
         browse_button.config(font=config.ENTRY_FONT)
         browse_button.grid(column=0, row=7, sticky=tk.W, **config.ENTRY_PADDING)
 
+    def create_file_list(self):
+        self.file_list = tk.Listbox(self.root)
+        file_list.config(font=config.ENTRY_FONT)
+        file_list.grid(column=0, row=8, sticky=tk.W, **config.ENTRY_PADDING)
+
     ####################################################################################################################
     # Button commands
 
@@ -132,7 +137,8 @@ class GUI:
         # EDIT: this might become obsolete since the iohandler loads the files directly
         self.selected_s2p_files = path_list
 
-
+        #NOTE: second parameter should be to select inductivity/capacitance; unsure (yet) if this is necessary
+        self.iohandler.load_file(path_list, 2)
 
         return 0
 
