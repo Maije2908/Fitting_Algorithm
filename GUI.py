@@ -21,14 +21,15 @@ NOTE: There are hardly any error-messages for wrong filetypes ect. The GUI shoul
 
 
 class GUI:
-    def __init__(self, iohandler_instance):
+    def __init__(self, iohandler_instance, fitter_instance):
         # declare instance variables
         self.entry_saturation = None
-        self.entry_value = None
+        self.entry_nominal_value = None
         self.entry_resistance = None
         self.entry_prominence = None
         self.selected_s2p_files = None
         self.iohandler = iohandler_instance
+        self.fitter = fitter_instance
 
         # Window config
         self.root: tk.Tk = tk.Tk()
@@ -69,13 +70,13 @@ class GUI:
         label_spec.grid(column=0, row=1, columnspan=2, sticky=tk.N, **config.SPEC_PADDING)
 
         # initial value
-        label_value = tk.Label(self.root, text="F/C", bg=config.BCKGND_COLOR)
-        label_value.config(font=config.ENTRY_FONT)
-        label_value.grid(column=0, row=2, sticky=tk.W, **config.ENTRY_PADDING)
+        passive_element_label = tk.Label(self.root, text="F/C", bg=config.BCKGND_COLOR)
+        passive_element_label.config(font=config.ENTRY_FONT)
+        passive_element_label.grid(column=0, row=2, sticky=tk.W, **config.ENTRY_PADDING)
 
-        self.entry_value = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
-        self.entry_value.config(font=config.ENTRY_FONT)
-        self.entry_value.grid(column=1, row=2, sticky=tk.W)
+        self.entry_nominal_value = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
+        self.entry_nominal_value.config(font=config.ENTRY_FONT)
+        self.entry_nominal_value.grid(column=1, row=2, sticky=tk.W)
 
         # initial resistance value
         label_resistance = tk.Label(self.root, text="\u03A9", bg=config.BCKGND_COLOR)
@@ -117,12 +118,14 @@ class GUI:
 
     def create_file_list(self):
         self.file_list = tk.Listbox(self.root)
-        file_list.config(font=config.ENTRY_FONT)
-        file_list.grid(column=0, row=8, sticky=tk.W, **config.ENTRY_PADDING)
+        self.file_list.config(font=config.ENTRY_FONT)
+        self.file_list.grid(column=0, row=8, sticky=tk.W, **config.ENTRY_PADDING)
 
     ####################################################################################################################
     # Button commands
 
+    # Method that is invoked when the "open file" button is pressed; opens a file dialoge, and invokes the IOhandler
+    # in order to load the touchstone file
     def callback_browse_s2p_file(self):
         filename = tk.filedialog.askopenfilename(title=
                                                  'Open Measured Data (Touchstone-Format)',
@@ -142,18 +145,36 @@ class GUI:
 
         return 0
 
+    #method to run the fitting algorithm, invoked when "run" button is pressed
     def callback_run(self):
-        test = self.entry_value.get()
+
+        #get values from the entry boxes
+        passive = self.to_float(self.entry_nominal_value.get())
+        res     = self.to_float(self.entry_resistance.get())
+        prom    = self.to_float(self.entry_prominence.get())
+        sat     = self.to_float(self.entry_saturation.get())
+
+        # parse specs to fitter
+        self.fitter.set_specification(passive, res, prom, sat)
+        # parse files to fitter
+        self.fitter.set_files(self.iohandler.files)
+        #calculate z21
+        self.fitter.calc_series_thru(50)
+        self.fitter.smooth_data()
+
+        # TODO: V This needs to be invoked only if there is no nominal value specified V
+        self.fitter.calculate_nominal_value(1)
+
         return 0
 
     ####################################################################################################################
     # auxilliary functions
 
-    def entry_number_callback(self, checkstring):
-        # check function, invoked by the validationcommand of the entry-fields
-        # returns TRUE if the value entried is a number; can have a leading + or - and can have ONE decimal point (.)
-        # returns FALSE otherwise
 
+    # check function, invoked by the validationcommand of the entry-fields
+    # returns TRUE if the value entried is a number; can have a leading + or - and can have ONE decimal point (.)
+    # returns FALSE otherwise
+    def entry_number_callback(self, checkstring):
         # regular expression copied from: https://stackoverflow.com/questions/46116037/tkinter-restrict-entry-data-to-float
         regex = re.compile(r"(\+|\-)?[0-9.]*$")
         result = regex.match(checkstring)
@@ -164,6 +185,13 @@ class GUI:
                         and result is not None
                         and result.group(0) != ""))
         return checkval
+
+    #function to cast the strings from the entry boxes to float, if it does not work, "None" is returned
+    def to_float (self, number_string):
+        try:
+            return float(number_string)
+        except:
+            return None
 
 
     def start(self):

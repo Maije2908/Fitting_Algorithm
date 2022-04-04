@@ -30,7 +30,7 @@ import platform
 # import my packages
 from GUI import *
 from iohandler import *
-
+from fitter import *
 
 # print different System settings:
 # operating system
@@ -45,8 +45,9 @@ else:
 
 # start GUI
 if __name__ == '__main__':
-    #initialize iohandler prior to GUI, since GUI needs an instance of it
+    #initialize iohandler prior to GUI, since GUI needs an instance of it, same goes for the fitter
     iohandler = IOhandler()
-    gui = GUI(iohandler)
+    fitter = Fitter()
+    gui = GUI(iohandler, fitter)
 
     gui.start() #i was thinking to put the start method in the constructor, but that
