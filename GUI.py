@@ -149,21 +149,24 @@ class GUI:
     def callback_run(self):
 
         #get values from the entry boxes
-        passive = self.to_float(self.entry_nominal_value.get())
-        res     = self.to_float(self.entry_resistance.get())
-        prom    = self.to_float(self.entry_prominence.get())
-        sat     = self.to_float(self.entry_saturation.get())
+        passive_nom = self.to_float(self.entry_nominal_value.get())
+        res         = self.to_float(self.entry_resistance.get())
+        prom        = self.to_float(self.entry_prominence.get())
+        sat         = self.to_float(self.entry_saturation.get())
 
-        # parse specs to fitter
-        self.fitter.set_specification(passive, res, prom, sat)
+        fit_type = 1 #TODO: this is hardcoded to be "inductor" -> need to implement other options
+
+
         # parse files to fitter
         self.fitter.set_files(self.iohandler.files)
         #calculate z21
         self.fitter.calc_series_thru(50)
         self.fitter.smooth_data()
 
-        # TODO: V This needs to be invoked only if there is no nominal value specified V
-        self.fitter.calculate_nominal_value(1)
+        # parse specs to fitter; this needs to happen here, bc otherwise the fitter should calculate nominal values itself
+        self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
+        self.fitter.get_main_resonance(fit_type)
+
 
         return 0
 

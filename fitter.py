@@ -10,6 +10,7 @@
 
 import numpy as np
 import scipy
+from lmfit import minimize, Parameters, Minimizer, report_fit
 import matplotlib.pyplot as plt
 
 
@@ -22,20 +23,32 @@ class Fitter:
         self.prominence = None
         self.saturation = None
         self.files = None
-        self.z21_series_thru = None
+        self.z21_data = None
         self.data_mag = None
         self.data_ang = None
+        #using the Parameters() class from lmfit, might be necessary to make this an array when handling multiple files
+        self.parameters = Parameters()
 
     ####################################################################################################################
     # Parsing Methods
     ####################################################################################################################
 
     #method to set the entry values of the specification
-    def set_specification(self, pass_val, para_r, prom, sat):
-        self.nominal_value = pass_val
-        self.parasitive_resistance = para_r
+    def set_specification(self, pass_val, para_r, prom, sat, fit_type):
         self.prominence = prom
         self.saturation = sat
+
+        if pass_val is None:
+            self.calculate_nominal_value(fit_type)
+        else:
+            self.nominal_value = pass_val
+
+        if para_r is None:
+            self.calculate_nominal_Rs()
+        else:
+            self.parasitive_resistance = para_r
+
+
 
     #method to parse the files from the iohandler
     def set_files(self, files):
@@ -49,15 +62,19 @@ class Fitter:
 
     def calc_series_thru(self, Z0):
         for file in self.files:
-            self.z21_series_thru = 2 * Z0 * ((1 - file.data.s[:,1,0]) / file.data.s[:,1,0])
+            self.z21_data = 2 * Z0 * ((1 - file.data.s[:, 1, 0]) / file.data.s[:, 1, 0])
+
+    def calc_shunt_thru(self, Z0):
+        for file in self.files:
+            self.z21_data = (Z0 * file.data.s[:, 1, 0]) / (2 * (1 - file.data.s[:, 1, 0]))
 
 
     def smooth_data(self):
         # Use Savitzky-Golay filter for smoothing the input data, because in the region of the global minimum there is
         # oscillation. After filtering a global minimum can be found easier.
         sav_gol_mode = 'interp'
-        self.data_mag = scipy.signal.savgol_filter(abs(self.z21_series_thru), 51, 2, mode=sav_gol_mode)
-        self.data_ang = scipy.signal.savgol_filter(np.angle(self.z21_series_thru, deg=True), 51, 2, mode=sav_gol_mode)
+        self.data_mag = scipy.signal.savgol_filter(abs(self.z21_data), 51, 2, mode=sav_gol_mode)
+        self.data_ang = scipy.signal.savgol_filter(np.angle(self.z21_data, deg=True), 51, 2, mode=sav_gol_mode)
         #limit the data to +/- 90°
         self.data_ang = np.clip(self.data_ang, -90, 90)
 
@@ -66,6 +83,7 @@ class Fitter:
         # calculates the nominal value from the inductive/capacitive measured data, can be used, if nominal value is not specified
         # returns the nominal value <- copied from payer's program
         # fit_type -> 1-> inductor / 2-> capacitor / 3-> cmc (doesn't work)
+
     def calculate_nominal_value(self, fit_type):
         offset = 10  # samples
         nominal_value = 0
@@ -73,28 +91,32 @@ class Fitter:
 
         match fit_type:
             case 1: #INDUCTOR
-                # TODO: V solve this via boolean indexing V
-                for inductive_range in range(offset, len(freq)):
-                    if self.data_ang[inductive_range] < 0:
-                        break  # range until first sign change
-                if max(self.data_ang[offset:inductive_range]) < 88:
+
+                # find first point where the phase crosses 0
+                index_angle_smaller_zero = np.argwhere(self.data_ang < 0)
+                index_ang_zero_crossing = index_angle_smaller_zero[0][0] # this somehow has to be "double unwrapped"
+
+                if max(self.data_ang[offset:index_ang_zero_crossing]) < 88:
                     raise Exception("Error: Inductive range not detected (max phase = {value}°).\n"
                                     "Please specify nominal inductance.".format(value=np.round(max(self.data_ang), 1)))
                 for sample in range(offset, len(freq)):
-                    if self.data_ang[sample] == max(self.data_ang[offset:inductive_range]):
+                    if self.data_ang[sample] == max(self.data_ang[offset:index_ang_zero_crossing]):
                         self.nominal_value = self.data_mag[sample] / 2 / np.pi / freq[sample]
                         break
+
             case 2: #CAPACITOR
-                for capacitive_range in range(offset, len(freq)):
-                    if self.data_ang[capacitive_range] > 0:
-                        break  # range until first sign change
-                if min(self.data_ang[offset:capacitive_range]) > -88:
+
+                # find first point where the phase crosses 0
+                index_angle_larger_zero = np.argwhere(self.data_ang > 0)
+                index_ang_zero_crossing = index_angle_larger_zero[0][0]  # this somehow has to be "double unwrapped"
+
+                if min(self.data_ang[offset:index_ang_zero_crossing]) > -88:
                     raise Exception("Error: Capacitive range not detected (min phase = {value}°).\n"
                                     "Please specify nominal capacitance.".format(value=np.round(min(self.data_ang), 1)))
 
                 test_values = []
                 for sample in range(offset, len(freq)):
-                    if self.data_ang[sample] == min(self.data_ang[offset:capacitive_range]):
+                    if self.data_ang[sample] == min(self.data_ang[offset:index_ang_zero_crossing]):
                         nominal_value = 1 / (2 * np.pi * freq[sample] * self.data_mag[sample])
                         self.nominal_value = nominal_value
                         test_values.append(self.nominal_value)
@@ -111,3 +133,50 @@ class Fitter:
 
 
         return self.nominal_value
+
+    def calculate_nominal_Rs(self):
+        R_s_input = min(self.data_mag)
+        #TODO: logging and error handling ( method could be called before the data is initialized)
+        self.parasitive_resistance = R_s_input
+
+
+    def get_main_resonance(self, fit_type):
+        freq = self.files[0].data.f
+
+        #set w0 to 0 in order to have feedback, if the method didn't work
+        w0 = 0
+
+        #TODO: maybe check fit_type variable to be 1/2/3?
+
+        match fit_type:
+
+            case 1: #INDUCTOR
+                index_angle_smaller_zero = np.argwhere(self.data_ang < 0)
+                index_ang_zero_crossing = index_angle_smaller_zero[0][0]
+                continuity_check = index_angle_smaller_zero[10][0]
+
+            case 2: #CAPACITOR
+                index_angle_larger_zero = np.argwhere(self.data_ang > 0)
+                index_ang_zero_crossing = index_angle_larger_zero[0][0]
+                continuity_check = index_angle_larger_zero[10][0]
+
+            case 3: #CMC
+                sign = 1 #TODO: i dont know what value to take for CMCs and how to handle them in general
+
+        if continuity_check:
+            f0 = freq[index_ang_zero_crossing]
+            w0 = f0 * 2 * np.pi
+            print("f0: {f0}".format(f0=f0))
+
+        if w0 == 0:
+            raise Exception('\nSystem Log: ERROR: Main resonant frequency could not be determined.')
+
+        #TODO: write found w0 to parameters
+
+
+
+
+
+
+
+
