@@ -149,10 +149,10 @@ class GUI:
     def callback_run(self):
 
         #get values from the entry boxes
-        passive_nom = self.to_float(self.entry_nominal_value.get())
-        res         = self.to_float(self.entry_resistance.get())
-        prom        = self.to_float(self.entry_prominence.get())
-        sat         = self.to_float(self.entry_saturation.get())
+        passive_nom = self.entry_to_float(self.entry_nominal_value.get())
+        res         = self.entry_to_float(self.entry_resistance.get())
+        prom        = self.entry_to_float(self.entry_prominence.get())
+        sat         = self.entry_to_float(self.entry_saturation.get())
 
         fit_type = 1 #TODO: this is hardcoded to be "inductor" -> need to implement other options
 
@@ -166,6 +166,7 @@ class GUI:
         # parse specs to fitter; this needs to happen here, bc otherwise the fitter should calculate nominal values itself
         self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
         self.fitter.get_main_resonance(fit_type)
+        self.fitter.get_resonances()
 
 
         return 0
@@ -190,7 +191,7 @@ class GUI:
         return checkval
 
     #function to cast the strings from the entry boxes to float, if it does not work, "None" is returned
-    def to_float (self, number_string):
+    def entry_to_float (self, number_string):
         try:
             return float(number_string)
         except:

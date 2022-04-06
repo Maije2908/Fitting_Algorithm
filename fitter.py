@@ -10,6 +10,7 @@
 
 import numpy as np
 import scipy
+from scipy.signal import find_peaks
 from lmfit import minimize, Parameters, Minimizer, report_fit
 import matplotlib.pyplot as plt
 
@@ -28,6 +29,12 @@ class Fitter:
         self.data_ang = None
         #using the Parameters() class from lmfit, might be necessary to make this an array when handling multiple files
         self.parameters = Parameters()
+
+        self.frequency_zones = None
+
+        #TODO: maybe change this; the f0 variable is for testing puropses
+        self.f0 = None
+
 
     ####################################################################################################################
     # Parsing Methods
@@ -166,6 +173,7 @@ class Fitter:
         if continuity_check:
             f0 = freq[index_ang_zero_crossing]
             w0 = f0 * 2 * np.pi
+            self.f0 = f0
             print("f0: {f0}".format(f0=f0))
 
         if w0 == 0:
@@ -174,9 +182,65 @@ class Fitter:
         #TODO: write found w0 to parameters
 
 
+    def get_resonances(self):
 
+        min_prominence = 0.05
+        prominence_mag = 0.01
+        R_s = self.parasitive_resistance
+        freq = self.files[0].data.f
 
+        #TODO: find_peaks tends to detect "too many" peaks i.e. overfits!!! (Long term problem)
 
+        #find peaks of Magnitude Impedance curve (using scipy.signal.find_peaks)
+        mag_maxima = find_peaks(self.data_mag, height=np.log10(R_s), prominence=prominence_mag)
+        mag_minima = find_peaks(self.data_mag * -1, prominence=prominence_mag)
+        #find peaks of Phase curve
+        phase_maxima = find_peaks(self.data_ang, prominence=prominence_mag)
+        phase_minima = find_peaks(self.data_ang * -1, prominence=prominence_mag)
+
+        #map to frequency; TODO: we are using the file here, so if there are multiple files, need to change this
+        f_mag_maxima = freq[mag_maxima[0]]
+        f_mag_minima = freq[mag_minima[0]]
+
+        f_phase_maxima = freq[phase_maxima[0]]
+        f_phase_minima = freq[phase_minima[0]]
+
+        min_zone_start = self.f0 * 2  # frequency buffer for first RLC circuit TODO: AD "find_peaks" this might do the trick
+        ang_minima_pos = f_phase_minima[f_phase_minima > min_zone_start]
+        ang_maxima_pos = f_phase_maxima[f_phase_maxima > min_zone_start]
+
+        #plot commands to check peak values
+        #markerson = mag_maxima[0]
+        #plt.loglog(self.data_mag,'-bD', markevery=markerson)
+
+        #loop to find frequency ranges, copied from payer
+        number_zones = len(ang_minima_pos)
+        f_zones_list = []
+        for minimum in range(0, number_zones):
+            f1 = ang_minima_pos[minimum]
+            f3 = max(freq) * 5
+            if minimum + 1 < number_zones:
+                f3 = ang_minima_pos[minimum + 1]
+
+            # find the maxima between two minima
+            for maximum in range(len(ang_maxima_pos)):
+                if f1 < ang_maxima_pos[maximum] < f3:
+                    f_tuple = (f1, ang_maxima_pos[maximum], f3)
+                    f_zones_list.append(f_tuple)
+                    break  # corresponding f2 found
+        try:
+            if ang_minima_pos[-1] > ang_maxima_pos[-1]:
+                f_tuple = (ang_minima_pos[-1], max(freq) * 3, f3)
+                f_zones_list.append(f_tuple)
+        # no minima or maxima present - not sure if this works correctly
+        except Exception as e:
+            if number_zones > 0:  # else base model
+                f_tuple = (ang_minima_pos[-1], np.sqrt(max(freq) ** 2 * 3), max(freq) * 6)
+                f_zones_list.append(f_tuple)
+                print("Warning from frequency zones: {e}".format(e=e))
+                pass
+
+        self.frequency_zones = f_zones_list
 
 
 
