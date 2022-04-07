@@ -21,12 +21,13 @@ class Fitter:
     def __init__(self):
         self.nominal_value = None
         self.parasitive_resistance = None
-        self.prominence = None
-        self.saturation = None
+        self.prominence = 0
+        self.saturation = 0
         self.files = None
         self.z21_data = None
         self.data_mag = None
         self.data_ang = None
+        self.fit_type = None
         #using the Parameters() class from lmfit, might be necessary to make this an array when handling multiple files
         self.parameters = Parameters()
 
@@ -34,6 +35,7 @@ class Fitter:
 
         #TODO: maybe change this; the f0 variable is for testing puropses
         self.f0 = None
+        self.max_order = 15 #TODO: this is hard-coded for testing purposes
 
 
     ####################################################################################################################
@@ -42,11 +44,11 @@ class Fitter:
 
     #method to set the entry values of the specification
     def set_specification(self, pass_val, para_r, prom, sat, fit_type):
-        self.prominence = prom
-        self.saturation = sat
+
+        self.fit_type = fit_type
 
         if pass_val is None:
-            self.calculate_nominal_value(fit_type)
+            self.calculate_nominal_value()
         else:
             self.nominal_value = pass_val
 
@@ -54,6 +56,16 @@ class Fitter:
             self.calculate_nominal_Rs()
         else:
             self.parasitive_resistance = para_r
+
+        if prom is None:
+            self.prominence = 0
+        else:
+            self.prominence = prom
+
+        if sat is None:
+            self.saturation = 0
+        else:
+            self.saturation = sat
 
 
 
@@ -91,12 +103,12 @@ class Fitter:
         # returns the nominal value <- copied from payer's program
         # fit_type -> 1-> inductor / 2-> capacitor / 3-> cmc (doesn't work)
 
-    def calculate_nominal_value(self, fit_type):
+    def calculate_nominal_value(self):
         offset = 10  # samples
         nominal_value = 0
         freq = self.files[0].data.f
 
-        match fit_type:
+        match self.fit_type:
             case 1: #INDUCTOR
 
                 # find first point where the phase crosses 0
@@ -146,8 +158,7 @@ class Fitter:
         #TODO: logging and error handling ( method could be called before the data is initialized)
         self.parasitive_resistance = R_s_input
 
-
-    def get_main_resonance(self, fit_type):
+    def get_main_resonance(self):
         freq = self.files[0].data.f
 
         #set w0 to 0 in order to have feedback, if the method didn't work
@@ -155,7 +166,7 @@ class Fitter:
 
         #TODO: maybe check fit_type variable to be 1/2/3?
 
-        match fit_type:
+        match self.fit_type:
 
             case 1: #INDUCTOR
                 index_angle_smaller_zero = np.argwhere(self.data_ang < 0)
@@ -181,13 +192,13 @@ class Fitter:
 
         #TODO: write found w0 to parameters
 
-
     def get_resonances(self):
 
-        min_prominence = 0.05
+        min_prominence_phase = 0.5
         prominence_mag = 0.01
         R_s = self.parasitive_resistance
         freq = self.files[0].data.f
+        prominence_phase = max(min_prominence_phase, float(self.prominence))
 
         #TODO: find_peaks tends to detect "too many" peaks i.e. overfits!!! (Long term problem)
 
@@ -195,10 +206,11 @@ class Fitter:
         mag_maxima = find_peaks(self.data_mag, height=np.log10(R_s), prominence=prominence_mag)
         mag_minima = find_peaks(self.data_mag * -1, prominence=prominence_mag)
         #find peaks of Phase curve
-        phase_maxima = find_peaks(self.data_ang, prominence=prominence_mag)
-        phase_minima = find_peaks(self.data_ang * -1, prominence=prominence_mag)
+        phase_maxima = find_peaks(self.data_ang, prominence=prominence_phase)
+        phase_minima = find_peaks(self.data_ang * -1, prominence=prominence_phase)
 
         #map to frequency; TODO: we are using the file here, so if there are multiple files, need to change this
+        #TODO: why are we even calculating the magnitude maxima if they are never used???
         f_mag_maxima = freq[mag_maxima[0]]
         f_mag_minima = freq[mag_minima[0]]
 
@@ -216,23 +228,23 @@ class Fitter:
         #loop to find frequency ranges, copied from payer
         number_zones = len(ang_minima_pos)
         f_zones_list = []
-        for minimum in range(0, number_zones):
-            f1 = ang_minima_pos[minimum]
+        for num_minimum in range(0, number_zones):
+            f1 = ang_minima_pos[num_minimum]
             f3 = max(freq) * 5
-            if minimum + 1 < number_zones:
-                f3 = ang_minima_pos[minimum + 1]
+            if num_minimum + 1 < number_zones:
+                f3 = ang_minima_pos[num_minimum + 1]
 
             # find the maxima between two minima
-            for maximum in range(len(ang_maxima_pos)):
-                if f1 < ang_maxima_pos[maximum] < f3:
-                    f_tuple = (f1, ang_maxima_pos[maximum], f3)
+            for num_maximum in range(len(ang_maxima_pos)):
+                if f1 < ang_maxima_pos[num_maximum] < f3:
+                    f_tuple = (f1, ang_maxima_pos[num_maximum], f3)
                     f_zones_list.append(f_tuple)
                     break  # corresponding f2 found
         try:
             if ang_minima_pos[-1] > ang_maxima_pos[-1]:
                 f_tuple = (ang_minima_pos[-1], max(freq) * 3, f3)
                 f_zones_list.append(f_tuple)
-        # no minima or maxima present - not sure if this works correctly
+        # no minima or maxima present - not sure if this works correctly TODO: me neither, but let's assume it works for the moment
         except Exception as e:
             if number_zones > 0:  # else base model
                 f_tuple = (ang_minima_pos[-1], np.sqrt(max(freq) ** 2 * 3), max(freq) * 6)
@@ -241,6 +253,102 @@ class Fitter:
                 pass
 
         self.frequency_zones = f_zones_list
+
+    def create_nominal_parameters(self):
+
+        self.parameters.add('R_s', value=self.parasitive_resistance, min=1e-20, vary=False)
+
+        #max/min values for the isolation/iron resistance
+        min_R = 1
+        max_R = 1e12
+
+        match self.fit_type:
+            case 1:
+                #calculate "perfect" capacitor for this resonance
+                cap_ideal = 1 / (self.nominal_value * ((self.f0*2*np.pi) ** 2))
+                #add to parameters
+                self.parameters.add('C', value=cap_ideal, min=cap_ideal * 0.8, max=cap_ideal* 1.2)
+                self.parameters.add('R_Fe', value=max_R, min=min_R, max=max_R)
+                #main element
+                self.parameters.add('L', value=self.nominal_value, min=self.nominal_value * 0.9,
+                                    max=self.nominal_value * 1.1, vary=False)
+            case 2:
+                # calculate "perfect" inductor for this resonance
+                ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
+                self.parameters.add('L', value=ind_ideal, min=ind_ideal * 0.8, max=ind_ideal * 1.2)
+                self.parameters.add('R_iso', value=max_R, min=min_R, max=max_R)
+                #main element
+                self.parameters.add('C', value=self.nominal_value, min=self.nominal_value * 0.7,
+                                    max=self.nominal_value * 1.1, vary=False)
+            case 3:
+                #TODO: CMCs -> eh scho wissen
+                dummy = 0
+
+        return 0
+
+    def create_elements(self):
+
+        if self.max_order > len(self.frequency_zones):
+            order = len(self.frequency_zones)
+        else:
+            order = self.max_order
+            #TODO: and also throw and except please
+
+        C = self.parameters['C'].value
+        L = self.parameters['L'].value
+
+        min_cap = 1e-12
+        max_cap = C * 1e3
+        value_cap = (max_cap-min_cap)/2
+
+
+
+        for key_number in range(1, order + 1):
+
+            #create keys
+            C_key   = "C%s" % key_number
+            L_key   = "L%s" % key_number
+            R_key   = "R%s" % key_number
+            w_key   = "w%s" % key_number
+            BW_key  = "BW%s" % key_number
+
+            # get frequencies for the band
+            f_l = self.frequency_zones[key_number-1][0] #lower
+            f_c = self.frequency_zones[key_number-1][1] #center
+            f_u = self.frequency_zones[key_number-1][2] #upper
+
+            # bandwidth (formulas copied from payers script)
+            log_multiplication_factor = 1.04
+            BW_min      = f_c * log_multiplication_factor - f_c / log_multiplication_factor
+            BW_max      = (f_u - f_l) * 1.1
+            BW_value    = BW_max / 8
+
+            #center frequency (omega)
+            w_c = f_c * 2 * np.pi
+            min_w = np.sqrt( (f_l*2*np.pi) * w_c)
+            max_w = np.sqrt( (f_u*2*np.pi) * w_c)
+
+            # expression strings
+            expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+
+            match self.fit_type: #TODO:check if fit_type is valid!!!
+                case 1: #INDUCTOR
+                    expression_string_R = '1/(2*' + str(np.pi) + '*' + BW_key + '*' + C_key + ')'
+                case 2:
+                    expression_string_R = '2*' + str(np.pi) + '*' + BW_key + '*' + L_key
+
+            #add parameters
+            self.parameters.add(BW_key, min=BW_min,     max=BW_max,     value=BW_value)
+            self.parameters.add(w_key,  min=min_w,      max=max_w,      value=w_c)
+            self.parameters.add(C_key,  min=min_cap,    max=max_cap,    value=value_cap)
+            self.parameters.add(L_key,  min=1e-20,      max=L,          expr=expression_string_L)
+            self.parameters.add(R_key,  min=1e-3,       max=1e4,        expr=expression_string_R)
+        dummy = 2
+        return 0
+
+
+
+
 
 
 

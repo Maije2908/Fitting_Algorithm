@@ -165,8 +165,10 @@ class GUI:
 
         # parse specs to fitter; this needs to happen here, bc otherwise the fitter should calculate nominal values itself
         self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
-        self.fitter.get_main_resonance(fit_type)
+        self.fitter.get_main_resonance()
         self.fitter.get_resonances()
+        self.fitter.create_nominal_parameters()
+        self.fitter.create_elements()
 
 
         return 0
