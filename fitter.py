@@ -28,14 +28,17 @@ class Fitter:
         self.data_mag = None
         self.data_ang = None
         self.fit_type = None
+        self.out = None
         #using the Parameters() class from lmfit, might be necessary to make this an array when handling multiple files
         self.parameters = Parameters()
 
         self.frequency_zones = None
 
+
         #TODO: maybe change this; the f0 variable is for testing puropses
         self.f0 = None
         self.max_order = 15 #TODO: this is hard-coded for testing purposes
+        self.order = None
 
 
     ####################################################################################################################
@@ -259,24 +262,25 @@ class Fitter:
         self.parameters.add('R_s', value=self.parasitive_resistance, min=1e-20, vary=False)
 
         #max/min values for the isolation/iron resistance
-        min_R = 1
-        max_R = 1e12
+        min_R_Fe    = 10
+        max_R_Fe    = 1e9
+        min_R_iso   = 1
+        max_R_iso   = 1e12
 
         match self.fit_type:
             case 1:
                 #calculate "perfect" capacitor for this resonance
                 cap_ideal = 1 / (self.nominal_value * ((self.f0*2*np.pi) ** 2))
                 #add to parameters
-                self.parameters.add('C', value=cap_ideal, min=cap_ideal * 0.8, max=cap_ideal* 1.2)
-                self.parameters.add('R_Fe', value=max_R, min=min_R, max=max_R)
+                self.parameters.add('C', value=cap_ideal, min=cap_ideal * 0.8, max=cap_ideal* 1, vary=True)
+                self.parameters.add('R_Fe', value=max_R_Fe, min=min_R_Fe, max=max_R_Fe, vary=True)
                 #main element
-                self.parameters.add('L', value=self.nominal_value, min=self.nominal_value * 0.9,
-                                    max=self.nominal_value * 1.1, vary=False)
+                self.parameters.add('L', value=self.nominal_value, min=self.nominal_value * 0.9, max=self.nominal_value * 1.1, vary=False)
             case 2:
                 # calculate "perfect" inductor for this resonance
                 ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
-                self.parameters.add('L', value=ind_ideal, min=ind_ideal * 0.8, max=ind_ideal * 1.2)
-                self.parameters.add('R_iso', value=max_R, min=min_R, max=max_R)
+                self.parameters.add('L', value=ind_ideal, min=ind_ideal * 0.8, max=ind_ideal * 1)
+                self.parameters.add('R_iso', value=max_R_iso, min=min_R_iso, max=max_R_iso, vary=True)
                 #main element
                 self.parameters.add('C', value=self.nominal_value, min=self.nominal_value * 0.7,
                                     max=self.nominal_value * 1.1, vary=False)
@@ -288,8 +292,11 @@ class Fitter:
 
     def create_elements(self):
 
+        #if we got too many frequency zones -> restrict fit to max order
+        #else get order from frequency zones and write found order to class
         if self.max_order > len(self.frequency_zones):
             order = len(self.frequency_zones)
+            self.order = len(self.frequency_zones)
         else:
             order = self.max_order
             #TODO: and also throw and except please
@@ -344,6 +351,76 @@ class Fitter:
             self.parameters.add(L_key,  min=1e-20,      max=L,          expr=expression_string_L)
             self.parameters.add(R_key,  min=1e-3,       max=1e4,        expr=expression_string_R)
         dummy = 2
+        return 0
+
+    def calculate_Z(self, parameters, frequency_vector, data):
+        #method to calculate the impedance curve from chained parallel resonance circuits
+        #this method is needed for the fitter
+
+        #if we only want to fit the main resonant circuit, set order to zero to avoid "for" loops
+        fit_main_res = 1
+        if fit_main_res:
+            order = 0
+        else:
+            order = self.max_order
+
+        #create array for frequency
+        freq = frequency_vector
+        w = freq * 2 * np.pi
+
+        #get parameters for main circuit
+        C = parameters['C'].value
+        L = parameters['L'].value
+        R_s = parameters['R_s'].value
+
+        match self.fit_type:
+            case 1:
+                R_Fe = parameters['R_Fe'].value
+            case 2:
+                R_iso = parameters['R_iso'].value
+
+        #calculate main circuits resistance
+        XC = 1 / (1j * w * C)
+        XL = 1j * w * L
+        Z = 0
+        match self.fit_type:
+            case 1: #INDUCTOR
+                Z_part1 = 1 / ((1 / R_Fe) + (1 / XL))
+                Z_main = 1 / ((1 / (R_s + Z_part1)) + (1 / XC))
+            case 2: #CAPACITOR
+                Z_main = (1 / ((1 / R_iso) + (1 / XC))) + XL + R_s
+
+
+        Z = Z_main
+
+
+        diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
+
+        return abs(diff)
+
+    def start_fit(self):
+        fit_main_resonance = 1
+        freq = self.files[0].data.f
+        #this is copied from paier's code; find the index where the main resonance lies
+        #this is required in order to fit the main resonance circuit, otherwise the fit for the main circuit will not
+        #work since the resonances in the higher frequencies can't be modeled by the main circuit
+        #TODO: maybe solve this via boolean indexing as well
+        for post_resonance_range in range(len(self.data_ang)):
+            if post_resonance_range + 10 >= len(freq):
+                break
+            if np.sign(self.data_ang[post_resonance_range]) != np.sign(self.data_ang[post_resonance_range + 10]):
+                break
+        #TODO: we are using only one data point for the fit? seems a bit weird, but if an array is used, it does not seem to work
+        fit_data = self.z21_data[post_resonance_range]
+        # out_base_model = minimize(self.calculate_Z, self.parameters, kws={'frequency_vector': freq[:post_resonance_range],
+        #                                                                   'fit_main_res': fit_main_resonance,
+        #                                                                   'data':fit_data},
+        #                           method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:post_resonance_range], fit_data),
+                                  method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        self.out = out_base_model
         return 0
 
 

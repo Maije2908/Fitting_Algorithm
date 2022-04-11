@@ -168,7 +168,8 @@ class GUI:
         self.fitter.get_main_resonance()
         self.fitter.get_resonances()
         self.fitter.create_nominal_parameters()
-        self.fitter.create_elements()
+        #self.fitter.create_elements()
+        self.fitter.start_fit()
 
 
         return 0
