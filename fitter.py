@@ -353,12 +353,11 @@ class Fitter:
         dummy = 2
         return 0
 
-    def calculate_Z(self, parameters, frequency_vector, data):
+    def calculate_Z(self, parameters, frequency_vector, data, fit_main_res):
         #method to calculate the impedance curve from chained parallel resonance circuits
         #this method is needed for the fitter
 
         #if we only want to fit the main resonant circuit, set order to zero to avoid "for" loops
-        fit_main_res = 1
         if fit_main_res:
             order = 0
         else:
@@ -390,8 +389,23 @@ class Fitter:
             case 2: #CAPACITOR
                 Z_main = (1 / ((1 / R_iso) + (1 / XC))) + XL + R_s
 
-
         Z = Z_main
+
+        for actual in range(0, order):
+            key_number = actual + 1
+            C_key = "C%s" % key_number
+            L_key = "L%s" % key_number
+            R_key = "R%s" % key_number
+            C_act = self.parameters[C_key].value
+            L_act = self.parameters[L_key].value
+            R_act = self.parameters[R_key].value
+            Z_C   = 1 / (1j * w * C_act)
+            Z_L   = (1j * w * L_act)
+            Z_R   = R_act
+
+            Z    += 1 / ( (1/Z_C) + (1/Z_L) + (1/Z_R) )
+
+
 
 
         diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
@@ -399,7 +413,7 @@ class Fitter:
         return abs(diff)
 
     def start_fit(self):
-        fit_main_resonance = 1
+
         freq = self.files[0].data.f
         #this is copied from paier's code; find the index where the main resonance lies
         #this is required in order to fit the main resonance circuit, otherwise the fit for the main circuit will not
@@ -411,19 +425,81 @@ class Fitter:
             if np.sign(self.data_ang[post_resonance_range]) != np.sign(self.data_ang[post_resonance_range + 10]):
                 break
         #TODO: we are using only one data point for the fit? seems a bit weird, but if an array is used, it does not seem to work
+        #TODO: Edit: it does work, but the fit is different... not worse but the resonance peak seems to be higher
         fit_data = self.z21_data[post_resonance_range]
         # out_base_model = minimize(self.calculate_Z, self.parameters, kws={'frequency_vector': freq[:post_resonance_range],
         #                                                                   'fit_main_res': fit_main_resonance,
         #                                                                   'data':fit_data},
         #                           method='powell', options={'xtol': 1e-18, 'disp': True})
-
-        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:post_resonance_range], fit_data),
+        fit_main_resonance = 1
+        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:post_resonance_range], fit_data, fit_main_resonance,),
                                   method='powell', options={'xtol': 1e-18, 'disp': True})
-
+        # write output to instance variable
         self.out = out_base_model
+        #overwrite parameters for the next fit
+        self.overwrite_main_resonance_parameters()
+        #fit again for the higher order circuits
+        fit_main_resonance = 0
+        out_base_model = minimize(self.calculate_Z, self.parameters,
+                                  args=(freq[:post_resonance_range], fit_data, fit_main_resonance,),
+                                  method='powell', options={'xtol': 1e-18, 'disp': True})
+        self.out = out_base_model
+
+        return 0
+
+    def overwrite_main_resonance_parameters(self):
+        #method to overwrite the nominal parameters with the parameters obtained by modeling the main resonance circuit
+        #the method is essentially the same as the "create nominal parameters"
+
+        self.parameters.add('R_s', value=self.out.params['R_s'].value, min=1e-20, vary= False)
+
+        #unfortuinately we still need the limits for the parameters
+        # max/min values for the isolation/iron resistance
+        min_R_Fe = 10
+        max_R_Fe = 1e9
+        min_R_iso = 1
+        max_R_iso = 1e12
+
+        #note that it might not be necessary to re-set parameters that have the "vary" boolean set to "false"
+        #but it might be better readable like this
+        #TODO: The "vary" bools are all set to false after we have fit the main resonance, so there might not be the need
+        #TODO: to do this part in such a verbose style -> i.e. make the code slimmer here
+        match self.fit_type:
+            case 1:
+                cap_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
+                self.parameters.add('C', value=self.out.params['C'].value, min=cap_ideal * 0.8, max=cap_ideal* 1, vary=False)
+                self.parameters.add('R_Fe', value=self.out.params['R_Fe'].value, min=min_R_Fe, max=max_R_Fe, vary=False)
+                # main element
+                self.parameters.add('L', value=self.out.params['L'].value, min=self.nominal_value * 0.9, max=self.nominal_value * 1.1, vary=False)
+            case 2:
+                ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
+                self.parameters.add('L', value=self.out.params['L'].value, min=ind_ideal * 0.8, max=ind_ideal * 1)
+                self.parameters.add('R_iso', value=self.out.params['R_iso'].value, min=min_R_iso, max=max_R_iso, vary=False)
+                # main element
+                self.parameters.add('C', self.out.params['C'].value, min=self.nominal_value * 0.7, max=self.nominal_value * 1.1, vary=False)
+            case 3:
+                # TODO: CMCs -> eh scho wissen
+                dummy = 0
+
         return 0
 
 
+    def test_fit_main_res(self):
+        #function for testing purposes
+
+        C = self.out.params['C'].value
+        L = self.out.params['L'].value
+        R_Fe = self.out.params['R_Fe'].value
+        R_s = self.out.params['R_s'].value
+
+        w = self.files[0].data.f * 2 * np.pi
+        XC = 1 / (1j * w * C)
+        XL = 1j * w * L
+        Z = 0
+        Z_part1 = 1 / ((1 / R_Fe) + (1 / XL))
+        Z_main = 1 / ((1 / (R_s + Z_part1)) + (1 / XC))
+        plt.loglog(Z_main)
+        plt.loglog(self.data_mag)
 
 
 
