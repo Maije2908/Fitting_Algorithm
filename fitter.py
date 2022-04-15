@@ -7,6 +7,8 @@
 
 
 
+#import constants into the same namespace
+from fitterconstants import *
 
 import numpy as np
 import scipy
@@ -112,7 +114,7 @@ class Fitter:
         freq = self.files[0].data.f
 
         match self.fit_type:
-            case 1: #INDUCTOR
+            case El.INDUCTOR:
 
                 # find first point where the phase crosses 0
                 index_angle_smaller_zero = np.argwhere(self.data_ang < 0)
@@ -126,7 +128,7 @@ class Fitter:
                         self.nominal_value = self.data_mag[sample] / 2 / np.pi / freq[sample]
                         break
 
-            case 2: #CAPACITOR
+            case El.CAPACITOR:
 
                 # find first point where the phase crosses 0
                 index_angle_larger_zero = np.argwhere(self.data_ang > 0)
@@ -304,7 +306,7 @@ class Fitter:
         C = self.parameters['C'].value
         L = self.parameters['L'].value
 
-        min_cap = 1e-12
+        min_cap = 1e-16
         max_cap = C * 1e3
         value_cap = (max_cap-min_cap)/2
 
@@ -335,6 +337,12 @@ class Fitter:
             min_w = np.sqrt( (f_l*2*np.pi) * w_c)
             max_w = np.sqrt( (f_u*2*np.pi) * w_c)
 
+            # shrink beginning of first zone (each step halves range on log scale)
+            if key_number == 1:
+                max_w = np.sqrt(max_w * w_c)
+                for _ in range(4):
+                    min_w = np.sqrt(min_w * w_c)
+
             # expression strings
             expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
 
@@ -345,15 +353,14 @@ class Fitter:
                     expression_string_R = '2*' + str(np.pi) + '*' + BW_key + '*' + L_key
 
             #add parameters
-            self.parameters.add(BW_key, min=BW_min,     max=BW_max,     value=BW_value)
-            self.parameters.add(w_key,  min=min_w,      max=max_w,      value=w_c)
-            self.parameters.add(C_key,  min=min_cap,    max=max_cap,    value=value_cap)
-            self.parameters.add(L_key,  min=1e-20,      max=L,          expr=expression_string_L)
-            self.parameters.add(R_key,  min=1e-3,       max=1e4,        expr=expression_string_R)
-        dummy = 2
+            self.parameters.add(BW_key, min=BW_min,     max=BW_max,     value=BW_value              , vary=True)
+            self.parameters.add(w_key,  min=min_w,      max=max_w,      value=w_c                   , vary=True)
+            self.parameters.add(C_key,  min=min_cap,    max=max_cap,    value=value_cap             , vary=True)
+            self.parameters.add(L_key,  min=1e-20,      max=L,          expr=expression_string_L    , vary=False)
+            self.parameters.add(R_key,  min=1e-3,       max=1e4,        expr=expression_string_R    , vary=False)
         return 0
 
-    def calculate_Z(self, parameters, frequency_vector, data, fit_main_res):
+    def calculate_Z(self, parameters, frequency_vector, data, fit_main_res, modeflag):
         #method to calculate the impedance curve from chained parallel resonance circuits
         #this method is needed for the fitter
 
@@ -361,7 +368,7 @@ class Fitter:
         if fit_main_res:
             order = 0
         else:
-            order = self.max_order
+            order = self.order #TODO: this method could be called before the order is set
 
         #create array for frequency
         freq = frequency_vector
@@ -391,8 +398,8 @@ class Fitter:
 
         Z = Z_main
 
-        for actual in range(0, order):
-            key_number = actual + 1
+        for actual in range(1, order):
+            key_number = actual
             C_key = "C%s" % key_number
             L_key = "L%s" % key_number
             R_key = "R%s" % key_number
@@ -407,10 +414,20 @@ class Fitter:
 
 
 
+        match modeflag:
+            case fcnmode.FIT:
+                diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
+                return abs(diff)
+            case fcnmode.OUTPUT:
+                return Z
 
-        diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
+    def fit_iteration_callback(self, out_model):
+        #method to set the parameters of the output to the parameters used for the fit TODO:rewrite this comment
+        for key in self.parameters.keys():
+            self.parameters[key].value = out_model.params[key].value
+            self.parameters[key].min = self.parameters[key] * 0.8
+            self.parameters[key].max = self.parameters[key] * 1.2
 
-        return abs(diff)
 
     def start_fit(self):
 
@@ -431,19 +448,28 @@ class Fitter:
         #                                                                   'fit_main_res': fit_main_resonance,
         #                                                                   'data':fit_data},
         #                           method='powell', options={'xtol': 1e-18, 'disp': True})
+
         fit_main_resonance = 1
-        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:post_resonance_range], fit_data, fit_main_resonance,),
+        mode = fcnmode.FIT
+
+        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:post_resonance_range], fit_data, fit_main_resonance, mode,),
                                   method='powell', options={'xtol': 1e-18, 'disp': True})
         # write output to instance variable
         self.out = out_base_model
         #overwrite parameters for the next fit
         self.overwrite_main_resonance_parameters()
+
         #fit again for the higher order circuits
         fit_main_resonance = 0
-        out_base_model = minimize(self.calculate_Z, self.parameters,
-                                  args=(freq[:post_resonance_range], fit_data, fit_main_resonance,),
-                                  method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        self.create_elements()
+        #TODO: this doesn't work, there is some problem with the callback function
+        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq, fit_data, fit_main_resonance, mode,),
+                                  method='powell',iter_cb = self.fit_iteration_callback(out_base_model), options={'xtol': 1e-18, 'disp': True})
         self.out = out_base_model
+
+        mode = fcnmode.OUTPUT
+        Z_data_model = self.calculate_Z(self.out.params,freq,[2],fit_main_resonance,mode)
 
         return 0
 
@@ -485,7 +511,7 @@ class Fitter:
 
 
     def test_fit_main_res(self):
-        #function for testing purposes
+        #function for testing purposes NOT IN USE
 
         C = self.out.params['C'].value
         L = self.out.params['L'].value
