@@ -35,6 +35,7 @@ class Fitter:
         self.parameters = Parameters()
 
         self.frequency_zones = None
+        self.frequency_vector = None
 
 
         #TODO: maybe change this; the f0 variable is for testing puropses
@@ -77,6 +78,10 @@ class Fitter:
     #method to parse the files from the iohandler
     def set_files(self, files):
         self.files = files
+        try:
+            self.frequency_vector = self.files[0].data.f
+        except Exception as e:
+            pass
 
 
 
@@ -111,7 +116,7 @@ class Fitter:
     def calculate_nominal_value(self):
         offset = 10  # samples
         nominal_value = 0
-        freq = self.files[0].data.f
+        freq = self.frequency_vector
 
         match self.fit_type:
             case El.INDUCTOR:
@@ -164,7 +169,7 @@ class Fitter:
         self.parasitive_resistance = R_s_input
 
     def get_main_resonance(self):
-        freq = self.files[0].data.f
+        freq = self.frequency_vector
 
         #set w0 to 0 in order to have feedback, if the method didn't work
         w0 = 0
@@ -202,7 +207,7 @@ class Fitter:
         min_prominence_phase = 0.5
         prominence_mag = 0.01
         R_s = self.parasitive_resistance
-        freq = self.files[0].data.f
+        freq = self.frequency_vector
         prominence_phase = max(min_prominence_phase, float(self.prominence))
 
         #TODO: find_peaks tends to detect "too many" peaks i.e. overfits!!! (Long term problem)
@@ -354,11 +359,21 @@ class Fitter:
                     expression_string_R = '2*' + str(np.pi) + '*' + BW_key + '*' + L_key
 
             #add parameters
-            self.parameters.add(BW_key, min=BW_min,     max=BW_max,     value=BW_value              , vary=True)
-            self.parameters.add(w_key,  min=min_w,      max=max_w,      value=w_c                   , vary=True)
-            self.parameters.add(C_key,  min=min_cap,    max=max_cap,    value=value_cap             , vary=True)
-            self.parameters.add(L_key,  min=1e-20,      max=L,          expr=expression_string_L    , vary=False)
-            self.parameters.add(R_key,  min=1e-3,       max=1e4,        expr=expression_string_R    , vary=False)
+
+            #this is the default configuration, i.e. the config how tristan had it
+            # self.parameters.add(BW_key, min=BW_min,     max=BW_max,     value=BW_value              , vary=True)
+            # self.parameters.add(w_key,  min=min_w,      max=max_w,      value=w_c                   , vary=True)
+            # self.parameters.add(C_key,  min=min_cap,    max=max_cap,    value=value_cap             , vary=True)
+            # self.parameters.add(L_key,  min=1e-20,      max=L,          expr=expression_string_L    , vary=False)
+            # self.parameters.add(R_key,  min=1e-3,       max=1e4,        expr=expression_string_R    , vary=False)
+
+            self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
+            self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+            self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+            self.parameters.add(L_key, min=1e-20, max=L, expr=expression_string_L, vary=False)
+            self.parameters.add(R_key, min=1e-3, max=1e4, expr=expression_string_R, vary=False)
+
+
         return 0
 
     def calculate_Z(self, parameters, frequency_vector, data, fit_main_res, modeflag):
@@ -433,7 +448,7 @@ class Fitter:
 
     def start_fit(self):
 
-        freq = self.files[0].data.f
+        freq = self.frequency_vector
         #this is copied from paier's code; find the index where the main resonance lies
         #this is required in order to fit the main resonance circuit, otherwise the fit for the main circuit will not
         #work since the resonances in the higher frequencies can't be modeled by the main circuit
@@ -446,10 +461,9 @@ class Fitter:
         #TODO: we are using only one data point for the fit? seems a bit weird, but if an array is used, it does not seem to work
         #TODO: Edit: it does work, but the fit is different... not worse but the resonance peak seems to be higher
         fit_data = self.z21_data
-        # out_base_model = minimize(self.calculate_Z, self.parameters, kws={'frequency_vector': freq[:post_resonance_range],
-        #                                                                   'fit_main_res': fit_main_resonance,
-        #                                                                   'data':fit_data},
-        #                           method='powell', options={'xtol': 1e-18, 'disp': True})
+
+
+
 
         fit_main_resonance = 1
         mode = fcnmode.FIT
@@ -478,6 +492,17 @@ class Fitter:
 
         mode = fcnmode.OUTPUT
         Z_data_model = self.calculate_Z(self.out.params,freq,[2],fit_main_resonance,mode)
+
+        #some printing methods for testing the fit here
+        center_freqs = [x[1] for x in self.frequency_zones]
+        plt.loglog(self.frequency_vector, abs(fit_data))
+        plt.loglog(self.frequency_vector, abs(Z_data_model))
+        plt.loglog(self.frequency_vector, self.data_mag)
+        plt.show()
+
+
+
+
 
         return 0
 
@@ -526,7 +551,7 @@ class Fitter:
         R_Fe = self.out.params['R_Fe'].value
         R_s = self.out.params['R_s'].value
 
-        w = self.files[0].data.f * 2 * np.pi
+        w = self.frequency_vector * 2 * np.pi
         XC = 1 / (1j * w * C)
         XL = 1j * w * L
         Z = 0
