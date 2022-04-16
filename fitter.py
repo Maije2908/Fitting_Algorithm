@@ -384,7 +384,7 @@ class Fitter:
         if fit_main_res:
             order = 0
         else:
-            order = self.order #TODO: this method could be called before the order is set
+            order = fit_order #TODO: this method could be called before the order is set
 
         #create array for frequency
         freq = frequency_vector
@@ -438,12 +438,26 @@ class Fitter:
             case fcnmode.OUTPUT:
                 return Z
 
-    def fit_iteration_callback(self, out_model):
-        #method to set the parameters of the output to the parameters used for the fit TODO:rewrite this comment
-        for key in self.parameters.keys():
-            self.parameters[key].value = out_model.params[key].value
-            self.parameters[key].min = self.parameters[key] * 0.8
-            self.parameters[key].max = self.parameters[key] * 1.2
+    def fit_single_resonance(self, parameters, frequency, data, modeflag):
+        #used to fit a single 'cut-out' resonance peak, takes parameters for the R/L/C components of ONE resonance circuit
+
+        w = frequency * 2 * np.pi
+        C = parameters['C']
+        L = parameters['L']
+        R = parameters['R']
+        #calculate impedance
+        Z_C = 1 / (1j * w * C)
+        Z_L = 1j * w * L
+        Z_R = R
+
+        Z = 1 / (1/Z_R + 1/Z_L + 1/Z_C)
+
+        match modeflag:
+            case fcnmode.FIT:
+                diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
+                return abs(diff)
+            case fcnmode.OUTPUT:
+                return Z
 
 
     def start_fit(self):
@@ -475,10 +489,34 @@ class Fitter:
         #overwrite parameters for the next fit
         self.overwrite_main_resonance_parameters()
 
+        #create parameters for the higher order circuits
+        self.create_elements()
+        #iterate through all single resonances and try to find a fit for them
+        for actual in range(1,len(self.frequency_zones)):
+            #copy parameters from the class
+            temp_params = Parameters()
+            temp_params.add('C', value=self.parameters["C%s" % (actual + 1)])
+            temp_params.add('L', value=self.parameters["L%s" % (actual + 1)])
+            temp_params.add('R', value=self.parameters["R%s" % (actual + 1)])
+            #get frequency range around the peak
+            temp_freq = freq[np.logical_and(freq > self.frequency_zones[actual][0], freq < self.frequency_zones[actual][2])]
+            #same for the data
+            temp_data = fit_data[np.logical_and(freq > self.frequency_zones[actual][0], freq < self.frequency_zones[actual][2])]
+            #try to lsq fit the frequency zone
+            out_single_res = minimize(self.fit_single_resonance, temp_params, args=(
+            temp_freq, temp_data,fcnmode.FIT ),method='powell', options={'xtol': 1e-18, 'disp': True})
+
+            Z_model = self.fit_single_resonance(temp_params,temp_freq,temp_data,fcnmode.OUTPUT)
+
+            plt.loglog(temp_freq, abs(temp_data))
+            plt.loglog(temp_freq, abs(Z_model))
+
+
         #fit again for the higher order circuits
         fit_main_resonance = 0
+        plt.show()
 
-        self.create_elements()
+
         #out_base_model.params = self.parameters
         #TODO: this doesn't work, there is some problem with the callback function
         out = minimize(self.calculate_Z, self.parameters, args=(freq, fit_data, fit_main_resonance, mode,),
@@ -543,6 +581,10 @@ class Fitter:
         return 0
 
 
+
+
+
+###########################################################################################NOT IN USE
     def test_fit_main_res(self):
         #function for testing purposes NOT IN USE
 
@@ -560,7 +602,12 @@ class Fitter:
         plt.loglog(Z_main)
         plt.loglog(self.data_mag)
 
-
+    def fit_iteration_callback(self, out_model):
+        #method to set the parameters of the output to the parameters used for the fit TODO:rewrite this comment
+        for key in self.parameters.keys():
+            self.parameters[key].value = out_model.params[key].value
+            self.parameters[key].min = self.parameters[key] * 0.8
+            self.parameters[key].max = self.parameters[key] * 1.2
 
 
 
