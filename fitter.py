@@ -345,6 +345,7 @@ class Fitter:
 
             # expression strings
             expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+            expression_string_C = '1/(' + w_key + '**2*' + L_key + ')'
 
             match self.fit_type: #TODO:check if fit_type is valid!!!
                 case 1: #INDUCTOR
@@ -390,10 +391,10 @@ class Fitter:
         XL = 1j * w * L
         Z = 0
         match self.fit_type:
-            case 1: #INDUCTOR
+            case El.INDUCTOR: #INDUCTOR
                 Z_part1 = 1 / ((1 / R_Fe) + (1 / XL))
                 Z_main = 1 / ((1 / (R_s + Z_part1)) + (1 / XC))
-            case 2: #CAPACITOR
+            case El.CAPACITOR: #CAPACITOR
                 Z_main = (1 / ((1 / R_iso) + (1 / XC))) + XL + R_s
 
         Z = Z_main
@@ -403,16 +404,17 @@ class Fitter:
             C_key = "C%s" % key_number
             L_key = "L%s" % key_number
             R_key = "R%s" % key_number
-            C_act = self.parameters[C_key].value
-            L_act = self.parameters[L_key].value
-            R_act = self.parameters[R_key].value
+            C_act = parameters[C_key].value
+            L_act = parameters[L_key].value
+            R_act = parameters[R_key].value
             Z_C   = 1 / (1j * w * C_act)
             Z_L   = (1j * w * L_act)
             Z_R   = R_act
 
             Z    += 1 / ( (1/Z_C) + (1/Z_L) + (1/Z_R) )
 
-
+        # diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
+        # return abs(diff)
 
         match modeflag:
             case fcnmode.FIT:
@@ -443,7 +445,7 @@ class Fitter:
                 break
         #TODO: we are using only one data point for the fit? seems a bit weird, but if an array is used, it does not seem to work
         #TODO: Edit: it does work, but the fit is different... not worse but the resonance peak seems to be higher
-        fit_data = self.z21_data[post_resonance_range]
+        fit_data = self.z21_data
         # out_base_model = minimize(self.calculate_Z, self.parameters, kws={'frequency_vector': freq[:post_resonance_range],
         #                                                                   'fit_main_res': fit_main_resonance,
         #                                                                   'data':fit_data},
@@ -452,7 +454,7 @@ class Fitter:
         fit_main_resonance = 1
         mode = fcnmode.FIT
 
-        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:post_resonance_range], fit_data, fit_main_resonance, mode,),
+        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:post_resonance_range], fit_data[post_resonance_range], fit_main_resonance, mode,),
                                   method='powell', options={'xtol': 1e-18, 'disp': True})
         # write output to instance variable
         self.out = out_base_model
@@ -463,10 +465,16 @@ class Fitter:
         fit_main_resonance = 0
 
         self.create_elements()
+        #out_base_model.params = self.parameters
         #TODO: this doesn't work, there is some problem with the callback function
-        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq, fit_data, fit_main_resonance, mode,),
-                                  method='powell',iter_cb = self.fit_iteration_callback(out_base_model), options={'xtol': 1e-18, 'disp': True})
-        self.out = out_base_model
+        out = minimize(self.calculate_Z, self.parameters, args=(freq, fit_data, fit_main_resonance, mode,),
+                                  method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        #, iter_cb = self.fit_iteration_callback(out_base_model)
+
+        #iter_cb = self.fit_iteration_callback(out_model)
+
+        self.out = out
 
         mode = fcnmode.OUTPUT
         Z_data_model = self.calculate_Z(self.out.params,freq,[2],fit_main_resonance,mode)
