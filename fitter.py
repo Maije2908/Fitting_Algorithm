@@ -384,7 +384,7 @@ class Fitter:
         if fit_main_res:
             order = 0
         else:
-            order = fit_order #TODO: this method could be called before the order is set
+            order = self.order #TODO: this method could be called before the order is set
 
         #create array for frequency
         freq = frequency_vector
@@ -438,13 +438,13 @@ class Fitter:
             case fcnmode.OUTPUT:
                 return Z
 
-    def fit_single_resonance(self, parameters, frequency, data, modeflag):
+    def fit_single_resonance(self, parameters, frequency, data, keynumber, modeflag):
         #used to fit a single 'cut-out' resonance peak, takes parameters for the R/L/C components of ONE resonance circuit
 
         w = frequency * 2 * np.pi
-        C = parameters['C']
-        L = parameters['L']
-        R = parameters['R']
+        C = parameters["C%s" % (keynumber)]
+        L = parameters["C%s" % (keynumber)]
+        R = parameters["C%s" % (keynumber)]
         #calculate impedance
         Z_C = 1 / (1j * w * C)
         Z_L = 1j * w * L
@@ -491,32 +491,44 @@ class Fitter:
 
         #create parameters for the higher order circuits
         self.create_elements()
-        #iterate through all single resonances and try to find a fit for them
+
+
+        # iterate through all single resonances and try to find a fit for them
+
         for actual in range(1,len(self.frequency_zones)):
             #copy parameters from the class
             temp_params = Parameters()
-            temp_params.add('C', value=self.parameters["C%s" % (actual + 1)])
-            temp_params.add('L', value=self.parameters["L%s" % (actual + 1)])
-            temp_params.add('R', value=self.parameters["R%s" % (actual + 1)])
+            temp_params.add("C%s" % (actual))
+            temp_params.add("L%s" % (actual))
+            temp_params.add("R%s" % (actual))
+            temp_params.add("BW%s" % (actual))
+            temp_params.add("w%s" % (actual))
+            temp_params["BW%s" % (actual)] = self.parameters["BW%s" % (actual)]
+            temp_params["w%s" % (actual)] = self.parameters["w%s" % (actual)]
+            temp_params["C%s" % (actual)] = self.parameters["C%s" % (actual)]
+            temp_params["L%s" % (actual)] = self.parameters["L%s" % (actual)]
+            temp_params["R%s" % (actual)] = self.parameters["R%s" % (actual)]
+
             #get frequency range around the peak
             temp_freq = freq[np.logical_and(freq > self.frequency_zones[actual][0], freq < self.frequency_zones[actual][2])]
             #same for the data
             temp_data = fit_data[np.logical_and(freq > self.frequency_zones[actual][0], freq < self.frequency_zones[actual][2])]
             #try to lsq fit the frequency zone
             out_single_res = minimize(self.fit_single_resonance, temp_params, args=(
-            temp_freq, temp_data,fcnmode.FIT ),method='powell', options={'xtol': 1e-18, 'disp': True})
+            temp_freq, temp_data,actual,fcnmode.FIT ),method='powell', options={'xtol': 1e-18, 'disp': True})
 
-            Z_model = self.fit_single_resonance(temp_params,temp_freq,temp_data,fcnmode.OUTPUT)
+            Z_model = self.fit_single_resonance(temp_params,temp_freq,temp_data,actual,fcnmode.OUTPUT)
 
-            plt.loglog(temp_freq, abs(temp_data))
-            plt.loglog(temp_freq, abs(Z_model))
+            self.parameters["C%s" % (actual)] = out_single_res.params["C%s" % (actual)]
+            self.parameters["L%s" % (actual)] = out_single_res.params["L%s" % (actual)]
+            self.parameters["R%s" % (actual)] = out_single_res.params["R%s" % (actual)]
+
+
 
 
         #fit again for the higher order circuits
+
         fit_main_resonance = 0
-        plt.show()
-
-
         #out_base_model.params = self.parameters
         #TODO: this doesn't work, there is some problem with the callback function
         out = minimize(self.calculate_Z, self.parameters, args=(freq, fit_data, fit_main_resonance, mode,),
@@ -535,7 +547,7 @@ class Fitter:
         center_freqs = [x[1] for x in self.frequency_zones]
         plt.loglog(self.frequency_vector, abs(fit_data))
         plt.loglog(self.frequency_vector, abs(Z_data_model))
-        plt.loglog(self.frequency_vector, self.data_mag)
+        # plt.loglog(self.frequency_vector, self.data_mag)
         plt.show()
 
 
