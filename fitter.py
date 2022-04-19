@@ -414,7 +414,7 @@ class Fitter:
 
         Z = Z_main
 
-        for actual in range(1, order):
+        for actual in range(1, order + 1):
             key_number = actual
             C_key = "C%s" % key_number
             L_key = "L%s" % key_number
@@ -434,6 +434,7 @@ class Fitter:
         match modeflag:
             case fcnmode.FIT:
                 diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
+                #diff = (np.real(data) - np.real(Z))**2 + (np.imag(data) - np.imag(Z))**2
                 return abs(diff)
             case fcnmode.OUTPUT:
                 return Z
