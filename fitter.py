@@ -227,13 +227,16 @@ class Fitter:
         f_phase_maxima = freq[phase_maxima[0]]
         f_phase_minima = freq[phase_minima[0]]
 
-        min_zone_start = self.f0 * 2  # frequency buffer for first RLC circuit TODO: AD "find_peaks" this might do the trick
+        min_zone_start = self.f0 * 3  # frequency buffer for first RLC circuit TODO: AD "find_peaks" this might do the trick
         ang_minima_pos = f_phase_minima[f_phase_minima > min_zone_start]
         ang_maxima_pos = f_phase_maxima[f_phase_maxima > min_zone_start]
 
+        ang_minima_pos = f_mag_minima[f_mag_minima > min_zone_start]
+        ang_maxima_pos = f_mag_maxima[f_mag_maxima > min_zone_start]
+
         #plot commands to check peak values
-        #markerson = mag_maxima[0]
-        #plt.loglog(self.data_mag,'-bD', markevery=markerson)
+        # markerson = mag_maxima[0]
+        # plt.loglog(self.data_mag,'-bD', markevery=markerson)
 
         #loop to find frequency ranges, copied from payer
         number_zones = len(ang_minima_pos)
@@ -433,6 +436,7 @@ class Fitter:
 
         match modeflag:
             case fcnmode.FIT:
+                #TODO: this does not account for negative offsets
                 diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
                 #diff = (np.real(data) - np.real(Z))**2 + (np.imag(data) - np.imag(Z))**2
                 return abs(diff)
@@ -465,23 +469,23 @@ class Fitter:
 
 
 
-
+        #fit the main resonance circuit
         fit_main_resonance = 1
         mode = fcnmode.FIT
-
-        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:post_resonance_range], fit_data[post_resonance_range], fit_main_resonance, mode,),
+        offset = 100
+        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:(post_resonance_range+offset)], fit_data[:(post_resonance_range+offset)], fit_main_resonance, mode,),
                                   method='powell', options={'xtol': 1e-18, 'disp': True})
         # write output to instance variable
         self.out = out_base_model
         #overwrite parameters for the next fit
         self.overwrite_main_resonance_parameters()
 
+
         #fit again for the higher order circuits
         fit_main_resonance = 0
 
         self.create_elements()
-        #out_base_model.params = self.parameters
-        #TODO: this doesn't work, there is some problem with the callback function
+
         out = minimize(self.calculate_Z, self.parameters, args=(freq, fit_data, fit_main_resonance, mode,),
                                   method='powell', options={'xtol': 1e-18, 'disp': True})
 
@@ -490,15 +494,18 @@ class Fitter:
         #iter_cb = self.fit_iteration_callback(out_model)
 
         self.out = out
+        #TODO: here we have the model -> do some output here
+
+
+
 
         mode = fcnmode.OUTPUT
         Z_data_model = self.calculate_Z(self.out.params,freq,[2],fit_main_resonance,mode)
-
         #some printing methods for testing the fit here
         center_freqs = [x[1] for x in self.frequency_zones]
         plt.loglog(self.frequency_vector, abs(fit_data))
         plt.loglog(self.frequency_vector, abs(Z_data_model))
-        plt.loglog(self.frequency_vector, self.data_mag)
+        #plt.loglog(self.frequency_vector, self.data_mag)
         plt.show()
 
 
