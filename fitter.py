@@ -13,6 +13,7 @@ from fitterconstants import *
 
 import numpy as np
 import scipy
+import copy
 from scipy.signal import find_peaks
 from lmfit import minimize, Parameters, Minimizer, report_fit
 import matplotlib.pyplot as plt
@@ -382,7 +383,7 @@ class Fitter:
 
         return 0
 
-    def calculate_Z(self, parameters, frequency_vector, data, fit_main_res, modeflag):
+    def calculate_Z(self, parameters, frequency_vector, data, fit_order, fit_main_res, modeflag):
         #method to calculate the impedance curve from chained parallel resonance circuits
         #this method is needed for the fitter
 
@@ -390,7 +391,7 @@ class Fitter:
         if fit_main_res:
             order = 0
         else:
-            order = self.order #TODO: this method could be called before the order is set
+            order = fit_order #TODO: this method could be called before the order is set
 
         #create array for frequency
         freq = frequency_vector
@@ -474,27 +475,54 @@ class Fitter:
 
         #fit the main resonance circuit
         fit_main_resonance = 1
+        fit_order = 0 #for main resonance order = 0
         mode = fcnmode.FIT
         offset = 100
-        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:(post_resonance_range+offset)], fit_data[:(post_resonance_range+offset)], fit_main_resonance, mode,),
+        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:(post_resonance_range+offset)], fit_data[:(post_resonance_range+offset)],fit_order, fit_main_resonance, mode,),
                                   method='powell', options={'xtol': 1e-18, 'disp': True})
         # write output to instance variable
         self.out = out_base_model
         #overwrite parameters for the next fit
         self.overwrite_main_resonance_parameters()
-
-
-        #fit again for the higher order circuits
+        #create higher order circuits
+        self.create_elements()
         fit_main_resonance = 0
 
-        self.create_elements()
+        #fit again for the higher order circuits TODO: this code kinda works, but I am doing an experiment, so DONT DELETE THIS BLOCK
 
-        out = minimize(self.calculate_Z, self.parameters, args=(freq, fit_data, fit_main_resonance, mode,),
+        fit_main_resonance = 0
+        fit_order = self.order
+
+        out = minimize(self.calculate_Z, self.parameters, args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
                                   method='powell', options={'xtol': 1e-18, 'disp': True})
 
-        #, iter_cb = self.fit_iteration_callback(out_base_model)
+        # plt.loglog(self.frequency_vector, abs(fit_data))
+        #
+        # temp_params = Parameters()
+        # temp_params = copy.deepcopy(out_base_model.params)
+        # for fit_order in range(1, len(self.frequency_zones) + 1):
+        #     temp_params.add("C%s" % fit_order)
+        #     temp_params.add("L%s" % fit_order)
+        #     temp_params.add("R%s" % fit_order)
+        #     temp_params.add("BW%s" % fit_order)
+        #     temp_params.add("w%s" % fit_order)
+        #     temp_params["C%s" % fit_order] = self.parameters["C%s" % fit_order]
+        #     temp_params["L%s" % fit_order] = self.parameters["L%s" % fit_order]
+        #     temp_params["R%s" % fit_order] = self.parameters["R%s" % fit_order]
+        #     temp_params["BW%s" % fit_order] = self.parameters["BW%s" % fit_order]
+        #     temp_params["w%s" % fit_order] = self.parameters["w%s" % fit_order]
+        #
+        #     # index = len(self.frequency_vector[self.frequency_vector < self.frequency_zones[fit_order][2]])
+        #
+        #     out = minimize(self.calculate_Z, temp_params, args=(freq, fit_data, fit_order, fit_main_resonance, mode,)
+        #                    ,method='powell', options={'xtol': 1e-18, 'disp': True})
+        #     temp_params = out.params
+        #     Z_curve = self.calculate_Z(temp_params,self.frequency_vector,2,fit_order,0,fitterconstants.fcnmode.OUTPUT)
+        #     plt.loglog(self.frequency_vector,abs(Z_curve))
 
-        #iter_cb = self.fit_iteration_callback(out_model)
+
+
+
 
         self.out = out
         #TODO: here we have the model -> do some output here
@@ -503,7 +531,8 @@ class Fitter:
 
 
         mode = fcnmode.OUTPUT
-        Z_data_model = self.calculate_Z(self.out.params,freq,[2],fit_main_resonance,mode)
+        Z_data_model = self.calculate_Z(self.out.params,freq,[2],self.order,fit_main_resonance,mode)
+        # Z_data_model = self.calculate_Z(temp_params,freq,[2],self.order,fit_main_resonance,mode)
         #some printing methods for testing the fit here
         center_freqs = [x[1] for x in self.frequency_zones]
         plt.loglog(self.frequency_vector, abs(fit_data))
