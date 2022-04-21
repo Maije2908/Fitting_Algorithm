@@ -8,6 +8,7 @@
 
 
 #import constants into the same namespace
+import fitterconstants
 from fitterconstants import *
 
 import numpy as np
@@ -53,6 +54,8 @@ class Fitter:
 
         self.fit_type = fit_type
 
+
+
         if pass_val is None:
             self.calculate_nominal_value()
         else:
@@ -64,7 +67,7 @@ class Fitter:
             self.parasitive_resistance = para_r
 
         if prom is None:
-            self.prominence = 0
+            self.prominence = fitterconstants.PROMINENCE_DEFAULT
         else:
             self.prominence = prom
 
@@ -204,7 +207,7 @@ class Fitter:
 
     def get_resonances(self):
 
-        min_prominence_phase = 0.5
+        min_prominence_phase = fitterconstants.PROMINENCE_DEFAULT
         prominence_mag = 0.01
         R_s = self.parasitive_resistance
         freq = self.frequency_vector

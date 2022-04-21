@@ -51,12 +51,12 @@ class GUI:
         self.create_run_button()
 
     def create_drop_down(self):
-        drop_down_var = tk.StringVar(self.root)
+        self.drop_down_var = tk.StringVar(self.root, config.DROP_DOWN_ELEMENTS[0])
 
-        option_menu = tk.OptionMenu(self.root, drop_down_var, *config.DROP_DOWN_ELEMENTS)
+        self.option_menu = tk.OptionMenu(self.root, self.drop_down_var, *config.DROP_DOWN_ELEMENTS)
         max_drop_length = len(max(config.DROP_DOWN_ELEMENTS, key=len))
-        option_menu.config(font=config.DROP_DOWN_FONT, width=max_drop_length + 5, height=config.DROP_DOWN_HEIGHT)
-        option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.N, )
+        self.option_menu.config(font=config.DROP_DOWN_FONT, width=max_drop_length + 5, height=config.DROP_DOWN_HEIGHT)
+        self.option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.N, )
 
     def create_specification_field(self):
 
@@ -146,6 +146,7 @@ class GUI:
         return 0
 
     #method to run the fitting algorithm, invoked when "run" button is pressed
+
     def callback_run(self):
 
         #get values from the entry boxes
@@ -154,7 +155,28 @@ class GUI:
         prom        = self.entry_to_float(self.entry_prominence.get())
         sat         = self.entry_to_float(self.entry_saturation.get())
 
-        fit_type = 1 #TODO: this is hardcoded to be "inductor" -> need to implement other options
+        #get value from the dropdown TODO: somehow this does not work in match/case, need to use if for the moment
+        # match self.drop_down_var.get():
+        #     case ind_str : #INDUCTOR
+        #         fit_type = config.El.INDUCTOR
+        #     case cap_str :
+        #         fit_type = config.El.CAPACITOR
+        #     case cmc_str:
+        #         raise Exception("CMCs not implemented yet")
+
+        element_type_str = self.drop_down_var.get()
+        if element_type_str == config.DROP_DOWN_ELEMENTS[0]:
+            fit_type = config.El.INDUCTOR
+        elif element_type_str == config.DROP_DOWN_ELEMENTS[1]:
+            fit_type = config.El.CAPACITOR
+        elif element_type_str == config.DROP_DOWN_ELEMENTS[2]:
+            raise Exception('CMCs not implemented yet')
+        else:
+            raise Exception('Something is wrong with the dropdown menu')
+
+
+
+
 
 
         # parse files to fitter

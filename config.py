@@ -1,7 +1,7 @@
 # Drop-Down Config
 DROP_DOWN_WIDTH: int = 10
 DROP_DOWN_HEIGHT: int = 1
-DROP_DOWN_ELEMENTS = ["Capacitor", "Inductor", "Common-Mode Choke"]
+DROP_DOWN_ELEMENTS = ["Inductor", "Capacitor", "Common-Mode Choke"]
 DROP_DOWN_FONT = "Helvetica 12 bold"
 
 # Specification Config
@@ -19,3 +19,9 @@ ENTRY_FONT = "Helvetica 12 bold"
 # Colors
 BCKGND_COLOR = '#90c1ff'
 WHITE = "#ffffff"
+
+
+# Flags for the program to know which element is selected
+class El:
+    INDUCTOR: int = 1
+    CAPACITOR: int = 2

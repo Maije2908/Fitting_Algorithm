@@ -4,6 +4,8 @@ class El:
     INDUCTOR: int = 1
     CAPACITOR: int = 2
 
+PROMINENCE_DEFAULT = 0.5
+
 
 #mode flags
 class fcnmode:
