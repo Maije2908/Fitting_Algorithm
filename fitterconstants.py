@@ -5,7 +5,8 @@ class El:
     CAPACITOR: int = 2
 
 PROMINENCE_DEFAULT = 0.5
-
+MAIN_RESONANCE_OFFSET = 50
+MAX_ORDER = 15
 
 #mode flags
 class fcnmode:

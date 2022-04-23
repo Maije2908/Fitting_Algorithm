@@ -1,6 +1,10 @@
 # import packages
 import tkinter as tk
 from tkinter import filedialog
+#maybe import later for logging to gui
+#import tkinter.scrolledtext as scroll_text
+#import logging
+from fitter import *
 import config
 import os
 import re
@@ -21,7 +25,7 @@ NOTE: There are hardly any error-messages for wrong filetypes ect. The GUI shoul
 
 
 class GUI:
-    def __init__(self, iohandler_instance, fitter_instance):
+    def __init__(self, iohandler_instance):
         # declare instance variables
         self.entry_saturation = None
         self.entry_nominal_value = None
@@ -29,7 +33,7 @@ class GUI:
         self.entry_prominence = None
         self.selected_s2p_files = None
         self.iohandler = iohandler_instance
-        self.fitter = fitter_instance
+        self.fitter = None
 
         # Window config
         self.root: tk.Tk = tk.Tk()
@@ -149,6 +153,9 @@ class GUI:
 
     def callback_run(self):
 
+        #create a fitter instance
+        self.fitter = Fitter()
+
         #get values from the entry boxes
         passive_nom = self.entry_to_float(self.entry_nominal_value.get())
         res         = self.entry_to_float(self.entry_resistance.get())
@@ -217,6 +224,7 @@ class GUI:
         return checkval
 
     #function to cast the strings from the entry boxes to float, if it does not work, "None" is returned
+    #TODO: look into proper error handling here
     def entry_to_float (self, number_string):
         try:
             return float(number_string)

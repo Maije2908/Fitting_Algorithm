@@ -14,6 +14,7 @@ from fitterconstants import *
 import numpy as np
 import scipy
 import copy
+import logging
 from scipy.signal import find_peaks
 from lmfit import minimize, Parameters, Minimizer, report_fit
 import matplotlib.pyplot as plt
@@ -25,8 +26,8 @@ class Fitter:
     def __init__(self):
         self.nominal_value = None
         self.parasitive_resistance = None
-        self.prominence = 0
-        self.saturation = 0
+        self.prominence = None
+        self.saturation = None
         self.files = None
         self.z21_data = None
         self.data_mag = None
@@ -42,7 +43,7 @@ class Fitter:
 
         #TODO: maybe change this; the f0 variable is for testing puropses
         self.f0 = None
-        self.max_order = 15 #TODO: this is hard-coded for testing purposes
+        self.max_order = fitterconstants.MAX_ORDER
         self.order = None
 
 
@@ -53,9 +54,8 @@ class Fitter:
     #method to set the entry values of the specification
     def set_specification(self, pass_val, para_r, prom, sat, fit_type):
 
+        #TODO: maybe do some error handling here? although it is safe to assume that we get good fit_type values
         self.fit_type = fit_type
-
-
 
         if pass_val is None:
             self.calculate_nominal_value()
@@ -73,7 +73,7 @@ class Fitter:
             self.prominence = prom
 
         if sat is None:
-            self.saturation = 0
+            self.saturation = None
         else:
             self.saturation = sat
 
@@ -449,6 +449,7 @@ class Fitter:
 
     def fit_iteration_callback(self, out_model):
         #method to set the parameters of the output to the parameters used for the fit TODO:rewrite this comment
+        #TODO: delete -> UNUSED METHOD
         for key in self.parameters.keys():
             self.parameters[key].value = out_model.params[key].value
             self.parameters[key].min = self.parameters[key] * 0.8
@@ -458,86 +459,26 @@ class Fitter:
     def start_fit(self):
 
         freq = self.frequency_vector
-        #this is copied from paier's code; find the index where the main resonance lies
-        #this is required in order to fit the main resonance circuit, otherwise the fit for the main circuit will not
-        #work since the resonances in the higher frequencies can't be modeled by the main circuit
-        #TODO: maybe solve this via boolean indexing as well
-        for post_resonance_range in range(len(self.data_ang)):
-            if post_resonance_range + 10 >= len(freq):
-                break
-            if np.sign(self.data_ang[post_resonance_range]) != np.sign(self.data_ang[post_resonance_range + 10]):
-                break
-        #TODO: we are using only one data point for the fit? seems a bit weird, but if an array is used, it does not seem to work
-        #TODO: Edit: it does work, but the fit is different... not worse but the resonance peak seems to be higher
         fit_data = self.z21_data
-
-
-
-        #fit the main resonance circuit
-        fit_main_resonance = 1
-        fit_order = 0 #for main resonance order = 0
-        mode = fcnmode.FIT
-        offset = 100
-        out_base_model = minimize(self.calculate_Z, self.parameters, args=(freq[:(post_resonance_range+offset)], fit_data[:(post_resonance_range+offset)],fit_order, fit_main_resonance, mode,),
-                                  method='powell', options={'xtol': 1e-18, 'disp': True})
-        # write output to instance variable
-        self.out = out_base_model
-        #overwrite parameters for the next fit
-        self.overwrite_main_resonance_parameters()
-        #create higher order circuits
         self.create_elements()
-        fit_main_resonance = 0
-
-        #fit again for the higher order circuits TODO: this code kinda works, but I am doing an experiment, so DONT DELETE THIS BLOCK
-
-        fit_main_resonance = 0
         fit_order = self.order
 
-        out = minimize(self.calculate_Z, self.parameters, args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
-                                  method='powell', options={'xtol': 1e-18, 'disp': True})
+        fit_main_resonance = 0
+        mode = fitterconstants.fcnmode.FIT
 
-        # plt.loglog(self.frequency_vector, abs(fit_data))
-        #
-        # temp_params = Parameters()
-        # temp_params = copy.deepcopy(out_base_model.params)
-        # for fit_order in range(1, len(self.frequency_zones) + 1):
-        #     temp_params.add("C%s" % fit_order)
-        #     temp_params.add("L%s" % fit_order)
-        #     temp_params.add("R%s" % fit_order)
-        #     temp_params.add("BW%s" % fit_order)
-        #     temp_params.add("w%s" % fit_order)
-        #     temp_params["C%s" % fit_order] = self.parameters["C%s" % fit_order]
-        #     temp_params["L%s" % fit_order] = self.parameters["L%s" % fit_order]
-        #     temp_params["R%s" % fit_order] = self.parameters["R%s" % fit_order]
-        #     temp_params["BW%s" % fit_order] = self.parameters["BW%s" % fit_order]
-        #     temp_params["w%s" % fit_order] = self.parameters["w%s" % fit_order]
-        #
-        #     # index = len(self.frequency_vector[self.frequency_vector < self.frequency_zones[fit_order][2]])
-        #
-        #     out = minimize(self.calculate_Z, temp_params, args=(freq, fit_data, fit_order, fit_main_resonance, mode,)
-        #                    ,method='powell', options={'xtol': 1e-18, 'disp': True})
-        #     temp_params = out.params
-        #     Z_curve = self.calculate_Z(temp_params,self.frequency_vector,2,fit_order,0,fitterconstants.fcnmode.OUTPUT)
-        #     plt.loglog(self.frequency_vector,abs(Z_curve))
+        out = minimize(self.calculate_Z, self.parameters,
+                       args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
+                       method='powell', options={'xtol': 1e-18, 'disp': True})
 
-
-
-
-
-        self.out = out
         #TODO: here we have the model -> do some output here
+        self.out = out
 
-
-
-
-        mode = fcnmode.OUTPUT
-        Z_data_model = self.calculate_Z(self.out.params,freq,[2],self.order,fit_main_resonance,mode)
-        # Z_data_model = self.calculate_Z(temp_params,freq,[2],self.order,fit_main_resonance,mode)
-        #some printing methods for testing the fit here
-        center_freqs = [x[1] for x in self.frequency_zones]
+        #calculate output
+        mode = fitterconstants.fcnmode.OUTPUT
+        test_model_data = self.calculate_Z(self.out.params,freq,[2],self.order,fit_main_resonance,mode)
         plt.loglog(self.frequency_vector, abs(fit_data))
-        plt.loglog(self.frequency_vector, abs(Z_data_model))
-        #plt.loglog(self.frequency_vector, self.data_mag)
+        plt.loglog(self.frequency_vector, abs(test_model_data))
+
         plt.show()
 
 
