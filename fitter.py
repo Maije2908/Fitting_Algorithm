@@ -118,7 +118,7 @@ class Fitter:
         # fit_type -> 1-> inductor / 2-> capacitor / 3-> cmc (doesn't work)
 
     def calculate_nominal_value(self):
-        offset = 10  # samples
+        offset = 0  # samples
         nominal_value = 0
         freq = self.frequency_vector
 
@@ -213,6 +213,9 @@ class Fitter:
         R_s = self.parasitive_resistance
         freq = self.frequency_vector
         prominence_phase = max(min_prominence_phase, float(self.prominence))
+        #TODO: maybe delete this(is for testing)
+        prominence_mag = prominence_phase
+
 
         #TODO: find_peaks tends to detect "too many" peaks i.e. overfits!!! (Long term problem)
 
@@ -238,9 +241,17 @@ class Fitter:
         ang_minima_pos = f_mag_minima[f_mag_minima > min_zone_start]
         ang_maxima_pos = f_mag_maxima[f_mag_maxima > min_zone_start]
 
-        #plot commands to check peak values
+        # plot commands to check peak values TODO: this is for testing
         # markerson = mag_maxima[0]
         # plt.loglog(self.data_mag,'-bD', markevery=markerson)
+        # plt.show()
+        # plt.figure()
+
+        # number_zones = len(ang_maxima_pos)
+        # f_zones_list = []
+        # for num_maximum in range(0, number_zones):
+        #     f2 = ang_maxima_pos[num_maximum]
+        #     res_value = self.data_mag[ang_maxima_pos[num_maximum]]
 
         #loop to find frequency ranges, copied from payer
         number_zones = len(ang_minima_pos)
@@ -256,6 +267,11 @@ class Fitter:
                 if f1 < ang_maxima_pos[num_maximum] < f3:
                     f_tuple = (f1, ang_maxima_pos[num_maximum], f3)
                     f_zones_list.append(f_tuple)
+                    # #TODO: this is also for testing
+                    # temp_d = abs(self.data_mag[np.logical_and(freq > f1, freq < f3)])
+                    # temp_f = freq[np.logical_and(freq > f1, freq < f3)]
+                    # plt.loglog(temp_f,temp_d)
+
                     break  # corresponding f2 found
         try:
             if ang_minima_pos[-1] > ang_maxima_pos[-1]:
@@ -269,6 +285,8 @@ class Fitter:
                 print("Warning from frequency zones: {e}".format(e=e))
                 pass
 
+
+        plt.show()
         self.frequency_zones = f_zones_list
 
     def create_nominal_parameters(self):
@@ -282,18 +300,21 @@ class Fitter:
         max_R_iso   = 1e12
 
         match self.fit_type:
-            case 1:
+            case fitterconstants.El.INDUCTOR:
                 #calculate "perfect" capacitor for this resonance
                 cap_ideal = 1 / (self.nominal_value * ((self.f0*2*np.pi) ** 2))
                 #add to parameters
-                self.parameters.add('C', value=cap_ideal, min=cap_ideal * 0.8, max=cap_ideal* 1, vary=True)
+                self.parameters.add('C', value=cap_ideal, min=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
+                                    max=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary=True)
+
                 self.parameters.add('R_Fe', value=max_R_Fe, min=min_R_Fe, max=max_R_Fe, vary=True)
                 #main element
                 self.parameters.add('L', value=self.nominal_value, min=self.nominal_value * 0.9, max=self.nominal_value * 1.1, vary=False)
-            case 2:
+            case fitterconstants.El.CAPACITOR:
                 # calculate "perfect" inductor for this resonance
                 ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
-                self.parameters.add('L', value=ind_ideal, min=ind_ideal * 0.8, max=ind_ideal * 1)
+                self.parameters.add('L', value=ind_ideal, min=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
+                                    max=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND)
                 self.parameters.add('R_iso', value=max_R_iso, min=min_R_iso, max=max_R_iso, vary=True)
                 #main element
                 self.parameters.add('C', value=self.nominal_value, min=self.nominal_value * 0.7,
@@ -318,8 +339,8 @@ class Fitter:
         C = self.parameters['C'].value
         L = self.parameters['L'].value
 
-        min_cap = 1e-16
-        max_cap = C * 1e3
+        min_cap = fitterconstants.MIN_CAP
+        max_cap = C * fitterconstants.MAX_CAP_FACTOR
         value_cap = (max_cap-min_cap)/2
 
 
@@ -339,15 +360,15 @@ class Fitter:
             f_u = self.frequency_zones[key_number-1][2] #upper
 
             # bandwidth (formulas copied from payers script)
-            log_multiplication_factor = 1.04
-            BW_min      = f_c * log_multiplication_factor - f_c / log_multiplication_factor
-            BW_max      = (f_u - f_l) * 1.1
-            BW_value    = BW_max / 8
+
+            BW_min      = (f_u - f_l) * fitterconstants.BW_MIN_FACTOR
+            BW_max      = (f_u - f_l) * fitterconstants.BW_MAX_FACTOR
+            BW_value    = (f_u - f_l) * 0.5 # BW_max / 8
 
             #center frequency (omega)
             w_c = f_c * 2 * np.pi
-            min_w = np.sqrt( (f_l*2*np.pi) * w_c)
-            max_w = np.sqrt( (f_u*2*np.pi) * w_c)
+            min_w = f_l*2*np.pi * fitterconstants.MIN_W_FACTOR #np.sqrt( (f_l*2*np.pi) * w_c)
+            max_w = f_u*2*np.pi * fitterconstants.MAX_W_FACTOR #np.sqrt( (f_u*2*np.pi) * w_c)
 
             # shrink beginning of first zone (each step halves range on log scale)
             if key_number == 1:
@@ -359,10 +380,12 @@ class Fitter:
             expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
             expression_string_C = '1/(' + w_key + '**2*' + L_key + ')'
 
+            L_value = 1 / (w_c**2 + value_cap)
+
             match self.fit_type: #TODO:check if fit_type is valid!!!
-                case 1: #INDUCTOR
+                case fitterconstants.El.INDUCTOR: #INDUCTOR
                     expression_string_R = '1/(2*' + str(np.pi) + '*' + BW_key + '*' + C_key + ')'
-                case 2:
+                case fitterconstants.El.CAPACITOR:
                     expression_string_R = '2*' + str(np.pi) + '*' + BW_key + '*' + L_key
 
             #add parameters
@@ -374,11 +397,18 @@ class Fitter:
             # self.parameters.add(L_key,  min=1e-20,      max=L,          expr=expression_string_L    , vary=False)
             # self.parameters.add(R_key,  min=1e-3,       max=1e4,        expr=expression_string_R    , vary=False)
 
+            #just vary the last resonant frequency since all other resonances are well determined
+            #the last "resonance" is not really a resonance but rather the "end of data"
+            if key_number == order:
+                self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+            else:
+                self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
+
             self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
-            self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
             self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-            self.parameters.add(L_key, min=1e-20, max=L, expr=expression_string_L, vary=False)
-            self.parameters.add(R_key, min=1e-3, max=1e4, expr=expression_string_R, vary=False)
+            self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=False)
+            # self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, value=L_value, vary=True)
+            self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, expr=expression_string_R, vary=False)
 
 
         return 0
@@ -447,14 +477,6 @@ class Fitter:
             case fcnmode.OUTPUT:
                 return Z
 
-    def fit_iteration_callback(self, out_model):
-        #method to set the parameters of the output to the parameters used for the fit TODO:rewrite this comment
-        #TODO: delete -> UNUSED METHOD
-        for key in self.parameters.keys():
-            self.parameters[key].value = out_model.params[key].value
-            self.parameters[key].min = self.parameters[key] * 0.8
-            self.parameters[key].max = self.parameters[key] * 1.2
-
 
     def start_fit(self):
 
@@ -463,19 +485,35 @@ class Fitter:
         self.create_elements()
         fit_order = self.order
 
-        fit_main_resonance = 0
+
         mode = fitterconstants.fcnmode.FIT
 
-        out = minimize(self.calculate_Z, self.parameters,
+        # fit_main_resonance = 1
+        #
+        # self.out = minimize(self.calculate_Z, self.parameters,
+        #                args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
+        #                method='powell', options={'xtol': 1e-18, 'disp': True})
+        #
+        # test_model_data = self.calculate_Z(self.out.params, freq, [2], self.order, fit_main_resonance, mode)
+        # plt.loglog(self.frequency_vector, abs(fit_data))
+        # plt.loglog(self.frequency_vector, abs(test_model_data))
+        #
+        # self.overwrite_main_resonance_parameters()
+
+        fit_main_resonance = 0
+
+        self.out = minimize(self.calculate_Z, self.parameters,
                        args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
                        method='powell', options={'xtol': 1e-18, 'disp': True})
 
         #TODO: here we have the model -> do some output here
-        self.out = out
+
 
         #calculate output
+        self.out.params.pretty_print()
         mode = fitterconstants.fcnmode.OUTPUT
         test_model_data = self.calculate_Z(self.out.params,freq,[2],self.order,fit_main_resonance,mode)
+        plt.figure()
         plt.loglog(self.frequency_vector, abs(fit_data))
         plt.loglog(self.frequency_vector, abs(test_model_data))
 
@@ -540,6 +578,16 @@ class Fitter:
         Z_main = 1 / ((1 / (R_s + Z_part1)) + (1 / XC))
         plt.loglog(Z_main)
         plt.loglog(self.data_mag)
+
+
+    def fit_iteration_callback(self, out_model):
+        #method to set the parameters of the output to the parameters used for the fit TODO:rewrite this comment
+        #TODO: delete -> UNUSED METHOD
+        for key in self.parameters.keys():
+            self.parameters[key].value = out_model.params[key].value
+            self.parameters[key].min = self.parameters[key] * 0.8
+            self.parameters[key].max = self.parameters[key] * 1.2
+
 
 
 

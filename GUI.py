@@ -199,8 +199,9 @@ class GUI:
         self.fitter.create_nominal_parameters()
         #self.fitter.create_elements()
         self.fitter.start_fit()
-        self.fitter.test_fit_main_res()
+        #self.fitter.test_fit_main_res()
 
+        self.fitter = None
 
         return 0
 
