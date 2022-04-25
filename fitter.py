@@ -235,11 +235,22 @@ class Fitter:
         f_phase_minima = freq[phase_minima[0]]
 
         min_zone_start = self.f0 * 3  # frequency buffer for first RLC circuit TODO: AD "find_peaks" this might do the trick
+
+        # TODO: delete unnecessary variables here
         ang_minima_pos = f_phase_minima[f_phase_minima > min_zone_start]
         ang_maxima_pos = f_phase_maxima[f_phase_maxima > min_zone_start]
 
         ang_minima_pos = f_mag_minima[f_mag_minima > min_zone_start]
         ang_maxima_pos = f_mag_maxima[f_mag_maxima > min_zone_start]
+
+        mag_minima_pos = f_mag_minima[f_mag_minima > min_zone_start]
+        mag_maxima_pos = f_mag_maxima[f_mag_maxima > min_zone_start]
+
+        mag_minima_index = mag_minima[0][f_mag_minima > min_zone_start]
+        mag_maxima_index = mag_maxima[0][f_mag_maxima > min_zone_start]
+
+        mag_maxima_value = mag_maxima[1]['peak_heights'][f_mag_maxima > min_zone_start]
+
 
         # plot commands to check peak values TODO: this is for testing
         # markerson = mag_maxima[0]
@@ -247,46 +258,98 @@ class Fitter:
         # plt.show()
         # plt.figure()
 
-        # number_zones = len(ang_maxima_pos)
-        # f_zones_list = []
-        # for num_maximum in range(0, number_zones):
-        #     f2 = ang_maxima_pos[num_maximum]
-        #     res_value = self.data_mag[ang_maxima_pos[num_maximum]]
-
-        #loop to find frequency ranges, copied from payer
-        number_zones = len(ang_minima_pos)
+        number_zones = len(mag_minima_pos)
         f_zones_list = []
-        for num_minimum in range(0, number_zones):
-            f1 = ang_minima_pos[num_minimum]
-            f3 = max(freq) * 5
-            if num_minimum + 1 < number_zones:
-                f3 = ang_minima_pos[num_minimum + 1]
+        for num_maximum in range(0, number_zones):
+            #resonance frequency, corresponding height and index
+            res_fq = ang_maxima_pos[num_maximum]
+            res_index = mag_maxima_index[num_maximum]
+            res_value = mag_maxima_value[num_maximum]
 
-            # find the maxima between two minima
-            for num_maximum in range(len(ang_maxima_pos)):
-                if f1 < ang_maxima_pos[num_maximum] < f3:
-                    f_tuple = (f1, ang_maxima_pos[num_maximum], f3)
-                    f_zones_list.append(f_tuple)
-                    # #TODO: this is also for testing
-                    # temp_d = abs(self.data_mag[np.logical_and(freq > f1, freq < f3)])
-                    # temp_f = freq[np.logical_and(freq > f1, freq < f3)]
-                    # plt.loglog(temp_f,temp_d)
+            #get 3dB value
+            bw_value = res_value / np.sqrt(2)
 
-                    break  # corresponding f2 found
-        try:
-            if ang_minima_pos[-1] > ang_maxima_pos[-1]:
-                f_tuple = (ang_minima_pos[-1], max(freq) * 3, f3)
-                f_zones_list.append(f_tuple)
-        # no minima or maxima present - not sure if this works correctly TODO: me neither, but let's assume it works for the moment
-        except Exception as e:
-            if number_zones > 0:  # else base model
-                f_tuple = (ang_minima_pos[-1], np.sqrt(max(freq) ** 2 * 3), max(freq) * 6)
-                f_zones_list.append(f_tuple)
-                print("Warning from frequency zones: {e}".format(e=e))
+            #find the next point on the curve where the 3dB value is reached
+            #we need to flip the array for the lower value
+            try:
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < res_fq, self.data_mag < bw_value)))[0][0]
+            except IndexError:
+                f_lower_index = res_index - fitterconstants.DEFAULT_OFFSET_PEAK
+
+            try:
+                f_upper_index = np.argwhere(np.logical_and(freq > res_fq, self.data_mag < bw_value))[0][0]
+            except IndexError:
+                #here we need to account for the fact that we could overshoot the max index
+                if res_index + fitterconstants.DEFAULT_OFFSET_PEAK < len(freq):
+                    f_upper_index = res_index + fitterconstants.DEFAULT_OFFSET_PEAK
+                else:
+                    f_upper_index = len(freq) - 1
+
+            # check if the found 3dB points are in an acceptable range i.e. not "behind" the next peak or "in front of"
+            # the previous peak. If that is the case we set the index to a default offset to get a "bandwidth"
+            if num_maximum != 0:
+                if f_lower_index < mag_maxima_index[num_maximum - 1]:
+                    f_lower_index = res_index - fitterconstants.DEFAULT_OFFSET_PEAK
+            if num_maximum < number_zones-1:
+                if f_upper_index > mag_maxima_index[num_maximum + 1]:
+                    #again we could overshoot the max index here
+                    if res_index + fitterconstants.DEFAULT_OFFSET_PEAK < len(freq):
+                        f_upper_index = res_index + fitterconstants.DEFAULT_OFFSET_PEAK
+                    else:
+                        f_upper_index = len(freq) - 1
+
+            if (self.data_mag[res_index] < self.data_mag[f_upper_index] ) or (self.data_mag[res_index] < self.data_mag[f_lower_index]):
+                #TODO: delete peak in that case; EDIT: not actually necessary if we write to the list only if that condition is not fulfilled
                 pass
+            else:
+                f_tuple = [freq[f_lower_index], res_fq, freq[f_upper_index]]
+                f_zones_list.append(f_tuple)
+                #THIS IS FOR TESTING
+                markerson = [f_lower_index,res_index,f_upper_index]
+                plt.loglog(self.data_mag, '-bD', markevery=markerson)
+
+        #add an "end zone" i.e. a resonance that is at the end of the data in order to have some cushion
+        f1 = f_mag_maxima[-1]
+        f3 = max(freq) * 5
+        f2 = (f3-f1) /2
+        f_tuple = [f1,f2,f3]
+        f_zones_list.append(f_tuple)
 
 
-        plt.show()
+        # #loop to find frequency ranges, copied from payer
+        # number_zones = len(ang_minima_pos)
+        # f_zones_list = []
+        # for num_minimum in range(0, number_zones):
+        #     f1 = ang_minima_pos[num_minimum]
+        #     f3 = max(freq) * 5
+        #     if num_minimum + 1 < number_zones:
+        #         f3 = ang_minima_pos[num_minimum + 1]
+        #
+        #     # find the maxima between two minima
+        #     for num_maximum in range(len(ang_maxima_pos)):
+        #         if f1 < ang_maxima_pos[num_maximum] < f3:
+        #             f_tuple = (f1, ang_maxima_pos[num_maximum], f3)
+        #             f_zones_list.append(f_tuple)
+        #             # #TODO: this is also for testing
+        #             # temp_d = abs(self.data_mag[np.logical_and(freq > f1, freq < f3)])
+        #             # temp_f = freq[np.logical_and(freq > f1, freq < f3)]
+        #             # plt.loglog(temp_f,temp_d)
+        #
+        #             break  # corresponding f2 found
+        # try:
+        #     if ang_minima_pos[-1] > ang_maxima_pos[-1]:
+        #         f_tuple = (ang_minima_pos[-1], max(freq) * 3, f3)
+        #         f_zones_list.append(f_tuple)
+        # # no minima or maxima present - not sure if this works correctly TODO: me neither, but let's assume it works for the moment
+        # except Exception as e:
+        #     if number_zones > 0:  # else base model
+        #         f_tuple = (ang_minima_pos[-1], np.sqrt(max(freq) ** 2 * 3), max(freq) * 6)
+        #         f_zones_list.append(f_tuple)
+        #         print("Warning from frequency zones: {e}".format(e=e))
+        #         pass
+        #
+        #
+        # plt.show()
         self.frequency_zones = f_zones_list
 
     def create_nominal_parameters(self):
@@ -359,22 +422,30 @@ class Fitter:
             f_c = self.frequency_zones[key_number-1][1] #center
             f_u = self.frequency_zones[key_number-1][2] #upper
 
-            # bandwidth (formulas copied from payers script)
-
+            # bandwidth
             BW_min      = (f_u - f_l) * fitterconstants.BW_MIN_FACTOR
             BW_max      = (f_u - f_l) * fitterconstants.BW_MAX_FACTOR
-            BW_value    = (f_u - f_l) * 0.5 # BW_max / 8
+            BW_value    = (f_u - f_l)  # BW_max / 8
 
-            #center frequency (omega)
+            # center frequency (omega)
             w_c = f_c * 2 * np.pi
             min_w = f_l*2*np.pi * fitterconstants.MIN_W_FACTOR #np.sqrt( (f_l*2*np.pi) * w_c)
             max_w = f_u*2*np.pi * fitterconstants.MAX_W_FACTOR #np.sqrt( (f_u*2*np.pi) * w_c)
 
+            # calculate Q-factor
+            q = f_c/BW_value
+            # take the value of the peak as the parallel resistor
+            if key_number < order:
+                r_value = abs(self.z21_data[np.argwhere(self.frequency_vector == f_c)])[0][0]
+            else:
+                #the last frequency zone is not really a resonant circuit, so we have to account for that
+                r_value = abs(self.z21_data[-1])
+
             # shrink beginning of first zone (each step halves range on log scale)
-            if key_number == 1:
-                max_w = np.sqrt(max_w * w_c)
-                for _ in range(4):
-                    min_w = np.sqrt(min_w * w_c)
+            # if key_number == 1:
+            #     max_w = np.sqrt(max_w * w_c)
+            #     for _ in range(4):
+            #         min_w = np.sqrt(min_w * w_c)
 
             # expression strings
             expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
@@ -387,6 +458,10 @@ class Fitter:
                     expression_string_R = '1/(2*' + str(np.pi) + '*' + BW_key + '*' + C_key + ')'
                 case fitterconstants.El.CAPACITOR:
                     expression_string_R = '2*' + str(np.pi) + '*' + BW_key + '*' + L_key
+
+            #testing new expression strings for L and C dependent on Q-factor
+            expression_string_C = '(' + w_key + '/ (2*' + str(np.pi) + '))' + '/' + '(' + BW_key + '*' + w_key+ '*' + R_key + ')'
+            expression_string_L = '(' + BW_key + '*'+ R_key + ')' +'/ ((' + w_key + '/ (2*' + str(np.pi) + ')) *' + w_key + ')'
 
             #add parameters
 
@@ -404,11 +479,16 @@ class Fitter:
             else:
                 self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
 
+            self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, value=r_value,vary=True)
             self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
-            self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+            self.parameters.add(C_key, min=min_cap, max=max_cap, expr=expression_string_C, vary=False)
             self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=False)
-            # self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, value=L_value, vary=True)
-            self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, expr=expression_string_R, vary=False)
+
+            # self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
+            # self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+            # self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=False)
+            # # self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, value=L_value, vary=True)
+            # self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, expr=expression_string_R, vary=False)
 
 
         return 0
@@ -471,9 +551,9 @@ class Fitter:
         match modeflag:
             case fcnmode.FIT:
                 #TODO: this does not account for negative offsets
-                diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
+                diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
                 #diff = (np.real(data) - np.real(Z))**2 + (np.imag(data) - np.imag(Z))**2
-                return abs(diff)
+                return (diff)
             case fcnmode.OUTPUT:
                 return Z
 
