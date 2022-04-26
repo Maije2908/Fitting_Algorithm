@@ -38,6 +38,7 @@ class Fitter:
         self.parameters = Parameters()
 
         self.frequency_zones = None
+        self.peak_heights = None
         self.frequency_vector = None
 
 
@@ -258,9 +259,15 @@ class Fitter:
         # plt.show()
         # plt.figure()
 
+        # skip_zone = [12,13,14]
+        # skip_zone = [x - 1 for x in skip_zone] #account for offset
+
         number_zones = len(mag_minima_pos)
         f_zones_list = []
+        peak_heights = []
         for num_maximum in range(0, number_zones):
+            # if num_maximum in skip_zone:
+            #     continue
             #resonance frequency, corresponding height and index
             res_fq = ang_maxima_pos[num_maximum]
             res_index = mag_maxima_index[num_maximum]
@@ -304,16 +311,24 @@ class Fitter:
             else:
                 f_tuple = [freq[f_lower_index], res_fq, freq[f_upper_index]]
                 f_zones_list.append(f_tuple)
+                peak_heights.append(res_value)
                 #THIS IS FOR TESTING
                 markerson = [f_lower_index,res_index,f_upper_index]
                 plt.loglog(self.data_mag, '-bD', markevery=markerson)
 
         #add an "end zone" i.e. a resonance that is at the end of the data in order to have some cushion
-        f1 = f_mag_maxima[-1]
-        f3 = max(freq) * 5
-        f2 = (f3-f1) /2
-        f_tuple = [f1,f2,f3]
-        f_zones_list.append(f_tuple)
+
+        f_zones_list[-1][2] = f_zones_list[-1][1] + (f_zones_list[-1][1] - f_zones_list[-1][0])
+        # f_zones_list[-1][0] = f_zones_list[-1][1] - (f_zones_list[-1][2]-f_zones_list[-1][1])
+        # f_zones_list[-1][1] = f_zones_list[-1][1]
+        # f_zones_list[-1][0] = f_zones_list[-1][0]
+
+        # f1 = f_mag_maxima[-2]
+        # f3 = max(freq) * 3
+        # f2 = max(freq) * 1.2
+        # f_tuple = [f1,f2,f3]
+        # f_zones_list.append(f_tuple)
+        # peak_heights.append(max(self.z21_data))
 
 
         # #loop to find frequency ranges, copied from payer
@@ -351,6 +366,7 @@ class Fitter:
         #
         # plt.show()
         self.frequency_zones = f_zones_list
+        self.peak_heights = peak_heights
 
     def create_nominal_parameters(self):
 
@@ -398,6 +414,7 @@ class Fitter:
         else:
             order = self.max_order
             #TODO: and also throw and except please
+            #TODO: some methods are not robust enough for this fit maybe?
 
         C = self.parameters['C'].value
         L = self.parameters['L'].value
@@ -435,11 +452,12 @@ class Fitter:
             # calculate Q-factor
             q = f_c/BW_value
             # take the value of the peak as the parallel resistor
-            if key_number < order:
-                r_value = abs(self.z21_data[np.argwhere(self.frequency_vector == f_c)])[0][0]
-            else:
-                #the last frequency zone is not really a resonant circuit, so we have to account for that
-                r_value = abs(self.z21_data[-1])
+            r_value = self.peak_heights[key_number-1]
+            # if key_number <= order:
+            #     r_value = abs(self.z21_data[np.argwhere(self.frequency_vector == f_c)])[0][0]
+            # else:
+            #     #the last frequency zone is not really a resonant circuit, so we have to account for that
+            #     r_value = abs(self.z21_data[-1])
 
             # shrink beginning of first zone (each step halves range on log scale)
             # if key_number == 1:
@@ -475,14 +493,21 @@ class Fitter:
             #just vary the last resonant frequency since all other resonances are well determined
             #the last "resonance" is not really a resonance but rather the "end of data"
             if key_number == order:
+                expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                while (1/(w_c**2 * value_cap)) < fitterconstants.MINIMUM_PRECISION:
+                    value_cap = value_cap/10
+                self.parameters.add(BW_key, min=BW_min*10, max=BW_max*10, value=BW_value, vary=True)
                 self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+                self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, value=r_value, vary=True)
+                self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+                self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=True)
+
             else:
                 self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
-
-            self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, value=r_value,vary=True)
-            self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
-            self.parameters.add(C_key, min=min_cap, max=max_cap, expr=expression_string_C, vary=False)
-            self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=False)
+                self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, value=r_value,vary=True)
+                self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
+                self.parameters.add(C_key, min=min_cap, max=max_cap, expr=expression_string_C, vary=False)
+                self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=False)
 
             # self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
             # self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
@@ -550,7 +575,6 @@ class Fitter:
 
         match modeflag:
             case fcnmode.FIT:
-                #TODO: this does not account for negative offsets
                 diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
                 #diff = (np.real(data) - np.real(Z))**2 + (np.imag(data) - np.imag(Z))**2
                 return (diff)
@@ -584,7 +608,7 @@ class Fitter:
 
         self.out = minimize(self.calculate_Z, self.parameters,
                        args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
-                       method='powell', options={'xtol': 1e-18, 'disp': True})
+                       method='powell', options={'xtol': 1e-12, 'disp': True})
 
         #TODO: here we have the model -> do some output here
 
@@ -592,10 +616,11 @@ class Fitter:
         #calculate output
         self.out.params.pretty_print()
         mode = fitterconstants.fcnmode.OUTPUT
+        #freq = np.linspace(min(freq),max(freq)+1e9,12000)
         test_model_data = self.calculate_Z(self.out.params,freq,[2],self.order,fit_main_resonance,mode)
         plt.figure()
         plt.loglog(self.frequency_vector, abs(fit_data))
-        plt.loglog(self.frequency_vector, abs(test_model_data))
+        plt.loglog(freq, abs(test_model_data))
 
         plt.show()
 

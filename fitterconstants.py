@@ -20,8 +20,10 @@ BW_MIN_FACTOR = 0.1
 BW_MAX_FACTOR = 1.3
 MIN_CAP = 1e-20 #minimm capacitor
 MAX_CAP_FACTOR = 1e5 #was 1e3
-MIN_W_FACTOR = 0.5
+MIN_W_FACTOR = 0.7
 MAX_W_FACTOR = 1.5
+
+MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the threshold
 
 DEFAULT_OFFSET_PEAK = 20 #samples; this specifies the default offset for a resonance peak if the 3dB point can't be found
 
