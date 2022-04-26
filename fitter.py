@@ -32,12 +32,15 @@ class Fitter:
         self.z21_data = None
         self.data_mag = None
         self.data_ang = None
+        self.model_data = None
+
         self.fit_type = None
         self.out = None
         #using the Parameters() class from lmfit, might be necessary to make this an array when handling multiple files
         self.parameters = Parameters()
 
         self.frequency_zones = None
+        self.bandwidths = None
         self.peak_heights = None
         self.frequency_vector = None
 
@@ -259,15 +262,10 @@ class Fitter:
         # plt.show()
         # plt.figure()
 
-        # skip_zone = [12,13,14]
-        # skip_zone = [x - 1 for x in skip_zone] #account for offset
-
         number_zones = len(mag_minima_pos)
-        f_zones_list = []
+        bandwidth_list = []
         peak_heights = []
         for num_maximum in range(0, number_zones):
-            # if num_maximum in skip_zone:
-            #     continue
             #resonance frequency, corresponding height and index
             res_fq = ang_maxima_pos[num_maximum]
             res_index = mag_maxima_index[num_maximum]
@@ -305,23 +303,17 @@ class Fitter:
                     else:
                         f_upper_index = len(freq) - 1
 
-            if (self.data_mag[res_index] < self.data_mag[f_upper_index] ) or (self.data_mag[res_index] < self.data_mag[f_lower_index]):
-                #TODO: delete peak in that case; EDIT: not actually necessary if we write to the list only if that condition is not fulfilled
-                pass
-            else:
-                f_tuple = [freq[f_lower_index], res_fq, freq[f_upper_index]]
-                f_zones_list.append(f_tuple)
-                peak_heights.append(res_value)
-                #THIS IS FOR TESTING
-                markerson = [f_lower_index,res_index,f_upper_index]
-                plt.loglog(self.data_mag, '-bD', markevery=markerson)
+            # if (self.data_mag[res_index] < self.data_mag[f_upper_index] ) or (self.data_mag[res_index] < self.data_mag[f_lower_index]):
+            #     #TODO: delete peak in that case; EDIT: not actually necessary if we write to the list only if that condition is not fulfilled
+            #     pass
+            # else:
+            f_tuple = [freq[f_lower_index], res_fq, freq[f_upper_index]]
+            bandwidth_list.append(f_tuple)
+            peak_heights.append(res_value)
+            #THIS IS FOR TESTING
+            markerson = [f_lower_index,res_index,f_upper_index]
+            plt.loglog(self.data_mag, '-bD', markevery=markerson)
 
-        #add an "end zone" i.e. a resonance that is at the end of the data in order to have some cushion
-
-        f_zones_list[-1][2] = f_zones_list[-1][1] + (f_zones_list[-1][1] - f_zones_list[-1][0])
-        # f_zones_list[-1][0] = f_zones_list[-1][1] - (f_zones_list[-1][2]-f_zones_list[-1][1])
-        # f_zones_list[-1][1] = f_zones_list[-1][1]
-        # f_zones_list[-1][0] = f_zones_list[-1][0]
 
         # f1 = f_mag_maxima[-2]
         # f3 = max(freq) * 3
@@ -332,41 +324,40 @@ class Fitter:
 
 
         # #loop to find frequency ranges, copied from payer
-        # number_zones = len(ang_minima_pos)
-        # f_zones_list = []
-        # for num_minimum in range(0, number_zones):
-        #     f1 = ang_minima_pos[num_minimum]
-        #     f3 = max(freq) * 5
-        #     if num_minimum + 1 < number_zones:
-        #         f3 = ang_minima_pos[num_minimum + 1]
-        #
-        #     # find the maxima between two minima
-        #     for num_maximum in range(len(ang_maxima_pos)):
-        #         if f1 < ang_maxima_pos[num_maximum] < f3:
-        #             f_tuple = (f1, ang_maxima_pos[num_maximum], f3)
-        #             f_zones_list.append(f_tuple)
-        #             # #TODO: this is also for testing
-        #             # temp_d = abs(self.data_mag[np.logical_and(freq > f1, freq < f3)])
-        #             # temp_f = freq[np.logical_and(freq > f1, freq < f3)]
-        #             # plt.loglog(temp_f,temp_d)
-        #
-        #             break  # corresponding f2 found
-        # try:
-        #     if ang_minima_pos[-1] > ang_maxima_pos[-1]:
-        #         f_tuple = (ang_minima_pos[-1], max(freq) * 3, f3)
-        #         f_zones_list.append(f_tuple)
-        # # no minima or maxima present - not sure if this works correctly TODO: me neither, but let's assume it works for the moment
-        # except Exception as e:
-        #     if number_zones > 0:  # else base model
-        #         f_tuple = (ang_minima_pos[-1], np.sqrt(max(freq) ** 2 * 3), max(freq) * 6)
-        #         f_zones_list.append(f_tuple)
-        #         print("Warning from frequency zones: {e}".format(e=e))
-        #         pass
-        #
-        #
-        # plt.show()
+        number_zones = len(ang_minima_pos)
+        f_zones_list = []
+        for num_minimum in range(0, number_zones):
+            f1 = ang_minima_pos[num_minimum]
+            f3 = max(freq) * 5
+            if num_minimum + 1 < number_zones:
+                f3 = ang_minima_pos[num_minimum + 1]
+
+            # find the maxima between two minima
+            for num_maximum in range(len(ang_maxima_pos)):
+                if f1 < ang_maxima_pos[num_maximum] < f3:
+                    f_tuple = (f1, ang_maxima_pos[num_maximum], f3)
+                    f_zones_list.append(f_tuple)
+                    # #TODO: this is also for testing
+                    # temp_d = abs(self.data_mag[np.logical_and(freq > f1, freq < f3)])
+                    # temp_f = freq[np.logical_and(freq > f1, freq < f3)]
+                    # plt.loglog(temp_f,temp_d)
+
+                    break  # corresponding f2 found
+        try:
+            if ang_minima_pos[-1] > ang_maxima_pos[-1]:
+                f_tuple = (ang_minima_pos[-1], max(freq) * 3, f3)
+                f_zones_list.append(f_tuple)
+        # no minima or maxima present - not sure if this works correctly TODO: me neither, but let's assume it works for the moment
+        except Exception as e:
+            if number_zones > 0:  # else base model
+                f_tuple = (ang_minima_pos[-1], np.sqrt(max(freq) ** 2 * 3), max(freq) * 6)
+                f_zones_list.append(f_tuple)
+                print("Warning from frequency zones: {e}".format(e=e))
+                pass
+
         self.frequency_zones = f_zones_list
         self.peak_heights = peak_heights
+        self.bandwidths = bandwidth_list
 
     def create_nominal_parameters(self):
 
@@ -439,10 +430,14 @@ class Fitter:
             f_c = self.frequency_zones[key_number-1][1] #center
             f_u = self.frequency_zones[key_number-1][2] #upper
 
+            b_l = self.bandwidths[key_number-1][0]
+            b_u = self.bandwidths[key_number-1][2]
+
             # bandwidth
-            BW_min      = (f_u - f_l) * fitterconstants.BW_MIN_FACTOR
-            BW_max      = (f_u - f_l) * fitterconstants.BW_MAX_FACTOR
-            BW_value    = (f_u - f_l)  # BW_max / 8
+            BW_min      = (b_u - b_l) * fitterconstants.BW_MIN_FACTOR
+            BW_max      = (b_u - b_l) * fitterconstants.BW_MAX_FACTOR
+            BW_value    = (b_u - b_l)  # BW_max / 8
+
 
             # center frequency (omega)
             w_c = f_c * 2 * np.pi
@@ -469,7 +464,7 @@ class Fitter:
             expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
             expression_string_C = '1/(' + w_key + '**2*' + L_key + ')'
 
-            L_value = 1 / (w_c**2 + value_cap)
+            L_value = 1 / (w_c**2 * value_cap)
 
             match self.fit_type: #TODO:check if fit_type is valid!!!
                 case fitterconstants.El.INDUCTOR: #INDUCTOR
@@ -492,17 +487,20 @@ class Fitter:
 
             #just vary the last resonant frequency since all other resonances are well determined
             #the last "resonance" is not really a resonance but rather the "end of data"
-            if key_number == order:
+            if key_number == order-1:
                 expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+
                 while (1/(w_c**2 * value_cap)) < fitterconstants.MINIMUM_PRECISION:
                     value_cap = value_cap/10
-                self.parameters.add(BW_key, min=BW_min*10, max=BW_max*10, value=BW_value, vary=True)
+                L_value = 1 / (w_c ** 2 * value_cap)
+                self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
                 self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, value=r_value, vary=True)
-                self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-                self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=True)
 
+                self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+                self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, value=L_value, vary=True)
+                self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, expr=expression_string_R, vary=False)
             else:
+
                 self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
                 self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, value=r_value,vary=True)
                 self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
@@ -617,18 +615,71 @@ class Fitter:
         self.out.params.pretty_print()
         mode = fitterconstants.fcnmode.OUTPUT
         #freq = np.linspace(min(freq),max(freq)+1e9,12000)
-        test_model_data = self.calculate_Z(self.out.params,freq,[2],self.order,fit_main_resonance,mode)
+        model_data = self.calculate_Z(self.out.params,freq,[2],self.order,fit_main_resonance,mode)
+
+        self.model_data = model_data
+
+
+
+        #for testin purposes
         plt.figure()
         plt.loglog(self.frequency_vector, abs(fit_data))
-        plt.loglog(freq, abs(test_model_data))
-
+        plt.loglog(freq, abs(model_data))
         plt.show()
 
-
+        self.do_output()
 
 
 
         return 0
+
+    def do_output(self):
+
+        title = "test"
+        fig = plt.figure(figsize=(20, 20))
+        #file_title = get_file_path.results + '/03_Parameter-Fitting_' + file_name + "_" + mode
+        plt.subplot(311)
+        plt.title(str(title), pad=20, fontsize=25, fontweight="bold")
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlim([min(self.frequency_vector), max(self.frequency_vector)])
+        plt.ylabel('Magnitude in \u03A9', fontsize=16)
+        plt.xlabel('Frequency in Hz', fontsize=16)
+        plt.grid(True, which="both")
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.plot(self.frequency_vector, abs(self.z21_data), 'r', linewidth=3, alpha=0.33, label='Measured Data')
+        plt.plot(self.frequency_vector, self.data_mag, 'r', linewidth=3, alpha=1, label='Filtered Data')
+        # Plot magnitude of model in blue
+        plt.plot(self.frequency_vector, abs(self.model_data), 'b--', linewidth=3, label='Model')
+        plt.legend(fontsize=16)
+
+        #Phase
+        curve = np.angle(self.z21_data, deg=True)
+
+        plt.subplot(312)
+        plt.xscale('log')
+        plt.xlim([min(self.frequency_vector), max(self.frequency_vector)])
+        plt.ylabel('Phase in °', fontsize=16)
+        plt.xlabel('Frequency in Hz', fontsize=16)
+        plt.grid(True, which="both")
+        plt.yticks(np.arange(45 * (round(min(curve) / 45)), 45 * (round(max(curve) / 45)) + 1, 45.0))
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.plot(self.frequency_vector, np.angle(self.z21_data, deg=True), 'r', linewidth=3, zorder=-2, alpha=0.33, label='Measured Data')
+        plt.plot(self.frequency_vector, self.data_ang, 'r', linewidth=3, zorder=-2, alpha=1, label='Filtered Data')
+        #   Plot Phase of model in magenta
+        plt.plot(self.frequency_vector, np.angle(self.model_data, deg=True), 'b--', linewidth=3, label='Model', zorder=-1)
+        #plt.scatter(resonances_pos, np.zeros_like(resonances_pos) - 90, linewidth=3, color='green', s=200, marker="2",
+        #            label='Resonances')
+        plt.legend(fontsize=16)
+        # plt.savefig(file_title)
+        # plt.close(fig)
+
+
+
+
+    #################################### V OBSOLETE V###################################################################
 
     def overwrite_main_resonance_parameters(self):
         #method to overwrite the nominal parameters with the parameters obtained by modeling the main resonance circuit

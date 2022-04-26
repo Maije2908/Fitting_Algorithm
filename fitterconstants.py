@@ -9,19 +9,19 @@ MAIN_RESONANCE_OFFSET = 50 #obsolete
 MAX_ORDER = 15
 
 #multiplication factor for the parasitic element of the main resonance (C for inductor, L for capacitor)
-MAIN_RES_PARASITIC_LOWER_BOUND = 0.7
-MAIN_RES_PARASITIC_UPPER_BOUND = 1.1
+MAIN_RES_PARASITIC_LOWER_BOUND = 0.5
+MAIN_RES_PARASITIC_UPPER_BOUND = 1.5
 #max/min values for the higher order circuits
 RMAX = 1e5 #was 1e4
 RMIN = 1e-3
 LMIN = 1e-20
 LOG_FACTOR = 1.04 #multiplication factor for the min bandwidth #OBSOLETE
-BW_MIN_FACTOR = 0.1
-BW_MAX_FACTOR = 1.3
+BW_MIN_FACTOR = 0.2
+BW_MAX_FACTOR = 1.5
 MIN_CAP = 1e-20 #minimm capacitor
 MAX_CAP_FACTOR = 1e5 #was 1e3
-MIN_W_FACTOR = 0.7
-MAX_W_FACTOR = 1.5
+MIN_W_FACTOR = 0.98
+MAX_W_FACTOR = 1.02
 
 MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the threshold
 
