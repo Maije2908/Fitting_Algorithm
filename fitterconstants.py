@@ -10,7 +10,13 @@ MAX_ORDER = 15
 
 #multiplication factor for the parasitic element of the main resonance (C for inductor, L for capacitor)
 MAIN_RES_PARASITIC_LOWER_BOUND = 0.5
-MAIN_RES_PARASITIC_UPPER_BOUND = 1.5
+MAIN_RES_PARASITIC_UPPER_BOUND = 2
+#max/min values for the main resonance
+MIN_R_FE = 10
+MAX_R_FE = 1e9
+MIN_R_ISO = 1
+MAX_R_ISO = 1e12
+
 #max/min values for the higher order circuits
 RMAX = 1e5 #was 1e4
 RMIN = 1e-3
@@ -22,6 +28,7 @@ MIN_CAP = 1e-20 #minimm capacitor
 MAX_CAP_FACTOR = 1e5 #was 1e3
 MIN_W_FACTOR = 0.98
 MAX_W_FACTOR = 1.02
+
 
 MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the threshold
 
