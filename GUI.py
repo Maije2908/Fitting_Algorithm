@@ -192,14 +192,16 @@ class GUI:
         self.fitter.calc_series_thru(50)
         self.fitter.smooth_data()
 
-        # parse specs to fitter; this needs to happen here, bc otherwise the fitter should calculate nominal values itself
+        # parse specs to fitter
         self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
         self.fitter.get_main_resonance()
         self.fitter.get_resonances()
         self.fitter.create_nominal_parameters()
         #self.fitter.create_elements()
         self.fitter.start_fit()
-        #self.fitter.test_fit_main_res()
+
+        path_out = self.selected_s2p_files[0]
+        self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out)
 
         self.fitter = None
 

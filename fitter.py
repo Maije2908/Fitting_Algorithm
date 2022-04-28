@@ -680,7 +680,7 @@ class Fitter:
         plt.loglog(freq, abs(model_data))
         plt.show()
 
-        self.do_output()
+        # self.do_output()
 
 
 
