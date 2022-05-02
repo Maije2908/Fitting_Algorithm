@@ -29,7 +29,7 @@ class IOhandler:
 
         return 0
 
-    def generate_Netlist_2_port(self, fitterinstance: Fitter(), fit_type, path):
+    def generate_Netlist_2_port(self, fitterinstance: Fitter(), fit_type, path, I_L_table_input):
 
         out = fitterinstance.out
         order = fitterinstance.order
@@ -45,7 +45,7 @@ class IOhandler:
                 # example: '-0.3,<L_nom*0.4>,0,<L_nom>,0.3,<L_nom*0.4>'
 
                 # TODO: look into I_L_table
-                #I_L_table = I_L_table_input if I_L_table_input.count(',') else '0,' + "1.0"
+                I_L_table = I_L_table_input if I_L_table_input.count(',') else '0,' + "1.0"
 
                 # do not change the rest of this section, as it defines the structure of the model
                 lib = '* Netlist for Inductor Model {name} (L={value}H)\n' \
@@ -78,12 +78,13 @@ class IOhandler:
                 lib += '* The values for the Current-Inductance-Table can be edited here:' + "\n"
                 #   lib += '* e.g. -0.3, <L_sat>, 0, <L_nom>, 0.3, <L_sat>' + "\n"
                 #TODO: I_L_Table again
-                #lib += 'B2 inductance 0 V=table(I(B1),{table})'.format(table=I_L_table) + "\n"
+                lib += 'B2 inductance 0 V=table(I(B1),{table})'.format(table=I_L_table) + "\n"
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
 
                 pass
 
             case fitterconstants.El.CAPACITOR:
+                #TODO: adapt for capacitors
                 pass
         #TODO: adapt for linux
         file_name = path.split("\\")[-1][:-4]

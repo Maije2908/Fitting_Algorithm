@@ -20,6 +20,9 @@ ENTRY_FONT = "Helvetica 12 bold"
 BCKGND_COLOR = '#90c1ff'
 WHITE = "#ffffff"
 
+#log window width/height
+LOG_HEIGHT  = 20
+LOG_WIDTH   = 50
 
 # Flags for the program to know which element is selected
 class El:

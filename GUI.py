@@ -8,6 +8,8 @@ from fitter import *
 import config
 import os
 import re
+from tkinter import scrolledtext
+from texthandler import *
 
 '''
 ***********************************************************************************************************************
@@ -27,6 +29,8 @@ NOTE: There are hardly any error-messages for wrong filetypes ect. The GUI shoul
 class GUI:
     def __init__(self, iohandler_instance):
         # declare instance variables
+        self.st = None
+        self.texthndl = None
         self.entry_saturation = None
         self.entry_nominal_value = None
         self.entry_resistance = None
@@ -34,6 +38,7 @@ class GUI:
         self.selected_s2p_files = None
         self.iohandler = iohandler_instance
         self.fitter = None
+        self.logger = None
 
         # Window config
         self.root: tk.Tk = tk.Tk()
@@ -53,6 +58,7 @@ class GUI:
         self.create_specification_field()
         self.create_browse_button()
         self.create_run_button()
+        self.create_log_window()
 
     def create_drop_down(self):
         self.drop_down_var = tk.StringVar(self.root, config.DROP_DOWN_ELEMENTS[0])
@@ -125,6 +131,16 @@ class GUI:
         self.file_list.config(font=config.ENTRY_FONT)
         self.file_list.grid(column=0, row=8, sticky=tk.W, **config.ENTRY_PADDING)
 
+    def create_log_window(self):
+        self.st = scrolledtext.ScrolledText(self.root, state='disabled', width=config.LOG_WIDTH,  height=config.LOG_HEIGHT)
+        self.st.configure(font='TkFixedFont')
+        self.st.grid(column=2,row=1,sticky=tk.E,**config.ENTRY_PADDING)
+        # self.st.pack()
+        self.texthndl = Text_Handler(self.st)
+        self.logger = logging.getLogger()
+        self.logger.addHandler(self.texthndl)
+        self.logger.setLevel(logging.INFO)
+
     ####################################################################################################################
     # Button commands
 
@@ -152,6 +168,8 @@ class GUI:
     #method to run the fitting algorithm, invoked when "run" button is pressed
 
     def callback_run(self):
+
+        # self.logger.info("starting fit")
 
         #create a fitter instance
         self.fitter = Fitter()
@@ -201,7 +219,7 @@ class GUI:
         self.fitter.start_fit()
 
         path_out = self.selected_s2p_files[0]
-        self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out)
+        self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out, '')
 
         self.fitter = None
 
