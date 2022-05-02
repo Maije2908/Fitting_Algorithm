@@ -35,6 +35,7 @@ class GUI:
         self.entry_nominal_value = None
         self.entry_resistance = None
         self.entry_prominence = None
+        self.shunt_series = None
         self.selected_s2p_files = None
         self.iohandler = iohandler_instance
         self.fitter = None
@@ -59,6 +60,7 @@ class GUI:
         self.create_browse_button()
         self.create_run_button()
         self.create_log_window()
+        self.create_shunt_series_radio_button()
 
     def create_drop_down(self):
         self.drop_down_var = tk.StringVar(self.root, config.DROP_DOWN_ELEMENTS[0])
@@ -66,7 +68,19 @@ class GUI:
         self.option_menu = tk.OptionMenu(self.root, self.drop_down_var, *config.DROP_DOWN_ELEMENTS)
         max_drop_length = len(max(config.DROP_DOWN_ELEMENTS, key=len))
         self.option_menu.config(font=config.DROP_DOWN_FONT, width=max_drop_length + 5, height=config.DROP_DOWN_HEIGHT)
-        self.option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.N, )
+        self.option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.W, **config.HEADLINE_PADDING)
+
+    def create_shunt_series_radio_button(self):
+        self.shunt_series = tk.IntVar()
+        label_calc = tk.Label(self.root, text="Z Calculation Method")
+        label_calc.config(font=config.ENTRY_FONT)
+        label_calc.grid(column=2, row=1, sticky=tk.NW, **config.HEADLINE_PADDING)
+
+        r1 = tk.Radiobutton(self.root, text = 'Shunt Through', variable=self.shunt_series,value=config.SHUNT_THROUGH)
+        r2 = tk.Radiobutton(self.root, text = 'Series Through', variable=self.shunt_series,value=config.SERIES_THROUGH)
+        r1.grid(column=2, row=2)
+        r2.grid(column=2, row=3)
+
 
     def create_specification_field(self):
 
@@ -77,30 +91,30 @@ class GUI:
         # Headline
         label_spec = tk.Label(self.root, text="Specification", bg=config.BCKGND_COLOR)
         label_spec.config(font=config.HEADLINE_FONT)
-        label_spec.grid(column=0, row=1, columnspan=2, sticky=tk.N, **config.SPEC_PADDING)
+        label_spec.grid(column=0, row=1, columnspan=2, sticky=tk.NW, **config.HEADLINE_PADDING)
 
         # initial value
         passive_element_label = tk.Label(self.root, text="F/C", bg=config.BCKGND_COLOR)
         passive_element_label.config(font=config.ENTRY_FONT)
-        passive_element_label.grid(column=0, row=2, sticky=tk.W, **config.ENTRY_PADDING)
+        passive_element_label.grid(column=0, row=2, sticky=tk.W, **config.SPEC_PADDING)
 
         self.entry_nominal_value = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
         self.entry_nominal_value.config(font=config.ENTRY_FONT)
-        self.entry_nominal_value.grid(column=1, row=2, sticky=tk.W)
+        self.entry_nominal_value.grid(column=1, row=2, sticky=tk.W, **config.ENTRY_PADDING)
 
         # initial resistance value
         label_resistance = tk.Label(self.root, text="\u03A9", bg=config.BCKGND_COLOR)
         label_resistance.config(font=config.ENTRY_FONT)
-        label_resistance.grid(column=0, row=3, sticky=tk.W, **config.ENTRY_PADDING)
+        label_resistance.grid(column=0, row=3, sticky=tk.W, **config.SPEC_PADDING)
 
         self.entry_resistance = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
         self.entry_resistance.config(font=config.ENTRY_FONT)
-        self.entry_resistance.grid(column=1, row=3, sticky=tk.W)
+        self.entry_resistance.grid(column=1, row=3, sticky=tk.W, **config.ENTRY_PADDING)
 
         # Saturation Table
         label_saturation = tk.Label(self.root, text="Saturation Table", bg=config.BCKGND_COLOR)
         label_saturation.config(font=config.ENTRY_FONT)
-        label_saturation.grid(column=0, row=4, sticky=tk.W, **config.ENTRY_PADDING)
+        label_saturation.grid(column=0, row=4, sticky=tk.W, **config.SPEC_PADDING)
         # endregion
 
         self.entry_saturation = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
@@ -110,7 +124,7 @@ class GUI:
         # Prominence
         label_prominence = tk.Label(self.root, text="Prominence in °", bg=config.BCKGND_COLOR)
         label_prominence.config(font=config.ENTRY_FONT)
-        label_prominence.grid(column=0, row=5, sticky=tk.W, **config.ENTRY_PADDING)
+        label_prominence.grid(column=0, row=5, sticky=tk.W, **config.SPEC_PADDING)
 
         self.entry_prominence = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
         self.entry_prominence.config(font=config.ENTRY_FONT)
@@ -119,12 +133,12 @@ class GUI:
     def create_browse_button(self):
         browse_button = tk.Button(self.root, command=self.callback_browse_s2p_file, text="Select s2p File(s)")
         browse_button.config(font=config.ENTRY_FONT)
-        browse_button.grid(column=0, row=6, sticky=tk.W, **config.ENTRY_PADDING)
+        browse_button.grid(column=0, row=6, sticky=tk.W, **config.BUTTON_LEFT_PADDING)
 
     def create_run_button(self):
-        browse_button = tk.Button(self.root, command=self.callback_run, text="Run (dummy)")
+        browse_button = tk.Button(self.root, command=self.callback_run, text="Run")
         browse_button.config(font=config.ENTRY_FONT)
-        browse_button.grid(column=0, row=7, sticky=tk.W, **config.ENTRY_PADDING)
+        browse_button.grid(column=1, row=6, sticky=tk.W, **config.BUTTON_RIGHT_PADDING)
 
     def create_file_list(self):
         self.file_list = tk.Listbox(self.root)
@@ -132,9 +146,9 @@ class GUI:
         self.file_list.grid(column=0, row=8, sticky=tk.W, **config.ENTRY_PADDING)
 
     def create_log_window(self):
-        self.st = scrolledtext.ScrolledText(self.root, state='disabled', width=config.LOG_WIDTH,  height=config.LOG_HEIGHT)
+        self.st = scrolledtext.ScrolledText(self.root, state='disabled')#, width=config.LOG_WIDTH,  height=config.LOG_HEIGHT)
         self.st.configure(font='TkFixedFont')
-        self.st.grid(column=2,row=1,sticky=tk.E,**config.ENTRY_PADDING)
+        self.st.grid(column=0,row=9,columnspan=3,sticky=tk.W,**config.ENTRY_PADDING)
         # self.st.pack()
         self.texthndl = Text_Handler(self.st)
         self.logger = logging.getLogger()
@@ -171,14 +185,21 @@ class GUI:
 
         # self.logger.info("starting fit")
 
-        #create a fitter instance
-        self.fitter = Fitter()
+        #create a fitter instance (the logger instance needs to be passed to the constructor)
+        self.fitter = Fitter(self.logger)
 
         #get values from the entry boxes
         passive_nom = self.entry_to_float(self.entry_nominal_value.get())
         res         = self.entry_to_float(self.entry_resistance.get())
         prom        = self.entry_to_float(self.entry_prominence.get())
         sat         = self.entry_to_float(self.entry_saturation.get())
+
+
+        shnt_ser = self.shunt_series.get()
+        if not (shnt_ser):
+            self.logger.error("Shunt/Series-Through not set!\nPlease select a calculation mode")
+            raise Exception("Shunt/Series-Through not set!")
+
 
         #get value from the dropdown TODO: somehow this does not work in match/case, need to use if for the moment
         # match self.drop_down_var.get():
@@ -189,39 +210,49 @@ class GUI:
         #     case cmc_str:
         #         raise Exception("CMCs not implemented yet")
 
-        element_type_str = self.drop_down_var.get()
-        if element_type_str == config.DROP_DOWN_ELEMENTS[0]:
-            fit_type = config.El.INDUCTOR
-        elif element_type_str == config.DROP_DOWN_ELEMENTS[1]:
-            fit_type = config.El.CAPACITOR
-        elif element_type_str == config.DROP_DOWN_ELEMENTS[2]:
-            raise Exception('CMCs not implemented yet')
-        else:
-            raise Exception('Something is wrong with the dropdown menu')
+        try:
+            element_type_str = self.drop_down_var.get()
+            if element_type_str == config.DROP_DOWN_ELEMENTS[0]:
+                fit_type = config.El.INDUCTOR
+            elif element_type_str == config.DROP_DOWN_ELEMENTS[1]:
+                fit_type = config.El.CAPACITOR
+            elif element_type_str == config.DROP_DOWN_ELEMENTS[2]:
+                self.logger.error('CMCs not implemented yet, please change element type')
+                raise Exception('CMCs not implemented yet')
+            else:
+                raise Exception('Something is wrong with the dropdown menu')
+        except Exception:
+            #TODO: maybe do some robust error handling?
+            raise
 
 
 
 
 
+        try:
+            # parse files to fitter
+            self.fitter.set_files(self.iohandler.files)
+            #calculate z21
+            self.fitter.calc_series_thru(50)
+            self.fitter.smooth_data()
+            # parse specs to fitter
+            self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
 
-        # parse files to fitter
-        self.fitter.set_files(self.iohandler.files)
-        #calculate z21
-        self.fitter.calc_series_thru(50)
-        self.fitter.smooth_data()
+            #TODO: get_main_res can also raise an exception
+            self.fitter.get_main_resonance()
+            self.fitter.get_resonances()
 
-        # parse specs to fitter
-        self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
-        self.fitter.get_main_resonance()
-        self.fitter.get_resonances()
-        self.fitter.create_nominal_parameters()
-        #self.fitter.create_elements()
-        self.fitter.start_fit()
+            # TODO: handle errors that are ouput by the nominal parameters method
+            self.fitter.create_nominal_parameters()
+            #self.fitter.create_elements()
+            self.fitter.start_fit()
 
-        path_out = self.selected_s2p_files[0]
-        self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out, '')
+            path_out = self.selected_s2p_files[0]
+            self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out, '')
 
-        self.fitter = None
+            self.fitter = None
+        except Exception:
+            self.logger.error("An Exception ocurred during execution")
 
         return 0
 

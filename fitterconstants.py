@@ -29,6 +29,10 @@ MAX_CAP_FACTOR = 1e5 #was 1e3
 MIN_W_FACTOR = 0.98
 MAX_W_FACTOR = 1.02
 
+#parameters for the smoothing filter
+SAVGOL_WIN_LENGTH = 52 #window length(samples) default:52
+SAVGOL_POL_ORDER = 2 #polynomial order default:2
+
 
 MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the threshold
 

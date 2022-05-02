@@ -20,7 +20,7 @@ from fitterconstants import *
 
 class Fitter:
 
-    def __init__(self):
+    def __init__(self, logger_instance):
         self.nominal_value = None
         self.parasitive_resistance = None
         self.prominence = None
@@ -33,8 +33,10 @@ class Fitter:
 
         self.fit_type = None
         self.out = None
-        #using the Parameters() class from lmfit, might be necessary to make this an array when handling multiple files
+
         self.parameters = Parameters()
+
+        self.logger = logger_instance
 
         self.frequency_zones = None
         self.bandwidths = None
@@ -42,7 +44,7 @@ class Fitter:
         self.frequency_vector = None
 
 
-        #TODO: maybe change this; the f0 variable is for testing puropses
+
         self.f0 = None
         self.max_order = fitterconstants.MAX_ORDER
         self.order = None
@@ -55,11 +57,15 @@ class Fitter:
     #method to set the entry values of the specification
     def set_specification(self, pass_val, para_r, prom, sat, fit_type):
 
-        #TODO: maybe do some error handling here? although it is safe to assume that we get good fit_type values
         self.fit_type = fit_type
 
         if pass_val is None:
-            self.calculate_nominal_value()
+            #if we do not have the nominal value try to calculate it
+            try:
+                self.calculate_nominal_value()
+            #if we can't calculate it, pass the exception back to the calling function
+            except Exception as e:
+                raise
         else:
             self.nominal_value = pass_val
 
@@ -86,7 +92,8 @@ class Fitter:
         try:
             self.frequency_vector = self.files[0].data.f
         except Exception as e:
-            pass
+            self.logger.error("No Files were provided, please select a file!")
+            raise
 
 
 
@@ -107,16 +114,15 @@ class Fitter:
         # Use Savitzky-Golay filter for smoothing the input data, because in the region of the global minimum there is
         # oscillation. After filtering a global minimum can be found easier.
         sav_gol_mode = 'interp'
-        self.data_mag = scipy.signal.savgol_filter(abs(self.z21_data), 51, 2, mode=sav_gol_mode)
-        self.data_ang = scipy.signal.savgol_filter(np.angle(self.z21_data, deg=True), 51, 2, mode=sav_gol_mode)
+        self.data_mag = scipy.signal.savgol_filter(abs(self.z21_data), fitterconstants.SAVGOL_WIN_LENGTH,
+                                                   fitterconstants.SAVGOL_POL_ORDER, mode=sav_gol_mode)
+        self.data_ang = scipy.signal.savgol_filter(np.angle(self.z21_data, deg=True), fitterconstants.SAVGOL_WIN_LENGTH,
+                                                   fitterconstants.SAVGOL_POL_ORDER, mode=sav_gol_mode)
         #limit the data to +/- 90°
         self.data_ang = np.clip(self.data_ang, -90, 90)
 
         return 0
 
-        # calculates the nominal value from the inductive/capacitive measured data, can be used, if nominal value is not specified
-        # returns the nominal value <- copied from payer's program
-        # fit_type -> 1-> inductor / 2-> capacitor / 3-> cmc (doesn't work)
 
     def calculate_nominal_value(self):
         offset = 0  # samples
@@ -125,26 +131,44 @@ class Fitter:
 
         match self.fit_type:
             case El.INDUCTOR:
-
-                # find first point where the phase crosses 0
+                # find first point where the phase crosses 0 using numpy.argwhere
                 index_angle_smaller_zero = np.argwhere(self.data_ang < 0)
-                index_ang_zero_crossing = index_angle_smaller_zero[0][0] # this somehow has to be "double unwrapped"
+                index_ang_zero_crossing = index_angle_smaller_zero[0][0]
+
+                # if the first zero crossing is smaller that the offset i.e. the first zero crossing is at the start of
+                # the data, raise an exception
+                if index_ang_zero_crossing <= offset:
+                    self.logger.error("Error: the Phase of the dataset seems to be bad, consider cropping the data")
+                    raise Exception("Error: the Phase of the dataset seems to be bad, consider cropping the data")
 
                 if max(self.data_ang[offset:index_ang_zero_crossing]) < 88:
+                    #if we can't detect the nominal value write to log and raise exception
+                    self.logger.error("Error: Inductive range not detected (max phase = {value}°).\n"
+                                    "Please specify nominal inductance.".format(value=np.round(max(self.data_ang), 1)))
                     raise Exception("Error: Inductive range not detected (max phase = {value}°).\n"
                                     "Please specify nominal inductance.".format(value=np.round(max(self.data_ang), 1)))
+
                 for sample in range(offset, len(freq)):
                     if self.data_ang[sample] == max(self.data_ang[offset:index_ang_zero_crossing]):
                         self.nominal_value = self.data_mag[sample] / 2 / np.pi / freq[sample]
                         break
+                self.logger.info("Nominal Inductance not provided, calculated:{value}".format(value=self.nominal_value))
+
 
             case El.CAPACITOR:
-
                 # find first point where the phase crosses 0
                 index_angle_larger_zero = np.argwhere(self.data_ang > 0)
-                index_ang_zero_crossing = index_angle_larger_zero[0][0]  # this somehow has to be "double unwrapped"
+                index_ang_zero_crossing = index_angle_larger_zero[0][0]
+
+                # if the first zero crossing is smaller that the offset i.e. the first zero crossing is at the start of
+                # the data, raise an exception
+                if index_ang_zero_crossing <= offset:
+                    self.logger.error("Error: the Phase of the dataset seems to be bad, consider cropping the data")
+                    raise Exception("Error: the Phase of the dataset seems to be bad, consider cropping the data")
 
                 if min(self.data_ang[offset:index_ang_zero_crossing]) > -88:
+                    self.logger.error("Error: Capacitive range not detected (min phase = {value}°).\n"
+                                    "Please specify nominal capacitance.".format(value=np.round(min(self.data_ang), 1)))
                     raise Exception("Error: Capacitive range not detected (min phase = {value}°).\n"
                                     "Please specify nominal capacitance.".format(value=np.round(min(self.data_ang), 1)))
 
@@ -157,29 +181,28 @@ class Fitter:
                         # break
                 test_values_gradient = abs(np.gradient(test_values, 2))
                 # it takes the first values instead of the "linear" range. need to fix this. possibly by taking the longest min gradient
-
+                #TODO: i dont have a single clue how this works for capacitors
                 self.nominal_value = test_values[np.argmin(np.amin(test_values_gradient))]
-                print(self.nominal_value)
+                self.logger.info("Nominal Inductance not provided, calculated:{value}".format(value=self.nominal_value))
+
             case 3:
                 self.nominal_value = 0
-            case _:
-                self.nominal_value = 0
+
 
 
         return self.nominal_value
 
     def calculate_nominal_Rs(self):
         R_s_input = min(self.data_mag)
-        #TODO: logging and error handling ( method could be called before the data is initialized)
         self.parasitive_resistance = R_s_input
+        #log
+        self.logger.info("Nominal Resistance not provided: calculated:{value:.3f}\u03A9".format(value=R_s_input))
 
     def get_main_resonance(self):
         freq = self.frequency_vector
 
         #set w0 to 0 in order to have feedback, if the method didn't work
         w0 = 0
-
-        #TODO: maybe check fit_type variable to be 1/2/3?
 
         match self.fit_type:
 
@@ -194,18 +217,23 @@ class Fitter:
                 continuity_check = index_angle_larger_zero[10][0]
 
             case 3: #CMC
-                sign = 1 #TODO: i dont know what value to take for CMCs and how to handle them in general
+                sign = 1
+
+        # TODO: there could be some problems here: a) the resonant frequency could be at the start of the data and
+        #   b) the resonant frequency could be at the end of data... those are cases in which the phase data is faulty.
+        #   an exception should be raised already in this case, but only if the calculate nominal value method was run
 
         if continuity_check:
             f0 = freq[index_ang_zero_crossing]
             w0 = f0 * 2 * np.pi
             self.f0 = f0
-            print("f0: {f0}".format(f0=f0))
+            self.logger.info("f0: {f0: .2f}".format(f0=f0))
+            print("f0: {f0: .2f}".format(f0=f0))
 
         if w0 == 0:
+            self.logger.error("ERROR: Main resonant frequency could not be determined.")
             raise Exception('\nSystem Log: ERROR: Main resonant frequency could not be determined.')
 
-        #TODO: write found w0 to parameters
 
     def get_resonances(self):
 
@@ -483,7 +511,7 @@ class Fitter:
 
             L_value = 1 / (w_c**2 * value_cap)
 
-            match self.fit_type: #TODO:check if fit_type is valid!!!
+            match self.fit_type:
                 case fitterconstants.El.INDUCTOR: #INDUCTOR
                     expression_string_R = '1/(2*' + str(np.pi) + '*' + BW_key + '*' + C_key + ')'
                 case fitterconstants.El.CAPACITOR:
@@ -571,7 +599,7 @@ class Fitter:
         if fit_main_res:
             order = 0
         else:
-            order = fit_order #TODO: this method could be called before the order is set
+            order = fit_order
 
         #create array for frequency
         freq = frequency_vector

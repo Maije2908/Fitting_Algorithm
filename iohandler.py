@@ -29,7 +29,7 @@ class IOhandler:
 
         return 0
 
-    def generate_Netlist_2_port(self, fitterinstance: Fitter(), fit_type, path, I_L_table_input):
+    def generate_Netlist_2_port(self, fitterinstance: Fitter, fit_type, path, I_L_table_input):
 
         out = fitterinstance.out
         order = fitterinstance.order
