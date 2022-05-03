@@ -61,6 +61,7 @@ class GUI:
         self.create_run_button()
         self.create_log_window()
         self.create_shunt_series_radio_button()
+        self.create_file_list()
 
     def create_drop_down(self):
         self.drop_down_var = tk.StringVar(self.root, config.DROP_DOWN_ELEMENTS[0])
@@ -141,9 +142,9 @@ class GUI:
         browse_button.grid(column=1, row=6, sticky=tk.W, **config.BUTTON_RIGHT_PADDING)
 
     def create_file_list(self):
-        self.file_list = tk.Listbox(self.root)
-        self.file_list.config(font=config.ENTRY_FONT)
-        self.file_list.grid(column=0, row=8, sticky=tk.W, **config.ENTRY_PADDING)
+        self.file_listbox = tk.Listbox(self.root)
+        self.file_listbox.config(font=config.ENTRY_FONT)
+        self.file_listbox.grid(column=3, row=0, rowspan=4, sticky=tk.W, **config.ENTRY_PADDING)
 
     def create_log_window(self):
         self.st = scrolledtext.ScrolledText(self.root, state='disabled')#, width=config.LOG_WIDTH,  height=config.LOG_HEIGHT)
@@ -154,6 +155,17 @@ class GUI:
         self.logger = logging.getLogger()
         self.logger.addHandler(self.texthndl)
         self.logger.setLevel(logging.INFO)
+
+
+
+    def insert_file_to_list(self, file):
+        checkboxvalue = tk.BooleanVar()
+        checkbox_to_insert = tk.Checkbutton(self.root,text = "Helloworld", variable=checkboxvalue)
+
+        self.file_listbox.insert(tk.END,checkbox_to_insert)
+
+
+
 
     ####################################################################################################################
     # Button commands
@@ -182,6 +194,9 @@ class GUI:
         except Exception as e:
             self.logger.error("ERROR: There was an error, opening one of the selected files:")
             self.logger.error(str(e))
+
+        #insert the file to the listbox here(TODO: not functional yet)
+        self.insert_file_to_list(2)
 
         return 0
 
