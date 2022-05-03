@@ -12,6 +12,8 @@ import numpy as np
 import scipy
 from lmfit import minimize, Parameters
 from scipy.signal import find_peaks
+import decimal
+
 
 # import constants into the same namespace
 import fitterconstants
@@ -25,7 +27,7 @@ class Fitter:
         self.parasitive_resistance = None
         self.prominence = None
         self.saturation = None
-        self.files = None
+        self.file = None
         self.z21_data = None
         self.data_mag = None
         self.data_ang = None
@@ -65,7 +67,7 @@ class Fitter:
                 self.calculate_nominal_value()
             #if we can't calculate it, pass the exception back to the calling function
             except Exception as e:
-                raise
+                raise e
         else:
             self.nominal_value = pass_val
 
@@ -87,13 +89,14 @@ class Fitter:
 
 
     #method to parse the files from the iohandler
-    def set_files(self, files):
-        self.files = files
+    def set_file(self, file):
+        self.file = file
         try:
-            self.frequency_vector = self.files[0].data.f
-        except Exception as e:
-            self.logger.error("No Files were provided, please select a file!")
-            raise
+            self.frequency_vector = self.file.data.f
+            self.logger.info("File: " + self.file.name)
+        except Exception:
+            raise Exception("No Files were provided, please select a file!")
+
 
 
 
@@ -102,12 +105,10 @@ class Fitter:
     ####################################################################################################################
 
     def calc_series_thru(self, Z0):
-        for file in self.files:
-            self.z21_data = 2 * Z0 * ((1 - file.data.s[:, 1, 0]) / file.data.s[:, 1, 0])
+        self.z21_data = 2 * Z0 * ((1 - self.file.data.s[:, 1, 0]) / self.file.data.s[:, 1, 0])
 
     def calc_shunt_thru(self, Z0):
-        for file in self.files:
-            self.z21_data = (Z0 * file.data.s[:, 1, 0]) / (2 * (1 - file.data.s[:, 1, 0]))
+        self.z21_data = (Z0 * self.file.data.s[:, 1, 0]) / (2 * (1 - self.file.data.s[:, 1, 0]))
 
 
     def smooth_data(self):
@@ -138,21 +139,19 @@ class Fitter:
                 # if the first zero crossing is smaller that the offset i.e. the first zero crossing is at the start of
                 # the data, raise an exception
                 if index_ang_zero_crossing <= offset:
-                    self.logger.error("Error: the Phase of the dataset seems to be bad, consider cropping the data")
                     raise Exception("Error: the Phase of the dataset seems to be bad, consider cropping the data")
 
                 if max(self.data_ang[offset:index_ang_zero_crossing]) < 88:
-                    #if we can't detect the nominal value write to log and raise exception
-                    self.logger.error("Error: Inductive range not detected (max phase = {value}°).\n"
-                                    "Please specify nominal inductance.".format(value=np.round(max(self.data_ang), 1)))
+                    #if we can't detect the nominal value raise exception
                     raise Exception("Error: Inductive range not detected (max phase = {value}°).\n"
                                     "Please specify nominal inductance.".format(value=np.round(max(self.data_ang), 1)))
 
                 for sample in range(offset, len(freq)):
-                    if self.data_ang[sample] == max(self.data_ang[offset:index_ang_zero_crossing]):
+                    if self.data_ang[sample] == max(self.data_ang[offset:index_ang_zero_crossing]): #TODO: I AM NOT SURE IF THIS WORKS RIGHT!!! HAVE ANOTHER LOOK AT THAT
                         self.nominal_value = self.data_mag[sample] / 2 / np.pi / freq[sample]
                         break
-                self.logger.info("Nominal Inductance not provided, calculated:{value}".format(value=self.nominal_value))
+                output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value)) #TODO: this has to be normalized output to 1e-3/-6/-9 etc
+                self.logger.info("Nominal Inductance not provided, calculated: " + output_dec.to_eng_string())
 
 
             case El.CAPACITOR:
@@ -163,13 +162,10 @@ class Fitter:
                 # if the first zero crossing is smaller that the offset i.e. the first zero crossing is at the start of
                 # the data, raise an exception
                 if index_ang_zero_crossing <= offset:
-                    self.logger.error("Error: the Phase of the dataset seems to be bad, consider cropping the data")
-                    raise Exception("Error: the Phase of the dataset seems to be bad, consider cropping the data")
+                    raise Exception("ERROR: the Phase of the dataset seems to be bad, consider cropping the data")
 
                 if min(self.data_ang[offset:index_ang_zero_crossing]) > -88:
-                    self.logger.error("Error: Capacitive range not detected (min phase = {value}°).\n"
-                                    "Please specify nominal capacitance.".format(value=np.round(min(self.data_ang), 1)))
-                    raise Exception("Error: Capacitive range not detected (min phase = {value}°).\n"
+                    raise Exception("ERROR: Capacitive range not detected (min phase = {value}°).\n"
                                     "Please specify nominal capacitance.".format(value=np.round(min(self.data_ang), 1)))
 
                 test_values = []
@@ -183,7 +179,8 @@ class Fitter:
                 # it takes the first values instead of the "linear" range. need to fix this. possibly by taking the longest min gradient
                 #TODO: i dont have a single clue how this works for capacitors
                 self.nominal_value = test_values[np.argmin(np.amin(test_values_gradient))]
-                self.logger.info("Nominal Inductance not provided, calculated:{value}".format(value=self.nominal_value))
+                output_dec = decimal.Decimal("{value:.3E}".format(value=nominal_value))
+                self.logger.info("Nominal Capacitance not provided, calculated: " + output_dec.to_eng_string())
 
             case 3:
                 self.nominal_value = 0
@@ -196,7 +193,8 @@ class Fitter:
         R_s_input = min(self.data_mag)
         self.parasitive_resistance = R_s_input
         #log
-        self.logger.info("Nominal Resistance not provided: calculated:{value:.3f}\u03A9".format(value=R_s_input))
+        output_dec = decimal.Decimal("{value:.3E}".format(value=R_s_input))
+        self.logger.info("Nominal Resistance not provided, calculated: " + output_dec.to_eng_string())
 
     def get_main_resonance(self):
         freq = self.frequency_vector
@@ -227,15 +225,16 @@ class Fitter:
             f0 = freq[index_ang_zero_crossing]
             w0 = f0 * 2 * np.pi
             self.f0 = f0
-            self.logger.info("f0: {f0: .2f}".format(f0=f0))
-            print("f0: {f0: .2f}".format(f0=f0))
+            #log and print
+            output_dec = decimal.Decimal("{value:.3E}".format(value=f0))
+            self.logger.info("Detected f0: "+output_dec.to_eng_string())
+            print("Detected f0: "+output_dec.to_eng_string())
 
         if w0 == 0:
-            self.logger.error("ERROR: Main resonant frequency could not be determined.")
-            raise Exception('\nSystem Log: ERROR: Main resonant frequency could not be determined.')
+            raise Exception('ERROR: Main resonant frequency could not be determined.')
 
 
-    def get_resonances(self):
+    def get_resonances(self): #TODO: tidy up this whole method :/
 
         min_prominence_phase = fitterconstants.PROMINENCE_DEFAULT
         prominence_mag = 0.01

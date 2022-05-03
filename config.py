@@ -32,6 +32,9 @@ LOG_WIDTH   :           int = 100
 SHUNT_THROUGH   :       int = 1
 SERIES_THROUGH  :       int = 2
 
+#Measurement System Z0
+Z0              :       int = 50
+
 
 
 

@@ -175,18 +175,21 @@ class GUI:
         self.selected_s2p_files = path_list
 
         #NOTE: second parameter should be to select inductivity/capacitance; unsure (yet) if this is necessary
-        self.iohandler.load_file(path_list, 2)
+        try:
+            self.iohandler.load_file(path_list, 2)
+            self.logger.info("Opened Files:")
+            [self.logger.info(file_path) for file_path in path_list]
+        except Exception as e:
+            self.logger.error("ERROR: There was an error, opening one of the selected files:")
+            self.logger.error(str(e))
 
         return 0
 
-    #method to run the fitting algorithm, invoked when "run" button is pressed
 
+    #method to run the fitting algorithm, invoked when "run" button is pressed
     def callback_run(self):
 
-        # self.logger.info("starting fit")
-
-        #create a fitter instance (the logger instance needs to be passed to the constructor)
-        self.fitter = Fitter(self.logger)
+        self.logger.info("----------Run----------\n")
 
         #get values from the entry boxes
         passive_nom = self.entry_to_float(self.entry_nominal_value.get())
@@ -194,34 +197,34 @@ class GUI:
         prom        = self.entry_to_float(self.entry_prominence.get())
         sat         = self.entry_to_float(self.entry_saturation.get())
 
+        #get the shunt/series through setting
+        shunt_series = self.shunt_series.get()
 
-        shnt_ser = self.shunt_series.get()
-        if not (shnt_ser):
-            self.logger.error("Shunt/Series-Through not set!\nPlease select a calculation mode")
-            raise Exception("Shunt/Series-Through not set!")
+        #get the type of element from the dropdown list
+        element_type_str = self.drop_down_var.get()
 
-
-        #get value from the dropdown TODO: somehow this does not work in match/case, need to use if for the moment
-        # match self.drop_down_var.get():
-        #     case ind_str : #INDUCTOR
-        #         fit_type = config.El.INDUCTOR
-        #     case cap_str :
-        #         fit_type = config.El.CAPACITOR
-        #     case cmc_str:
-        #         raise Exception("CMCs not implemented yet")
 
         try:
-            element_type_str = self.drop_down_var.get()
+            #raise an exception if shunt/series through was not set
+            if not (shunt_series):
+                # self.logger.error("Shunt/Series-Through not set!\nPlease select a calculation mode")
+                raise Exception("Shunt/Series-Through not set!\nPlease select a calculation mode")
+
+
             if element_type_str == config.DROP_DOWN_ELEMENTS[0]:
                 fit_type = config.El.INDUCTOR
             elif element_type_str == config.DROP_DOWN_ELEMENTS[1]:
                 fit_type = config.El.CAPACITOR
             elif element_type_str == config.DROP_DOWN_ELEMENTS[2]:
-                self.logger.error('CMCs not implemented yet, please change element type')
-                raise Exception('CMCs not implemented yet')
+                # self.logger.error('CMCs not implemented yet, please change element type')
+                raise Exception('CMCs not implemented yet, please change element type')
             else:
-                raise Exception('Something is wrong with the dropdown menu')
-        except Exception:
+                # self.logger.error('Something is wrong with the dropdown menu, please restart the application')
+                raise Exception('Something is wrong with the dropdown menu, please restart the application')
+
+        except Exception as e:
+            #write exception to log
+            self.logger.error(str(e) + '\n')
             #TODO: maybe do some robust error handling?
             raise
 
@@ -230,11 +233,24 @@ class GUI:
 
 
         try:
+            # create a fitter instance (the logger instance needs to be passed to the constructor)
+            self.fitter = Fitter(self.logger)
+
             # parse files to fitter
-            self.fitter.set_files(self.iohandler.files)
+            self.fitter.set_file(self.iohandler.files[0])
+
             #calculate z21
-            self.fitter.calc_series_thru(50)
+            match shunt_series:
+                case config.SHUNT_THROUGH:
+                    self.fitter.calc_shunt_thru(config.Z0)
+                case config.SERIES_THROUGH:
+                    self.fitter.calc_series_thru(config.Z0)
+                case _:
+                    #This should NEVER be invoked (if so, there is something SERIOUSLY wrong with the radiobuttons)
+                    raise Exception("Could not determine Shunt/Series Through, please re-select and try again")
+
             self.fitter.smooth_data()
+
             # parse specs to fitter
             self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
 
@@ -250,9 +266,14 @@ class GUI:
             path_out = self.selected_s2p_files[0]
             self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out, '')
 
+
+        except Exception as e:
+            self.logger.error("An Exception occurred during execution:")
+            self.logger.error(str(e) + '\n')
+
+
+        finally:
             self.fitter = None
-        except Exception:
-            self.logger.error("An Exception ocurred during execution")
 
         return 0
 

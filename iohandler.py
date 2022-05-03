@@ -18,14 +18,17 @@ class IOhandler:
 
     def load_file(self, path, ind_cap_cmc):
 
-        for actual_path in path:
-            ntwk = rf.Network(actual_path)
-            touch = rf.Touchstone(actual_path) #I don't know if this is necessary, in payer's program it was used, but the
-            #network class of skrf stores all the information necessary, so I would consider it a waste of memory
+        try:
+            for actual_path in path:
+                ntwk = rf.Network(actual_path)
+                touch = rf.Touchstone(actual_path) #I don't know if this is necessary, in payer's program it was used, but the
+                #network class of skrf stores all the information necessary, so I would consider it a waste of memory
 
-            # generate class for storing the data in and write to array
-            newfile = SNpFile(ntwk, ntwk.name)
-            self.files.append(newfile)
+                # generate class for storing the data in and write to array
+                newfile = SNpFile(ntwk, ntwk.name)
+                self.files.append(newfile)
+        except Exception as e:
+            raise e
 
         return 0
 
