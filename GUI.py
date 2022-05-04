@@ -61,7 +61,7 @@ class GUI:
         self.create_run_button()
         self.create_log_window()
         self.create_shunt_series_radio_button()
-        self.create_file_list()
+        # self.create_file_list()
 
     def create_drop_down(self):
         self.drop_down_var = tk.StringVar(self.root, config.DROP_DOWN_ELEMENTS[0])
@@ -162,7 +162,7 @@ class GUI:
         checkboxvalue = tk.BooleanVar()
         checkbox_to_insert = tk.Checkbutton(self.root,text = "Helloworld", variable=checkboxvalue)
 
-        self.file_listbox.insert(tk.END,checkbox_to_insert)
+        # self.file_listbox.insert(tk.END,checkbox_to_insert)
 
 
 

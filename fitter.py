@@ -244,15 +244,25 @@ class Fitter:
         #TODO: maybe delete this(is for testing)
         prominence_mag = prominence_phase
 
+        # in order to use the same methods for capacitors as we do for inductors, we simply flip the dataset, so we still
+        # detect "peaks" although there are pits
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                magnitude_data = self.data_mag
+                phase_data = self.data_ang
+            case fitterconstants.El.CAPACITOR:
+                magnitude_data = self.data_mag * (-1)
+                phase_data = self.data_ang * (-1)
+
 
         #TODO: find_peaks tends to detect "too many" peaks i.e. overfits!!! (Long term problem)
 
         #find peaks of Magnitude Impedance curve (using scipy.signal.find_peaks)
-        mag_maxima = find_peaks(self.data_mag, height=np.log10(R_s), prominence=prominence_mag)
-        mag_minima = find_peaks(self.data_mag * -1, prominence=prominence_mag)
+        mag_maxima = find_peaks(magnitude_data, height=np.log10(R_s), prominence=prominence_mag)
+        mag_minima = find_peaks(magnitude_data * -1, prominence=prominence_mag)
         #find peaks of Phase curve
-        phase_maxima = find_peaks(self.data_ang, prominence=prominence_phase)
-        phase_minima = find_peaks(self.data_ang * -1, prominence=prominence_phase)
+        phase_maxima = find_peaks(phase_data, prominence=prominence_phase)
+        phase_minima = find_peaks(phase_data * -1, prominence=prominence_phase)
 
         #map to frequency; TODO: we are using the file here, so if there are multiple files, need to change this
         #TODO: why are we even calculating the magnitude maxima if they are never used???
@@ -262,7 +272,8 @@ class Fitter:
         f_phase_maxima = freq[phase_maxima[0]]
         f_phase_minima = freq[phase_minima[0]]
 
-        min_zone_start = self.f0 * 3  # frequency buffer for first RLC circuit TODO: AD "find_peaks" this might do the trick
+        #ignore all peaks that lie "before" the main resonance and that are to close to the main resonance
+        min_zone_start = self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR
 
         # TODO: delete unnecessary variables here
         ang_minima_pos = f_phase_minima[f_phase_minima > min_zone_start]
@@ -327,7 +338,7 @@ class Fitter:
                     else:
                         f_upper_index = len(freq) - 1
 
-            if (self.data_mag[res_index] < self.data_mag[f_upper_index] ) or (self.data_mag[res_index] < self.data_mag[f_lower_index]):
+            if (magnitude_data[res_index] < magnitude_data[f_upper_index] ) or (magnitude_data[res_index] < magnitude_data[f_lower_index]):
                 #TODO: delete peak in that case; EDIT: not actually necessary if we write to the list only if that condition is not fulfilled
                 pass
             else:
@@ -337,6 +348,9 @@ class Fitter:
                 #THIS IS FOR TESTING
                 markerson = [f_lower_index,res_index,f_upper_index]
                 plt.loglog(self.data_mag, '-bD', markevery=markerson)
+
+        #TODO: it can happen that there are 0 bands somehow, we need to do exception handling in that case
+        # something like: "there are no frequency bands to fit"
 
         #spread BW of last circuit; TODO: maybe center the band?
         strech_factor = 5

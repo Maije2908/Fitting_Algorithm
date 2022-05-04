@@ -8,6 +8,10 @@ PROMINENCE_DEFAULT = 0.5
 MAIN_RESONANCE_OFFSET = 50 #obsolete
 MAX_ORDER = 15
 
+# offset factor for the first resonance detected after the main peak (min_f = f0 * OFFSET_FACTOR)
+# if the first resonance after the main peak is not fitted, consider setting this to a lower value
+MIN_ZONE_OFFSET_FACTOR = 2
+
 #multiplication factor for the parasitic element of the main resonance (C for inductor, L for capacitor)
 MAIN_RES_PARASITIC_LOWER_BOUND = 0.5
 MAIN_RES_PARASITIC_UPPER_BOUND = 2
