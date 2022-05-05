@@ -283,7 +283,7 @@ class GUI:
 
 
         except Exception as e:
-            self.logger.error("An Exception occurred during execution:")
+            self.logger.error("ERROR: An Exception occurred during execution:")
             self.logger.error(str(e) + '\n')
 
 

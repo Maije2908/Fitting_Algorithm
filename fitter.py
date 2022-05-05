@@ -240,7 +240,7 @@ class Fitter:
         prominence_mag = 0.01
         R_s = self.parasitive_resistance
         freq = self.frequency_vector
-        prominence_phase = max(min_prominence_phase, float(self.prominence))
+        prominence_phase = min(min_prominence_phase, float(self.prominence))
         #TODO: maybe delete this(is for testing)
         prominence_mag = prominence_phase
 
@@ -297,7 +297,7 @@ class Fitter:
         # plt.show()
         # plt.figure()
 
-        number_zones = len(mag_minima_pos)
+        number_zones = len(mag_maxima_pos)
         bandwidth_list = []
         peak_heights = []
         for num_maximum in range(0, number_zones):
@@ -307,17 +307,23 @@ class Fitter:
             res_value = mag_maxima_value[num_maximum]
 
             #get 3dB value
-            bw_value = res_value / np.sqrt(2)
+            # if we work with an inductor the curve is mirrored, so we have to account for that
+            match self.fit_type:
+                case fitterconstants.El.INDUCTOR:
+                    bw_value = res_value / np.sqrt(2)
+                case fitterconstants.El.CAPACITOR:
+                    bw_value = res_value*np.sqrt(2)
 
-            #find the next point on the curve where the 3dB value is reached
-            #we need to flip the array for the lower value
             try:
-                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < res_fq, self.data_mag < bw_value)))[0][0]
+                #find the index where the 3db value is reached; also check if the frequency is lower than the resonance,
+                #but higher than the min zone; if that does not work use the default offset
+                #NOTE: since we need the first value in front of the resonance we have to flipud the array
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq > min_zone_start, np.logical_and(freq < res_fq, (magnitude_data) < (bw_value)))))[0][0]
             except IndexError:
                 f_lower_index = res_index - fitterconstants.DEFAULT_OFFSET_PEAK
 
             try:
-                f_upper_index = np.argwhere(np.logical_and(freq > res_fq, self.data_mag < bw_value))[0][0]
+                f_upper_index = np.argwhere(np.logical_and(freq > res_fq, (magnitude_data) < (bw_value)))[0][0]
             except IndexError:
                 #here we need to account for the fact that we could overshoot the max index
                 if res_index + fitterconstants.DEFAULT_OFFSET_PEAK < len(freq):
@@ -338,8 +344,10 @@ class Fitter:
                     else:
                         f_upper_index = len(freq) - 1
 
-            if (magnitude_data[res_index] < magnitude_data[f_upper_index] ) or (magnitude_data[res_index] < magnitude_data[f_lower_index]):
-                #TODO: delete peak in that case; EDIT: not actually necessary if we write to the list only if that condition is not fulfilled
+            # this checks if the value of the upper/lower bound is greater than the value of the resonance peak
+            # that is the case if we chose the default offset #TODO: look into how to handle this case
+            if ((magnitude_data[res_index]) < (magnitude_data[f_upper_index])) or ((magnitude_data[res_index]) < (magnitude_data[f_lower_index])):
+                # at the moment we are just skipping the peak in that case
                 pass
             else:
                 f_tuple = [freq[f_lower_index], res_fq, freq[f_upper_index]]
@@ -349,60 +357,18 @@ class Fitter:
                 markerson = [f_lower_index,res_index,f_upper_index]
                 plt.loglog(self.data_mag, '-bD', markevery=markerson)
 
-        #TODO: it can happen that there are 0 bands somehow, we need to do exception handling in that case
-        # something like: "there are no frequency bands to fit"
+        try:
+            #spread BW of last circuit; TODO: maybe center the band?
+            strech_factor = 5
+            end_zone_offset_factor = 3
+            # bandwidth_list[-1][0] = max(freq) * (1/strech_factor)
+            bandwidth_list[-1][1] = max(freq) * end_zone_offset_factor
+            bandwidth_list[-1][2] = max(freq) * strech_factor
+            bandwidth_list[-1][0] = mag_minima_pos[-1] #bandwidth_list[-1][1] - (bandwidth_list[-1][2] - bandwidth_list[-1][1])
+            peak_heights[-1] = abs(max(self.z21_data)) * 2
+        except IndexError:
+            self.logger.info("INFO: No resonances found except the main resonance, consider a lower value for the prominence")
 
-        #spread BW of last circuit; TODO: maybe center the band?
-        strech_factor = 5
-        end_zone_offset_factor = 3
-        # bandwidth_list[-1][0] = max(freq) * (1/strech_factor)
-        bandwidth_list[-1][1] = max(freq) * end_zone_offset_factor
-        bandwidth_list[-1][2] = max(freq) * strech_factor
-        bandwidth_list[-1][0] = mag_minima_pos[-1] #bandwidth_list[-1][1] - (bandwidth_list[-1][2] - bandwidth_list[-1][1])
-        peak_heights[-1] = abs(max(self.z21_data)) * 2
-
-
-        # f1 = f_mag_maxima[-2]
-        # f3 = max(freq) * 3
-        # f2 = max(freq) * 1.2
-        # f_tuple = [f1,f2,f3]
-        # bandwidth_list.append(f_tuple)
-        # peak_heights.append(abs(max(self.z21_data)))
-        #
-        #
-        # # #loop to find frequency ranges, copied from payer
-        # number_zones = len(ang_minima_pos)
-        # f_zones_list = []
-        # for num_minimum in range(0, number_zones):
-        #     f1 = ang_minima_pos[num_minimum]
-        #     f3 = max(freq) * 5
-        #     if num_minimum + 1 < number_zones:
-        #         f3 = ang_minima_pos[num_minimum + 1]
-        #
-        #     # find the maxima between two minima
-        #     for num_maximum in range(len(ang_maxima_pos)):
-        #         if f1 < ang_maxima_pos[num_maximum] < f3:
-        #             f_tuple = (f1, ang_maxima_pos[num_maximum], f3)
-        #             f_zones_list.append(f_tuple)
-        #             # #TODO: this is also for testing
-        #             # temp_d = abs(self.data_mag[np.logical_and(freq > f1, freq < f3)])
-        #             # temp_f = freq[np.logical_and(freq > f1, freq < f3)]
-        #             # plt.loglog(temp_f,temp_d)
-        #
-        #             break  # corresponding f2 found
-        # try:
-        #     if ang_minima_pos[-1] > ang_maxima_pos[-1]:
-        #         f_tuple = (ang_minima_pos[-1], max(freq) * 3, f3)
-        #         f_zones_list.append(f_tuple)
-        # # no minima or maxima present - not sure if this works correctly TODO: me neither, but let's assume it works for the moment
-        # except Exception as e:
-        #     if number_zones > 0:  # else base model
-        #         f_tuple = (ang_minima_pos[-1], np.sqrt(max(freq) ** 2 * 3), max(freq) * 6)
-        #         f_zones_list.append(f_tuple)
-        #         print("Warning from frequency zones: {e}".format(e=e))
-        #         pass
-
-        # self.frequency_zones = f_zones_list
         self.peak_heights = peak_heights
         self.bandwidths = bandwidth_list
 
@@ -417,12 +383,24 @@ class Fitter:
         #TODO:also do this for capacitors!!!
         freq = self.frequency_vector
         res_value = self.z21_data[freq == self.f0]
-        bw_value = res_value / np.sqrt(2)
-        f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
-        f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
-        BW = freq[f_upper_index]-freq[f_lower_index]
 
-        R_Fe = (self.f0 * (self.f0*2*np.pi)*self.nominal_value) / BW
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                bw_value = res_value / np.sqrt(2)
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
+                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
+                BW = freq[f_upper_index] - freq[f_lower_index]
+                R_Fe = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
+            case fitterconstants.El.CAPACITOR:
+                bw_value = res_value * np.sqrt(2)
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag > bw_value)))[0][0]
+                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag > bw_value)))[0][0]
+                BW = freq[f_upper_index] - freq[f_lower_index]
+                R_Iso = BW/(self.f0 * (self.f0 * 2 * np.pi)*self.nominal_value)
+
+
+
+
 
         match self.fit_type:
             case fitterconstants.El.INDUCTOR:
@@ -440,10 +418,10 @@ class Fitter:
                 ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
                 self.parameters.add('L', value=ind_ideal, min=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
                                     max=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND)
-                self.parameters.add('R_iso', value=fitterconstants.MAX_R_ISO, min=fitterconstants.MIN_R_ISO, max=fitterconstants.MAX_R_ISO, vary=True)
+                self.parameters.add('R_iso', value=R_Iso, min=fitterconstants.MIN_R_ISO, max=fitterconstants.MAX_R_ISO, vary=True)
                 #main element
-                self.parameters.add('C', value=self.nominal_value, min=self.nominal_value * 0.7,
-                                    max=self.nominal_value * 1.1, vary=False)
+                self.parameters.add('C', value=self.nominal_value, min=self.nominal_value * 0.3333333,
+                                    max=self.nominal_value * 3, vary=True)
             case 3:
                 #TODO: CMCs -> eh scho wissen
                 dummy = 0

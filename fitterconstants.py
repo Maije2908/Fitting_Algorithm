@@ -13,13 +13,14 @@ MAX_ORDER = 15
 MIN_ZONE_OFFSET_FACTOR = 2
 
 #multiplication factor for the parasitic element of the main resonance (C for inductor, L for capacitor)
-MAIN_RES_PARASITIC_LOWER_BOUND = 0.5
-MAIN_RES_PARASITIC_UPPER_BOUND = 2
+MAIN_RES_PARASITIC_LOWER_BOUND = 0.2
+MAIN_RES_PARASITIC_UPPER_BOUND = 5
 #max/min values for the main resonance
 MIN_R_FE = 10
 MAX_R_FE = 1e9
 MIN_R_ISO = 1
 MAX_R_ISO = 1e12
+R_ISO_VALUE = 1e9
 
 #max/min values for the higher order circuits
 RMAX = 1e5 #was 1e4
