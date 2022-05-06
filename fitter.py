@@ -197,6 +197,8 @@ class Fitter:
         self.logger.info("Nominal Resistance not provided, calculated: " + output_dec.to_eng_string())
 
     def get_main_resonance(self):
+        #TODO: this method goes by the phase, it could use some more 'robustness'
+
         freq = self.frequency_vector
 
         #set w0 to 0 in order to have feedback, if the method didn't work
@@ -358,6 +360,7 @@ class Fitter:
                 plt.loglog(self.data_mag, '-bD', markevery=markerson)
 
         try:
+            pass
             #spread BW of last circuit; TODO: maybe center the band?
             strech_factor = 5
             end_zone_offset_factor = 3
