@@ -4,8 +4,7 @@
 # I do not know yet what it will have to contain and how to best handle the data
 # Most of this class will be based on Payer's program
 #NOTE: THE CLASS IN THE FORM THAT IT IS NOW IS NOT ABLE TO MANAGE MULTIPLE FILES!!!!!
-
-
+import copy
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -148,7 +147,7 @@ class Fitter:
 
                 for sample in range(offset, len(freq)):
                     if self.data_ang[sample] == max(self.data_ang[offset:index_ang_zero_crossing]): #TODO: I AM NOT SURE IF THIS WORKS RIGHT!!! HAVE ANOTHER LOOK AT THAT
-                        self.nominal_value = self.data_mag[sample] / 2 / np.pi / freq[sample]
+                        self.nominal_value = self.data_mag[sample] / (2 * np.pi * freq[sample])
                         break
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value)) #TODO: this has to be normalized output to 1e-3/-6/-9 etc
                 self.logger.info("Nominal Inductance not provided, calculated: " + output_dec.to_eng_string())
@@ -229,7 +228,7 @@ class Fitter:
             self.f0 = f0
             #log and print
             output_dec = decimal.Decimal("{value:.3E}".format(value=f0))
-            self.logger.info("Detected f0: "+output_dec.to_eng_string())
+            self.logger.info("Detected f0: "+ output_dec.to_eng_string())
             print("Detected f0: "+output_dec.to_eng_string())
 
         if w0 == 0:
@@ -362,13 +361,11 @@ class Fitter:
         try:
             pass
             #spread BW of last circuit; TODO: maybe center the band?
-            strech_factor = 5
-            end_zone_offset_factor = 3
+            stretch_factor = fitterconstants.BANDWIDTH_STRETCH_LAST_ZONE
             # bandwidth_list[-1][0] = max(freq) * (1/strech_factor)
-            bandwidth_list[-1][1] = max(freq) * end_zone_offset_factor
-            bandwidth_list[-1][2] = max(freq) * strech_factor
-            bandwidth_list[-1][0] = mag_minima_pos[-1] #bandwidth_list[-1][1] - (bandwidth_list[-1][2] - bandwidth_list[-1][1])
-            peak_heights[-1] = abs(max(self.z21_data)) * 2
+            bandwidth_list[-1][2] = bandwidth_list[-1][2] * stretch_factor
+            bandwidth_list[-1][0] = bandwidth_list[-1][0] * stretch_factor
+            #peak_heights[-1] = abs(max(self.z21_data)) * 2
         except IndexError:
             self.logger.info("INFO: No resonances found except the main resonance, consider a lower value for the prominence")
 
@@ -533,45 +530,50 @@ class Fitter:
             # self.parameters.add(L_key,  min=1e-20,      max=L,          expr=expression_string_L    , vary=False)
             # self.parameters.add(R_key,  min=1e-3,       max=1e4,        expr=expression_string_R    , vary=False)
 
-            #just vary the last resonant frequency since all other resonances are well determined
-            #the last "resonance" is not really a resonance but rather the "end of data"
-            if key_number == order:
-                expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                #
-                #vary parameters so that none of them get too small
-                if (1/(w_c**2 * value_cap)) < fitterconstants.MINIMUM_PRECISION:
-                    while (1/(w_c**2 * value_cap)) < fitterconstants.MINIMUM_PRECISION:
-                        value_cap = value_cap/10
-                    value_ind = 1 / (w_c ** 2 * value_cap)
-                elif (1/(w_c**2 * value_ind)) < fitterconstants.MINIMUM_PRECISION:
-                    while (1/(w_c**2 * value_ind)) < fitterconstants.MINIMUM_PRECISION:
-                        value_ind = value_ind/10
-                    value_cap = 1 / (w_c ** 2 * value_ind)
 
-                max_cap = value_cap * 2
-                min_cap = value_cap * 0.5
-                min_ind = value_ind * 2
-                max_ind = value_ind * 0.5
-                expression_string_p = '1/(2*' + str(np.pi) + '*' + BW_key + '*' + C_key + ')'
-                BW_min = b_c*1.04 -b_c/1.04
-                BW_max = (b_u - b_l) * 1.1
+            #TODO: we might still need this block, i am just doing a test VVVVVVVVV
 
+            # #just vary the last resonant frequency since all other resonances are well determined
+            # #the last "resonance" is not really a resonance but rather the "end of data"
+            # if key_number == order:
+            #     expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+            #     #
+            #     #vary parameters so that none of them get too small
+            #     if (1/(w_c**2 * value_cap)) < fitterconstants.MINIMUM_PRECISION:
+            #         while (1/(w_c**2 * value_cap)) < fitterconstants.MINIMUM_PRECISION:
+            #             value_cap = value_cap/10
+            #         value_ind = 1 / (w_c ** 2 * value_cap)
+            #     elif (1/(w_c**2 * value_ind)) < fitterconstants.MINIMUM_PRECISION:
+            #         while (1/(w_c**2 * value_ind)) < fitterconstants.MINIMUM_PRECISION:
+            #             value_ind = value_ind/10
+            #         value_cap = 1 / (w_c ** 2 * value_ind)
+            #
+            #     max_cap = value_cap * 2
+            #     min_cap = value_cap * 0.5
+            #     min_ind = value_ind * 2
+            #     max_ind = value_ind * 0.5
+            #     expression_string_p = '1/(2*' + str(np.pi) + '*' + BW_key + '*' + C_key + ')'
+            #     BW_min = b_c*1.04 -b_c/1.04
+            #     BW_max = (b_u - b_l) * 1.1
+            #
+            #
+            #     self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_max/8, vary=True)
+            #     self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+            #
+            #     self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+            #     self.parameters.add(L_key, min=min_ind, max=max_ind, expr=expression_string_L , vary=True)
+            #     self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, expr=expression_string_p, vary=True)
+            # else:
 
-                self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_max/8, vary=True)
-                self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+            self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
+            self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, value=r_value,vary=True)
+            self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
 
-                self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-                self.parameters.add(L_key, min=min_ind, max=max_ind, expr=expression_string_L , vary=True)
-                self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, expr=expression_string_p, vary=True)
-            else:
+            self.parameters.add(C_key, min=min_cap, max=max_cap, expr=expression_string_C, vary=False)
+            self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=False)
 
-                self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
-                self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, value=r_value,vary=True)
-                self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
-                self.parameters.add(C_key, min=min_cap, max=max_cap, expr=expression_string_C, vary=False)
-                self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=False)
-                # self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-                # self.parameters.add(L_key, min=min_ind, max=max_ind, value=value_ind, vary=True)
+            # self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+            # self.parameters.add(L_key, min=min_ind, max=max_ind, value=value_ind, vary=True)
 
             # self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
             # self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
@@ -644,7 +646,7 @@ class Fitter:
             case fcnmode.FIT:
                 diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
                 #diff = (np.real(data) - np.real(Z))**2 + (np.imag(data) - np.imag(Z))**2
-                return abs(diff)
+                return (diff)
             case fcnmode.OUTPUT:
                 return Z
 
@@ -677,11 +679,32 @@ class Fitter:
         #
         # self.overwrite_main_resonance_parameters()
 
+        #TODO: work on this.... i would really like to fit the high order resonances seperately because if that is done
+        # the results look very good, compared to doing a full fit... however that does not work too well for the main
+        # resonance, so if we fit the high orders (good results) and then the main resonance, we get unusable, erratic
+        # results, and if we fit everything in one the results are bad (but somehow making sense)
 
+        fit_main_resonance = 0
+        freq_for_fit = freq[freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        data_for_fit = fit_data[freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+
+        freq_for_fit = freq
+        data_for_fit = fit_data
 
         self.out = minimize(self.calculate_Z, self.parameters,
-                       args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
-                       method='powell', options={'xtol': 1e-18, 'disp': True})
+                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        #
+        #
+        # fit_main_resonance = 1
+        # self.out = minimize(self.calculate_Z, self.parameters,
+        #                     args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
+        #                     method='powell', options={'xtol': 1e-18, 'disp': True})
+        #
+        # self.overwrite_main_resonance_parameters()
+        # fit_main_resonance = 0
+
 
         #TODO: here we have the model -> do some output here
 

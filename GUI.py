@@ -269,11 +269,9 @@ class GUI:
             # parse specs to fitter
             self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
 
-            #TODO: get_main_res can also raise an exception
             self.fitter.get_main_resonance()
             self.fitter.get_resonances()
 
-            # TODO: handle errors that are ouput by the nominal parameters method
             self.fitter.create_nominal_parameters()
             #self.fitter.create_elements()
             self.fitter.start_fit()

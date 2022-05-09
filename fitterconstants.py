@@ -27,12 +27,14 @@ RMAX = 1e5 #was 1e4
 RMIN = 1e-3
 LMIN = 1e-20
 LOG_FACTOR = 1.04 #multiplication factor for the min bandwidth #OBSOLETE
-BW_MIN_FACTOR = 0.2
-BW_MAX_FACTOR = 1.5
+BW_MIN_FACTOR = 0.8
+BW_MAX_FACTOR = 1.25
 MIN_CAP = 1e-20 #minimm capacitor
 MAX_CAP_FACTOR = 1e5 #was 1e3
-MIN_W_FACTOR = 0.98
-MAX_W_FACTOR = 1.02
+MIN_W_FACTOR = 0.99
+MAX_W_FACTOR = 1.01
+
+BANDWIDTH_STRETCH_LAST_ZONE = 5 # factor to stretch the bandwidth of the last frequency zone
 
 #parameters for the smoothing filter
 SAVGOL_WIN_LENGTH = 52 #window length(samples) default:52
