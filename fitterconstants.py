@@ -10,17 +10,17 @@ MAX_ORDER = 15
 
 # offset factor for the first resonance detected after the main peak (min_f = f0 * OFFSET_FACTOR)
 # if the first resonance after the main peak is not fitted, consider setting this to a lower value
-MIN_ZONE_OFFSET_FACTOR = 2
+MIN_ZONE_OFFSET_FACTOR = 1
 
 #multiplication factor for the parasitic element of the main resonance (C for inductor, L for capacitor)
-MAIN_RES_PARASITIC_LOWER_BOUND = 0.2
-MAIN_RES_PARASITIC_UPPER_BOUND = 5
+MAIN_RES_PARASITIC_LOWER_BOUND = 0.5
+MAIN_RES_PARASITIC_UPPER_BOUND = 2
 #max/min values for the main resonance
 MIN_R_FE = 10
 MAX_R_FE = 1e9
-MIN_R_ISO = 1
+MIN_R_ISO = 1e5
 MAX_R_ISO = 1e12
-R_ISO_VALUE = 1e9
+R_ISO_VALUE = 1e15
 
 #max/min values for the higher order circuits
 RMAX = 1e5 #was 1e4

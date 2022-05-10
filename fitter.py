@@ -174,11 +174,14 @@ class Fitter:
                         self.nominal_value = nominal_value
                         test_values.append(self.nominal_value)
                         # break
-                test_values_gradient = abs(np.gradient(test_values, 2))
-                # it takes the first values instead of the "linear" range. need to fix this. possibly by taking the longest min gradient
-                #TODO: i dont have a single clue how this works for capacitors
-                self.nominal_value = test_values[np.argmin(np.amin(test_values_gradient))]
-                output_dec = decimal.Decimal("{value:.3E}".format(value=nominal_value))
+                try:
+                    test_values_gradient = abs(np.gradient(test_values, 2))
+                    # it takes the first values instead of the "linear" range. need to fix this. possibly by taking the longest min gradient
+                    #TODO: i dont have a single clue how this works for capacitors EDIT: if we can't calculate gradient, just don't do it i guess
+                    self.nominal_value = test_values[np.argmin(np.amin(test_values_gradient))]
+                except Exception:
+                    pass
+                output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value))
                 self.logger.info("Nominal Capacitance not provided, calculated: " + output_dec.to_eng_string())
 
             case 3:
@@ -189,7 +192,7 @@ class Fitter:
         return self.nominal_value
 
     def calculate_nominal_Rs(self):
-        R_s_input = min(self.data_mag)
+        R_s_input = min(abs(self.z21_data))
         self.parasitive_resistance = R_s_input
         #log
         output_dec = decimal.Decimal("{value:.3E}".format(value=R_s_input))
@@ -374,7 +377,7 @@ class Fitter:
 
     def create_nominal_parameters(self):
 
-        self.parameters.add('R_s', value=self.parasitive_resistance, min=1e-20, vary=False)
+        self.parameters.add('R_s', value=self.parasitive_resistance, min=self.parasitive_resistance*0.9,max=self.parasitive_resistance*1.111, vary=False)
 
 
 
@@ -396,7 +399,7 @@ class Fitter:
                 f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag > bw_value)))[0][0]
                 f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag > bw_value)))[0][0]
                 BW = freq[f_upper_index] - freq[f_lower_index]
-                R_Iso = BW/(self.f0 * (self.f0 * 2 * np.pi)*self.nominal_value)
+                R_Iso = fitterconstants.R_ISO_VALUE#BW/(self.f0 * (self.f0 * 2 * np.pi)*self.nominal_value)
 
 
 
@@ -417,11 +420,11 @@ class Fitter:
                 # calculate "perfect" inductor for this resonance
                 ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
                 self.parameters.add('L', value=ind_ideal, min=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
-                                    max=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND)
+                                    max=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary = False)
                 self.parameters.add('R_iso', value=R_Iso, min=fitterconstants.MIN_R_ISO, max=fitterconstants.MAX_R_ISO, vary=True)
                 #main element
                 self.parameters.add('C', value=self.nominal_value, min=self.nominal_value * 0.3333333,
-                                    max=self.nominal_value * 3, vary=True)
+                                    max=self.nominal_value * 3, vary=False)
             case 3:
                 #TODO: CMCs -> eh scho wissen
                 dummy = 0
@@ -623,6 +626,9 @@ class Fitter:
             case El.CAPACITOR: #CAPACITOR
                 Z_main = (1 / ((1 / R_iso) + (1 / XC))) + XL + R_s
 
+                #trying a different model here
+                # Z_main = 1 / ( (1 / R_iso) + (1 / (XC + R_s + XL)) )
+
         Z = Z_main
 
         for actual in range(1, order + 1):
@@ -636,8 +642,11 @@ class Fitter:
             Z_C   = 1 / (1j * w * C_act)
             Z_L   = (1j * w * L_act)
             Z_R   = R_act
-
-            Z    += 1 / ( (1/Z_C) + (1/Z_L) + (1/Z_R) )
+            match self.fit_type:
+                case fitterconstants.El.INDUCTOR:
+                    Z    += 1 / ( (1/Z_C) + (1/Z_L) + (1/Z_R) )
+                case fitterconstants.El.CAPACITOR:
+                    Z = 1 / ( 1/Z + 1/(Z_R + Z_L + Z_C))
 
         # diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
         # return abs(diff)
@@ -646,7 +655,7 @@ class Fitter:
             case fcnmode.FIT:
                 diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
                 #diff = (np.real(data) - np.real(Z))**2 + (np.imag(data) - np.imag(Z))**2
-                return (diff)
+                return abs(diff)
             case fcnmode.OUTPUT:
                 return Z
 
@@ -657,53 +666,33 @@ class Fitter:
         fit_data = self.z21_data
         self.create_elements()
         fit_order = self.order
-        fit_main_resonance = 0
 
-        # mode = fitterconstants.fcnmode.OUTPUT
-        #
-        # model_data_before_fit = self.calculate_Z(self.parameters, freq, [2], self.order, fit_main_resonance, mode)
-
-        # self.fit_end_zone()
-
+        #set mode flag for the method and tell the method to only fit the main resonance
+        #also crop the data to not fit higher order resonances in this step
         mode = fitterconstants.fcnmode.FIT
-
-        # fit_main_resonance = 1
-        #
-        # self.out = minimize(self.calculate_Z, self.parameters,
-        #                args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
-        #                method='powell', options={'xtol': 1e-18, 'disp': True})
-        #
-        # test_model_data = self.calculate_Z(self.out.params, freq, [2], self.order, fit_main_resonance, mode)
-        # plt.loglog(self.frequency_vector, abs(fit_data))
-        # plt.loglog(self.frequency_vector, abs(test_model_data))
-        #
-        # self.overwrite_main_resonance_parameters()
-
-        #TODO: work on this.... i would really like to fit the high order resonances seperately because if that is done
-        # the results look very good, compared to doing a full fit... however that does not work too well for the main
-        # resonance, so if we fit the high orders (good results) and then the main resonance, we get unusable, erratic
-        # results, and if we fit everything in one the results are bad (but somehow making sense)
-
-        fit_main_resonance = 0
-        freq_for_fit = freq[freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
-        data_for_fit = fit_data[freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
-
-        freq_for_fit = freq
-        data_for_fit = fit_data
-
+        fit_main_resonance = 1
+        freq_for_fit = freq[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        data_for_fit = fit_data[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        # call the minimizer and pass the arguments
         self.out = minimize(self.calculate_Z, self.parameters,
                             args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
+        # overwrite the parameters stored in self.parameters to match the output of the minimizer
+        self.overwrite_main_resonance_parameters()
+        #we only need to fit the higher order circuits if they exist, otherwise the minimize function can't change
+        #parameters and cries: "too many fcn calls"
+        if self.order:
+            fit_main_resonance = 0
 
-        #
-        #
-        # fit_main_resonance = 1
-        # self.out = minimize(self.calculate_Z, self.parameters,
-        #                     args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
-        #                     method='powell', options={'xtol': 1e-18, 'disp': True})
-        #
-        # self.overwrite_main_resonance_parameters()
-        # fit_main_resonance = 0
+            freq_for_fit = freq[freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+            data_for_fit = fit_data[freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+
+            self.out = minimize(self.calculate_Z, self.parameters,
+                                args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                                method='powell', options={'xtol': 1e-18, 'disp': True})
+
+
+
 
 
         #TODO: here we have the model -> do some output here
@@ -774,11 +763,32 @@ class Fitter:
         # plt.savefig(file_title)
         # plt.close(fig)
 
+    def overwrite_main_resonance_parameters(self):
+        # method to overwrite the nominal parameters with the parameters obtained by modeling the main resonance circuit
 
+        self.parameters['R_s'].value = self.out.params['R_s'].value
+        self.parameters['R_s'].vary = False
 
+        match self.fit_type:
+            case 1:
+                self.parameters['L'].value = self.out.params['L'].value
+                self.parameters['R_Fe'].value = self.out.params['R_Fe'].value
+                self.parameters['C'].value = self.out.params['C'].value
+                self.parameters['L'].vary = False
+                self.parameters['R_Fe'].vary = False
+                self.parameters['C'].vary = False
+            case 2:
+                self.parameters['L'].value = self.out.params['L'].value
+                self.parameters['R_iso'].value = self.out.params['R_iso'].value
+                self.parameters['C'].value = self.out.params['C'].value
+                self.parameters['L'].vary = False
+                self.parameters['R_iso'].vary = False
+                self.parameters['C'].vary = False
+            case 3:
+                # TODO: CMCs -> eh scho wissen
+                dummy = 0
 
-
-
+        return 0
 
     #################################### V OBSOLETE V###################################################################
 
@@ -821,41 +831,6 @@ class Fitter:
         plt.show()
 
 
-    def overwrite_main_resonance_parameters(self):
-        #method to overwrite the nominal parameters with the parameters obtained by modeling the main resonance circuit
-        #the method is essentially the same as the "create nominal parameters"
-
-        self.parameters.add('R_s', value=self.out.params['R_s'].value, min=1e-20, vary= False)
-
-        #unfortuinately we still need the limits for the parameters
-        # max/min values for the isolation/iron resistance
-        min_R_Fe = 10
-        max_R_Fe = 1e9
-        min_R_iso = 1
-        max_R_iso = 1e12
-
-        #note that it might not be necessary to re-set parameters that have the "vary" boolean set to "false"
-        #but it might be better readable like this
-        #TODO: The "vary" bools are all set to false after we have fit the main resonance, so there might not be the need
-        #TODO: to do this part in such a verbose style -> i.e. make the code slimmer here
-        match self.fit_type:
-            case 1:
-                cap_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
-                self.parameters.add('C', value=self.out.params['C'].value, min=cap_ideal * 0.8, max=cap_ideal* 1, vary=False)
-                self.parameters.add('R_Fe', value=self.out.params['R_Fe'].value, min=min_R_Fe, max=max_R_Fe, vary=False)
-                # main element
-                self.parameters.add('L', value=self.out.params['L'].value, min=self.nominal_value * 0.9, max=self.nominal_value * 1.1, vary=False)
-            case 2:
-                ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
-                self.parameters.add('L', value=self.out.params['L'].value, min=ind_ideal * 0.8, max=ind_ideal * 1)
-                self.parameters.add('R_iso', value=self.out.params['R_iso'].value, min=min_R_iso, max=max_R_iso, vary=False)
-                # main element
-                self.parameters.add('C', self.out.params['C'].value, min=self.nominal_value * 0.7, max=self.nominal_value * 1.1, vary=False)
-            case 3:
-                # TODO: CMCs -> eh scho wissen
-                dummy = 0
-
-        return 0
 
 
     def test_fit_main_res(self):
