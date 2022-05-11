@@ -206,6 +206,8 @@ class GUI:
 
         self.logger.info("----------Run----------\n")
 
+        main_element_list = []
+
         #get values from the entry boxes
         passive_nom = self.entry_to_float(self.entry_nominal_value.get())
         res         = self.entry_to_float(self.entry_resistance.get())
@@ -241,6 +243,7 @@ class GUI:
             #write exception to log
             self.logger.error(str(e) + '\n')
             #TODO: maybe do some robust error handling?
+            # does the rest of the method get invoked here, after the exception is raised?
             raise
 
 
@@ -268,14 +271,28 @@ class GUI:
 
             # parse specs to fitter
             self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
-
+            # invoke methods for data preprocessing
             self.fitter.get_main_resonance()
             self.fitter.get_resonances()
-
             self.fitter.create_nominal_parameters()
-            #self.fitter.create_elements()
-            self.fitter.start_fit()
+            #start the fit for the first file
+            self.fitter.start_fit_file_1()
 
+            #fit for all other files
+            for file in self.iohandler.files[1:]:
+                self.fitter.set_file(file)
+                match shunt_series:
+                    case config.SHUNT_THROUGH:
+                        self.fitter.calc_shunt_thru(config.Z0)
+                    case config.SERIES_THROUGH:
+                        self.fitter.calc_series_thru(config.Z0)
+                self.fitter.smooth_data()
+                self.fitter.get_main_resonance()
+                self.fitter.start_fit_file_n()
+
+
+
+            #generate output
             path_out = self.selected_s2p_files[0]
             self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out, '')
 
@@ -284,8 +301,8 @@ class GUI:
             self.logger.error("ERROR: An Exception occurred during execution:")
             self.logger.error(str(e) + '\n')
 
-
         finally:
+            plt.show()
             self.fitter = None
 
         return 0

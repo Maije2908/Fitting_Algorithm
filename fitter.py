@@ -435,11 +435,13 @@ class Fitter:
 
         #if we got too many frequency zones -> restrict fit to max order
         #else get order from frequency zones and write found order to class
-        if self.max_order > len(self.bandwidths):
+        if self.max_order >= len(self.bandwidths):
             order = len(self.bandwidths)
             self.order = len(self.bandwidths)
         else:
             order = self.max_order
+            self.order = order
+            self.logger.info("Info: more resonances detected than maximum order permits, set order to {value}".format(value=order))
             #TODO: and also throw and except please
             #TODO: some methods are not robust enough for this fit maybe?
 
@@ -660,7 +662,7 @@ class Fitter:
                 return Z
 
 
-    def start_fit(self):
+    def start_fit_file_1(self):
 
         freq = self.frequency_vector
         fit_data = self.z21_data
@@ -705,6 +707,8 @@ class Fitter:
         model_data = self.calculate_Z(self.out.params,freq,[2],self.order,fit_main_resonance,mode)
 
         self.model_data = model_data
+        #overwrite self.parameters, so that the fit for the next file works
+        self.parameters = self.out.params
 
 
 
@@ -712,13 +716,79 @@ class Fitter:
         plt.figure()
         plt.loglog(self.frequency_vector, abs(fit_data))
         plt.loglog(freq, abs(model_data))
-        plt.show()
+        # plt.show()
 
         # self.do_output()
 
 
 
         return 0
+
+    def start_fit_file_n(self):
+        #fix parameters in place, so the high order resonances are not affected by the fitting process of the current/
+        # voltage dependent main element
+        self.fix_parameters()
+        #calculate ideal value for the dependent element, so we are as close as possible to the detected resonance
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                L_ideal = 1 / ((self.f0 * 2 * np.pi)**2 * self.parameters['C'].value)
+                self.parameters['L'].value = L_ideal
+                self.parameters['L'].vary = True
+                self.parameters['L'].min = L_ideal*0.8
+                self.parameters['L'].max = L_ideal*1.25
+                self.parameters['R_Fe'].vary = True
+            case fitterconstants.El.CAPACITOR:
+                C_ideal = 1 / ((self.f0 * 2 * np.pi) * self.parameters['L'].value)
+                self.parameters['C'].value = C_ideal
+                self.parameters['C'].vary = True
+                self.parameters['C'].min = C_ideal * 0.8
+                self.parameters['C'].max = C_ideal * 1.25
+
+        freq = self.frequency_vector
+        fit_data = self.z21_data
+        fit_order = 0
+        mode = fitterconstants.fcnmode.FIT
+        fit_main_resonance = 1
+        freq_for_fit = freq[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        data_for_fit = fit_data[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        # call the minimizer and pass the arguments
+        self.out = minimize(self.calculate_Z, self.parameters,
+                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        self.logger.info("debug: calculated main element{value:.3E}".format(value = self.parameters['L'].value))
+
+        model_data = self.calculate_Z(self.out.params, freq,2,self.order,0,fitterconstants.fcnmode.OUTPUT)
+        plt.figure()
+        plt.loglog(self.frequency_vector, abs(fit_data))
+        plt.loglog(freq, abs(model_data))
+        # plt.show()
+
+    def fix_parameters(self):
+        #method to fix the parameters in place, except the nominal value, which varies with different current/voltage
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                self.parameters['C'].vary = False
+                self.parameters['R_Fe'].vary = False
+                self.parameters['R_s'].vary = False
+            case fitterconstants.El.CAPACITOR:
+                self.parameters['L'].vary = False
+                self.parameters['R_iso'].vary = False
+                self.parameters['R_s'].vary = False
+
+        for key_number in range(1, self.order + 1):
+            #create keys
+            C_key   = "C%s" % key_number
+            L_key   = "L%s" % key_number
+            R_key   = "R%s" % key_number
+            w_key   = "w%s" % key_number
+            BW_key  = "BW%s" % key_number
+            self.parameters[C_key].vary = False
+            self.parameters[L_key].vary = False
+            self.parameters[R_key].vary = False
+            self.parameters[w_key].vary = False
+            self.parameters[BW_key].vary = False
+
 
     def do_output(self):
 
