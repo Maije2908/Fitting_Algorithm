@@ -383,7 +383,7 @@ class Fitter:
 
 
         #get bandwidth
-        #TODO:also do this for capacitors!!!
+
         freq = self.frequency_vector
         res_value = self.z21_data[freq == self.f0]
 
@@ -717,6 +717,8 @@ class Fitter:
         plt.loglog(self.frequency_vector, abs(fit_data))
         plt.loglog(freq, abs(model_data))
         # plt.show()
+        manager = plt.get_current_fig_manager()
+        manager.full_screen_toggle()
 
         # self.do_output()
 
@@ -728,6 +730,9 @@ class Fitter:
         #fix parameters in place, so the high order resonances are not affected by the fitting process of the current/
         # voltage dependent main element
         self.fix_parameters()
+        freq = self.frequency_vector
+        res_value = self.z21_data[freq == self.f0]
+
         #calculate ideal value for the dependent element, so we are as close as possible to the detected resonance
         match self.fit_type:
             case fitterconstants.El.INDUCTOR:
@@ -736,7 +741,21 @@ class Fitter:
                 self.parameters['L'].vary = True
                 self.parameters['L'].min = L_ideal*0.8
                 self.parameters['L'].max = L_ideal*1.25
+                #
+                bw_value = res_value / np.sqrt(2)
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
+                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
+                BW = freq[f_upper_index] - freq[f_lower_index]
+                R_Fe = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
+
                 self.parameters['R_Fe'].vary = True
+
+                self.parameters['R_Fe'].value = R_Fe
+                self.parameters['R_Fe'].min = R_Fe * 0.8
+                self.parameters['R_Fe'].max = R_Fe * 1.25
+                #
+                # self.parameters['R_s'].vary = True
+
             case fitterconstants.El.CAPACITOR:
                 C_ideal = 1 / ((self.f0 * 2 * np.pi) * self.parameters['L'].value)
                 self.parameters['C'].value = C_ideal
@@ -762,6 +781,8 @@ class Fitter:
         plt.figure()
         plt.loglog(self.frequency_vector, abs(fit_data))
         plt.loglog(freq, abs(model_data))
+        manager = plt.get_current_fig_manager()
+        manager.full_screen_toggle()
         # plt.show()
 
     def fix_parameters(self):
