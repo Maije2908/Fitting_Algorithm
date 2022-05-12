@@ -10,7 +10,7 @@ MAX_ORDER = 15
 
 # offset factor for the first resonance detected after the main peak (min_f = f0 * OFFSET_FACTOR)
 # if the first resonance after the main peak is not fitted, consider setting this to a lower value
-MIN_ZONE_OFFSET_FACTOR = 1
+MIN_ZONE_OFFSET_FACTOR = 1.5
 
 #multiplication factor for the parasitic element of the main resonance (C for inductor, L for capacitor)
 MAIN_RES_PARASITIC_LOWER_BOUND = 0.5
@@ -34,7 +34,7 @@ MAX_CAP_FACTOR = 1e5 #was 1e3
 MIN_W_FACTOR = 0.99
 MAX_W_FACTOR = 1.01
 
-BANDWIDTH_STRETCH_LAST_ZONE = 5 # factor to stretch the bandwidth of the last frequency zone
+BANDWIDTH_STRETCH_LAST_ZONE = 1 # factor to stretch the bandwidth of the last frequency zone
 
 #parameters for the smoothing filter
 SAVGOL_WIN_LENGTH = 52 #window length(samples) default:52
@@ -49,3 +49,7 @@ DEFAULT_OFFSET_PEAK = 20 #samples; this specifies the default offset for a reson
 class fcnmode:
     FIT: int = 1
     OUTPUT: int = 2
+
+class multiple_fit:
+    FULL_FIT = 1
+    MAIN_RES_FIT = 2

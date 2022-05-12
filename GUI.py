@@ -206,7 +206,7 @@ class GUI:
 
         self.logger.info("----------Run----------\n")
 
-        main_element_list = []
+        parameter_list = []
 
         #get values from the entry boxes
         passive_nom = self.entry_to_float(self.entry_nominal_value.get())
@@ -265,7 +265,7 @@ class GUI:
                     self.fitter.calc_series_thru(config.Z0)
                 case _:
                     #This should NEVER be invoked (if so, there is something SERIOUSLY wrong with the radiobuttons)
-                    raise Exception("Could not determine Shunt/Series Through, please re-select and try again")
+                    raise Exception("Could not determine Shunt/Series through, please re-select and try again")
 
             self.fitter.smooth_data()
 
@@ -277,23 +277,30 @@ class GUI:
             self.fitter.create_nominal_parameters()
             #start the fit for the first file
             self.fitter.start_fit_file_1()
+            parameter_list.append(self.fitter.out.params)
 
             #fit for all other files
             for file in self.iohandler.files[1:]:
+
                 self.fitter.set_file(file)
                 match shunt_series:
                     case config.SHUNT_THROUGH:
                         self.fitter.calc_shunt_thru(config.Z0)
                     case config.SERIES_THROUGH:
                         self.fitter.calc_series_thru(config.Z0)
+
                 self.fitter.smooth_data()
                 self.fitter.get_main_resonance()
-                self.fitter.start_fit_file_n()
 
+                n_file_fit_type = fitterconstants.multiple_fit.FULL_FIT
+
+                self.fitter.start_fit_file_n(n_file_fit_type)
+                parameter_list.append(self.fitter.out.params)
 
 
             #generate output
             path_out = self.selected_s2p_files[0]
+            self.iohandler.export_parameters(parameter_list, self.fitter.order, fit_type, path_out)
             self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out, '')
 
 

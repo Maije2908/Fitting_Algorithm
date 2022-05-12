@@ -5,6 +5,7 @@
 
 from sNpfile import *
 import skrf as rf
+import pandas as pd
 import skidl
 from fitter import *
 import fitterconstants
@@ -98,6 +99,44 @@ class IOhandler:
         f2.write(lib)
 
         f2.close()
+
+
+    def export_parameters(self, param_array, order, fit_type, path):
+
+        out_dict = {}
+
+        for key  in range(1,order+1):
+            C_key = "C%s" % key
+            L_key = "L%s" % key
+            R_key = "R%s" % key
+            w_key = "w%s" % key
+            BW_key = "BW%s" % key
+
+            clist = []
+            llist = []
+            rlist = []
+            wlist = []
+            bwlist = []
+
+            for param_set in param_array:
+                clist.append(param_set[C_key].value)
+                llist.append(param_set[L_key].value)
+                rlist.append(param_set[R_key].value)
+                wlist.append(param_set[w_key].value)
+                bwlist.append(param_set[BW_key].value)
+
+            out_dict[C_key] = clist
+            out_dict[L_key] = llist
+            out_dict[R_key] = rlist
+            out_dict[w_key] = wlist
+            out_dict[BW_key] = bwlist
+
+        data_out = pd.DataFrame(out_dict)
+
+        file_name = path.split("\\")[-1][:-4]
+        out_path = '\\'.join(path.split("\\")[:-1])
+        data_out.to_excel(out_path + file_name + '.xlsx')
+
 
 
 

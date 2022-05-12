@@ -140,7 +140,7 @@ class Fitter:
                 if index_ang_zero_crossing <= offset:
                     raise Exception("Error: the Phase of the dataset seems to be bad, consider cropping the data")
 
-                if max(self.data_ang[offset:index_ang_zero_crossing]) < 88:
+                if max(self.data_ang[offset:index_ang_zero_crossing]) < 85:
                     #if we can't detect the nominal value raise exception
                     raise Exception("Error: Inductive range not detected (max phase = {value}°).\n"
                                     "Please specify nominal inductance.".format(value=np.round(max(self.data_ang), 1)))
@@ -163,7 +163,7 @@ class Fitter:
                 if index_ang_zero_crossing <= offset:
                     raise Exception("ERROR: the Phase of the dataset seems to be bad, consider cropping the data")
 
-                if min(self.data_ang[offset:index_ang_zero_crossing]) > -88:
+                if min(self.data_ang[offset:index_ang_zero_crossing]) > -85:
                     raise Exception("ERROR: Capacitive range not detected (min phase = {value}°).\n"
                                     "Please specify nominal capacitance.".format(value=np.round(min(self.data_ang), 1)))
 
@@ -240,13 +240,14 @@ class Fitter:
 
     def get_resonances(self): #TODO: tidy up this whole method :/
 
-        min_prominence_phase = fitterconstants.PROMINENCE_DEFAULT
-        prominence_mag = 0.01
         R_s = self.parasitive_resistance
         freq = self.frequency_vector
-        prominence_phase = min(min_prominence_phase, float(self.prominence))
+        #create one figure for the resonance plots
+        plt.figure()
+
         #TODO: maybe delete this(is for testing)
-        prominence_mag = prominence_phase
+        prominence_mag = self.prominence
+        prominence_phase = self.prominence
 
         # in order to use the same methods for capacitors as we do for inductors, we simply flip the dataset, so we still
         # detect "peaks" although there are pits
@@ -516,6 +517,7 @@ class Fitter:
             #testing new expression strings for L and C dependent on Q-factor
             expression_string_C = '(' + w_key + '/ (2*' + str(np.pi) + '))' + '/' + '(' + BW_key + '*' + w_key+ '*' + R_key + ')'
             expression_string_L = '(' + BW_key + '*'+ R_key + ')' +'/ ((' + w_key + '/ (2*' + str(np.pi) + ')) *' + w_key + ')'
+            expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
 
             value_cap = (w_c / (2 * np.pi)) / (BW_value * w_c * r_value)
             value_ind = (BW_value * r_value) / ( (w_c / (2 * np.pi)) * w_c)
@@ -726,12 +728,45 @@ class Fitter:
 
         return 0
 
-    def start_fit_file_n(self):
+    def start_fit_file_n(self, fitting_mode):
         #fix parameters in place, so the high order resonances are not affected by the fitting process of the current/
         # voltage dependent main element
-        self.fix_parameters()
+
         freq = self.frequency_vector
         res_value = self.z21_data[freq == self.f0]
+
+        #determine wether to perform a full fit (i.e. fit all parameters) or if only the main resonance should be fit
+        match fitting_mode:
+            case fitterconstants.multiple_fit.MAIN_RES_FIT:
+                self.fix_parameters()
+                fit_main_resonance = 1
+            case fitterconstants.multiple_fit.FULL_FIT:
+                #if we want to perform a full fit, we unfortunately have to remake the parameters, without loosing the
+                #value for C though (R_s is stored as instance variable anyways)
+                match self.fit_type:
+                    case fitterconstants.El.INDUCTOR:
+                        C_val = self.parameters['C'].value
+                        #clear and re-initiate parameters
+                        self.parameters = Parameters()
+                        self.create_nominal_parameters()
+                        self.get_resonances()
+                        self.create_elements()
+                        #write back value for C and keep it in place
+                        self.parameters['C'].value = C_val
+                        self.parameters['C'].vary = False
+                    case fitterconstants.El.CAPACITOR:
+                        L_val = self.parameters['L'].value
+                        # clear and re-initiate parameters
+                        self.parameters = Parameters()
+                        self.create_nominal_parameters()
+                        self.get_resonances()
+                        self.create_elements()
+                        # write back value for C and keep it in place
+                        self.parameters['L'].value = L_val
+                        self.parameters['L'].vary = False
+                fit_main_resonance = 0
+
+
 
         #calculate ideal value for the dependent element, so we are as close as possible to the detected resonance
         match self.fit_type:
@@ -765,11 +800,12 @@ class Fitter:
 
         freq = self.frequency_vector
         fit_data = self.z21_data
-        fit_order = 0
+
         mode = fitterconstants.fcnmode.FIT
-        fit_main_resonance = 1
-        freq_for_fit = freq[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
-        data_for_fit = fit_data[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        # if only main res fit -> order = 0; fit_main_res = 1
+        fit_order = self.order
+        freq_for_fit = freq#[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        data_for_fit = fit_data#[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
         # call the minimizer and pass the arguments
         self.out = minimize(self.calculate_Z, self.parameters,
                             args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
@@ -783,6 +819,7 @@ class Fitter:
         plt.loglog(freq, abs(model_data))
         manager = plt.get_current_fig_manager()
         manager.full_screen_toggle()
+        self.out.params.pretty_print()
         # plt.show()
 
     def fix_parameters(self):
