@@ -40,6 +40,11 @@ class GUI:
         self.iohandler = iohandler_instance
         self.fitter = None
         self.logger = None
+        # variables for the file list
+        self.filelist_frame = None
+        self.filename_label = []
+        self.filename_entry = []
+        self.ref_file =None
 
         # Window config
         self.root: tk.Tk = tk.Tk()
@@ -61,6 +66,7 @@ class GUI:
         self.create_run_button()
         self.create_log_window()
         self.create_shunt_series_radio_button()
+        self.create_filelist_frame()
         # self.create_file_list()
 
     def create_drop_down(self):
@@ -141,11 +147,6 @@ class GUI:
         browse_button.config(font=config.ENTRY_FONT)
         browse_button.grid(column=1, row=6, sticky=tk.W, **config.BUTTON_RIGHT_PADDING)
 
-    def create_file_list(self):
-        self.file_listbox = tk.Listbox(self.root)
-        self.file_listbox.config(font=config.ENTRY_FONT)
-        self.file_listbox.grid(column=3, row=0, rowspan=4, sticky=tk.W, **config.ENTRY_PADDING)
-
     def create_log_window(self):
         self.st = scrolledtext.ScrolledText(self.root, state='disabled')#, width=config.LOG_WIDTH,  height=config.LOG_HEIGHT)
         self.st.configure(font='TkFixedFont')
@@ -156,14 +157,52 @@ class GUI:
         self.logger.addHandler(self.texthndl)
         self.logger.setLevel(logging.INFO)
 
+    def create_filelist_frame (self):
+        self.filelist_frame = tk.LabelFrame(self.root, text = 'Files')
+        self.filelist_frame.grid(column = 4, row = 1, rowspan = 10, columnspan=2, sticky=tk.NW, **config.SPEC_PADDING)
+        # create headings for the columns
+        ref_lbl = tk.Label(self.filelist_frame, text='Reference File?')
+        name_lbl = tk.Label(self.filelist_frame, text='Filename')
+        cond_lbl = tk.Label(self.filelist_frame, text='Current/Voltage')
+        ref_lbl.grid(column=0,row=0)
+        name_lbl.grid(column=1,row=0)
+        cond_lbl.grid(column=2,row=0)
+        #create an integer variable for the radiobuttons in order to select the reference file
+        self.ref_file = tk.IntVar()
+
+    def get_file_current_voltage_values(self):
+
+        file_current_voltage_list = []
+
+        for entry in self.filename_entry:
+            file_current_voltage_list.append(self.entry_to_float(entry.get()))
+
+        return file_current_voltage_list
 
 
-    def insert_file_to_list(self, file):
-        checkboxvalue = tk.BooleanVar()
-        checkbox_to_insert = tk.Checkbutton(self.root,text = "Helloworld", variable=checkboxvalue)
+    def update_file_list(self):
+        rownumber = len(self.filename_label) + 1
+        vcmd = (self.root.register(self.entry_number_callback), "%P")
 
-        # self.file_listbox.insert(tk.END,checkbox_to_insert)
+        for file in self.iohandler.files:
 
+            #create a label for the filename
+            label_name = file.name
+            label = tk.Label(self.filelist_frame, text= label_name)
+            entry = tk.Entry(self.filelist_frame, width = 5, validate='all', validatecommand=(vcmd))
+            label.grid(column=1, row = rownumber, sticky=tk.NW, **config.SPEC_PADDING)
+            entry.grid(column=2, row = rownumber, sticky=tk.NSEW, **config.SPEC_PADDING)
+            #create a button for the selection of the reference file
+            r_button = tk.Radiobutton(self.filelist_frame, variable=self.ref_file,value = rownumber-1)
+            r_button.grid(column=0, row=rownumber)
+
+            rownumber += 1
+            self.filename_entry.append(entry)
+            self.filename_label.append(label)
+
+    def destroy_list(self):
+        for label in self.filename_label:
+            label.destroy()
 
 
 
@@ -196,13 +235,14 @@ class GUI:
             self.logger.error(str(e))
 
         #insert the file to the listbox here(TODO: not functional yet)
-        self.insert_file_to_list(2)
+        self.update_file_list()
 
         return 0
 
 
     #method to run the fitting algorithm, invoked when "run" button is pressed
     def callback_run(self):
+
 
         self.logger.info("----------Run----------\n")
 
@@ -254,8 +294,15 @@ class GUI:
             # create a fitter instance (the logger instance needs to be passed to the constructor)
             self.fitter = Fitter(self.logger)
 
-            # parse files to fitter
-            self.fitter.set_file(self.iohandler.files[0])
+            # parse file to fitter
+            ref_file = self.iohandler.files[self.ref_file.get()]
+            other_files = np.concatenate((self.iohandler.files[:self.ref_file.get()], self.iohandler.files[self.ref_file.get()+1:]))
+
+            current_voltage_values = self.get_file_current_voltage_values()
+            if None in current_voltage_values:
+                raise Exception("Error: Please specify the current/voltage values for the given files!")
+            #parse the reference file(0A/0V) to the fitter
+            self.fitter.set_file(ref_file)
 
             #calculate z21
             match shunt_series:
@@ -280,7 +327,7 @@ class GUI:
             parameter_list.append(self.fitter.out.params)
 
             #fit for all other files
-            for file in self.iohandler.files[1:]:
+            for file in other_files:
 
                 self.fitter.set_file(file)
                 match shunt_series:
@@ -296,6 +343,7 @@ class GUI:
 
                 self.fitter.start_fit_file_n(n_file_fit_type)
                 parameter_list.append(self.fitter.out.params)
+
 
 
             #generate output

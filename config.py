@@ -35,6 +35,9 @@ SERIES_THROUGH  :       int = 2
 #Measurement System Z0
 Z0              :       int = 50
 
+#offset for filelist
+FILELIST_ROW_OFFSET = 9
+
 
 
 
