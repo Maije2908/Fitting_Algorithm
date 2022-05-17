@@ -44,7 +44,8 @@ class GUI:
         self.filelist_frame = None
         self.filename_label = []
         self.filename_entry = []
-        self.ref_file =None
+        self.filename_ref_button = []
+        self.ref_file_select =None
 
         # Window config
         self.root: tk.Tk = tk.Tk()
@@ -67,6 +68,7 @@ class GUI:
         self.create_log_window()
         self.create_shunt_series_radio_button()
         self.create_filelist_frame()
+        self.create_clear_files_button()
         # self.create_file_list()
 
     def create_drop_down(self):
@@ -147,6 +149,11 @@ class GUI:
         browse_button.config(font=config.ENTRY_FONT)
         browse_button.grid(column=1, row=6, sticky=tk.W, **config.BUTTON_RIGHT_PADDING)
 
+    def create_clear_files_button(self):
+        browse_button = tk.Button(self.root, command=self.callback_clear_files, text="Clear Files")
+        browse_button.config(font=config.ENTRY_FONT)
+        browse_button.grid(column=4, row=0, sticky=tk.W, **config.BUTTON_RIGHT_PADDING)
+
     def create_log_window(self):
         self.st = scrolledtext.ScrolledText(self.root, state='disabled')#, width=config.LOG_WIDTH,  height=config.LOG_HEIGHT)
         self.st.configure(font='TkFixedFont')
@@ -168,7 +175,7 @@ class GUI:
         name_lbl.grid(column=1,row=0)
         cond_lbl.grid(column=2,row=0)
         #create an integer variable for the radiobuttons in order to select the reference file
-        self.ref_file = tk.IntVar()
+        self.ref_file_select = tk.IntVar()
 
     def get_file_current_voltage_values(self):
 
@@ -193,16 +200,28 @@ class GUI:
             label.grid(column=1, row = rownumber, sticky=tk.NW, **config.SPEC_PADDING)
             entry.grid(column=2, row = rownumber, sticky=tk.NSEW, **config.SPEC_PADDING)
             #create a button for the selection of the reference file
-            r_button = tk.Radiobutton(self.filelist_frame, variable=self.ref_file,value = rownumber-1)
+            r_button = tk.Radiobutton(self.filelist_frame, variable=self.ref_file_select, value =rownumber - 1)
             r_button.grid(column=0, row=rownumber)
 
             rownumber += 1
             self.filename_entry.append(entry)
             self.filename_label.append(label)
+            self.filename_ref_button.append(r_button)
 
-    def destroy_list(self):
+
+    def callback_clear_files(self):
+        #method to clear the file list and also the files from the iohandler
+        self.iohandler.files = []
         for label in self.filename_label:
             label.destroy()
+        for entry in self.filename_entry:
+            entry.destroy()
+        for r_button in self.filename_ref_button:
+            r_button.destroy()
+        #
+        self.filename_label = []
+        self.filename_entry = []
+        self.filename_ref_button = []
 
 
 
@@ -234,7 +253,7 @@ class GUI:
             self.logger.error("ERROR: There was an error, opening one of the selected files:")
             self.logger.error(str(e))
 
-        #insert the file to the listbox here(TODO: not functional yet)
+        #insert the files to the listbox
         self.update_file_list()
 
         return 0
@@ -275,15 +294,10 @@ class GUI:
             elif element_type_str == config.DROP_DOWN_ELEMENTS[2]:
                 # self.logger.error('CMCs not implemented yet, please change element type')
                 raise Exception('CMCs not implemented yet, please change element type')
-            else:
-                # self.logger.error('Something is wrong with the dropdown menu, please restart the application')
-                raise Exception('Something is wrong with the dropdown menu, please restart the application')
 
         except Exception as e:
             #write exception to log
             self.logger.error(str(e) + '\n')
-            #TODO: maybe do some robust error handling?
-            # does the rest of the method get invoked here, after the exception is raised?
             raise
 
 
@@ -294,15 +308,25 @@ class GUI:
             # create a fitter instance (the logger instance needs to be passed to the constructor)
             self.fitter = Fitter(self.logger)
 
-            # parse file to fitter
-            ref_file = self.iohandler.files[self.ref_file.get()]
-            other_files = np.concatenate((self.iohandler.files[:self.ref_file.get()], self.iohandler.files[self.ref_file.get()+1:]))
+            #check if files are present
+            if not self.iohandler.files:
+                raise Exception("Error: No Files present")
 
+
+            #get selected reference file and make a list with all files that are not the reference file
+            ref_file = self.iohandler.files[self.ref_file_select.get()]
+            other_files = np.concatenate((self.iohandler.files[:self.ref_file_select.get()], self.iohandler.files[self.ref_file_select.get() + 1:]))
+            if ref_file is None:
+                raise Exception("Error: Please select a reference file")
+
+            # parse the reference file(0A/0V) to the fitter
+            self.fitter.set_file(ref_file)
+
+            #get the values from the entries that define the currents/voltages of each file
             current_voltage_values = self.get_file_current_voltage_values()
             if None in current_voltage_values:
                 raise Exception("Error: Please specify the current/voltage values for the given files!")
-            #parse the reference file(0A/0V) to the fitter
-            self.fitter.set_file(ref_file)
+
 
             #calculate z21
             match shunt_series:
@@ -310,9 +334,6 @@ class GUI:
                     self.fitter.calc_shunt_thru(config.Z0)
                 case config.SERIES_THROUGH:
                     self.fitter.calc_series_thru(config.Z0)
-                case _:
-                    #This should NEVER be invoked (if so, there is something SERIOUSLY wrong with the radiobuttons)
-                    raise Exception("Could not determine Shunt/Series through, please re-select and try again")
 
             self.fitter.smooth_data()
 
@@ -321,7 +342,12 @@ class GUI:
             # invoke methods for data preprocessing
             self.fitter.get_main_resonance()
             self.fitter.get_resonances()
-            self.fitter.create_nominal_parameters()
+            try:
+                self.fitter.create_nominal_parameters()
+            except Exception:
+                raise Exception("Error: Something went wrong while trying to create nominal parameters; "
+                                "check if the element type is correct")
+
             #start the fit for the first file
             self.fitter.start_fit_file_1()
             parameter_list.append(self.fitter.out.params)

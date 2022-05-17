@@ -34,7 +34,7 @@ MAX_CAP_FACTOR = 1e5 #was 1e3
 MIN_W_FACTOR = 0.99
 MAX_W_FACTOR = 1.01
 
-BANDWIDTH_STRETCH_LAST_ZONE = 1 # factor to stretch the bandwidth of the last frequency zone
+BANDWIDTH_STRETCH_LAST_ZONE = 3 # factor to stretch the bandwidth of the last frequency zone
 
 #parameters for the smoothing filter
 SAVGOL_WIN_LENGTH = 52 #window length(samples) default:52

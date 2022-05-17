@@ -138,7 +138,8 @@ class Fitter:
                 # if the first zero crossing is smaller that the offset i.e. the first zero crossing is at the start of
                 # the data, raise an exception
                 if index_ang_zero_crossing <= offset:
-                    raise Exception("Error: the Phase of the dataset seems to be bad, consider cropping the data")
+                    raise Exception("Error: Could not calculate nominal value;"
+                                    "the Phase of the dataset seems to be bad, consider cropping the data")
 
                 if max(self.data_ang[offset:index_ang_zero_crossing]) < 85:
                     #if we can't detect the nominal value raise exception
@@ -161,10 +162,11 @@ class Fitter:
                 # if the first zero crossing is smaller that the offset i.e. the first zero crossing is at the start of
                 # the data, raise an exception
                 if index_ang_zero_crossing <= offset:
-                    raise Exception("ERROR: the Phase of the dataset seems to be bad, consider cropping the data")
+                    raise Exception("Error: Could not calculate nominal value;"
+                                    "the Phase of the dataset seems to be bad, consider cropping the data")
 
                 if min(self.data_ang[offset:index_ang_zero_crossing]) > -85:
-                    raise Exception("ERROR: Capacitive range not detected (min phase = {value}°).\n"
+                    raise Exception("Error: Capacitive range not detected (min phase = {value}°).\n"
                                     "Please specify nominal capacitance.".format(value=np.round(min(self.data_ang), 1)))
 
                 test_values = []
