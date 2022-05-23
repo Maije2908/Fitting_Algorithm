@@ -328,6 +328,8 @@ class GUI:
                 raise Exception("Error: Please specify the current/voltage values for the given files!")
 
 
+
+
             #calculate z21
             match shunt_series:
                 case config.SHUNT_THROUGH:
@@ -375,7 +377,21 @@ class GUI:
             #generate output
             path_out = self.selected_s2p_files[0]
             self.iohandler.export_parameters(parameter_list, self.fitter.order, fit_type, path_out)
-            self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out, '')
+
+            # create saturation table
+            saturation_table = ''
+            for i, value in enumerate(current_voltage_values):
+                saturation_table += str(value) + ','
+                match fit_type:
+                    case fitterconstants.El.INDUCTOR:
+                        saturation_table += str(parameter_list[i]['L'].value)
+                    case fitterconstants.El.CAPACITOR:
+                        saturation_table += str(parameter_list[i]['L'].value)
+                if value != current_voltage_values[-1]:
+                    saturation_table += ','
+
+
+            self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out, saturation_table)
 
 
         except Exception as e:

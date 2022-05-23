@@ -33,6 +33,9 @@ class IOhandler:
 
         return 0
 
+
+
+
     def generate_Netlist_2_port(self, fitterinstance: Fitter, fit_type, path, I_L_table_input):
 
         out = fitterinstance.out
@@ -85,11 +88,50 @@ class IOhandler:
                 lib += 'B2 inductance 0 V=table(I(B1),{table})'.format(table=I_L_table) + "\n"
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
 
-                pass
 
             case fitterconstants.El.CAPACITOR:
-                #TODO: adapt for capacitors
-                pass
+
+                # define the name of the model here:
+                model_name = "C_1"  # <inductor>
+                C = out.params['C'].value
+                # table for current dependent inductance; 'I1,L1,I2,L2,...'
+                # example: '-0.3,<C_dc/C_nom>,0,1,0.3,<Cdc/C_nom>'
+                I_L_table = I_L_table_input if I_L_table_input.count(',') else '0,' + "1.0"
+
+                # do not change the rest of this section, as it defines the structure of the model
+                lib = '* Netlist for Capacitor Model {name} (C={value}F)\n' \
+                      '* Including {number} Parallely Chained Serial Resonant Circuits\n*\n'.format(name=model_name,
+                                                                                                    value=str(C),
+                                                                                                    number=order)
+                lib += '.SUBCKT {name} PORT1 PORT2'.format(name=model_name) + '\n*\n'
+
+                Ls = out.params['L'].value
+                R_s = out.params['R_s'].value
+                R_iso = out.params['R_iso'].value
+
+                # node connections from voltage dependent capacitor model
+                lib += 'R_s PORT1 LsRs ' + str(R_s) + "\n"
+                lib += 'R_iso Vcap 0 ' + str(R_iso) + "\n"
+                lib += '* The values for the Voltage-Capacitance-Table can be edited here:' + "\n"
+                lib += 'B2 K 0 V=table(V(PORT1),{table}) '.format(table=I_L_table) + "\n"
+                lib += 'L_s LsRs Vcap ' + str(Ls) + "\n"
+                lib += 'E1 E1 0 Vcap 0 1 ' + "\n"
+                lib += 'C E1 0 ' + str(C) + "\n"
+                lib += 'B1 0 Vcap I=I(E1)*V(K) ' + "\n"
+
+                # node connection between resonant circuits
+                for circuit in range(1, order + 1):
+                    Cx = out.params['C%s' % circuit].value
+                    Lx = out.params['L%s' % circuit].value
+                    Rx = out.params['R%s' % circuit].value
+
+                    lib += 'R{no} PORT1 {node2} '.format(no=circuit, node2=circuit) + str(Rx) + "\n"
+                    lib += 'L{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=order + circuit) + str(
+                        Lx) + "\n"
+                    lib += 'C{no} {node1} 0 '.format(no=circuit, node1=order + circuit) + str(Cx) + "\n"
+
+                lib += '.ENDS {name}'.format(name=model_name) + "\n"
+
         #TODO: adapt for linux
         file_name = path.split("\\")[-1][:-4]
         out_path = '\\'.join(path.split("\\")[:-2])

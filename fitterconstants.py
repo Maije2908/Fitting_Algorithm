@@ -27,19 +27,28 @@ RMAX = 1e5 #was 1e4
 RMIN = 1e-3
 LMIN = 1e-20
 LOG_FACTOR = 1.04 #multiplication factor for the min bandwidth #OBSOLETE
-BW_MIN_FACTOR = 0.8
-BW_MAX_FACTOR = 1.25
-MIN_CAP = 1e-20 #minimm capacitor
+BW_MIN_FACTOR = 1/1.5
+BW_MAX_FACTOR = 1.5
+MIN_CAP = 1e-20 #minimum capacitor
 MAX_CAP_FACTOR = 1e5 #was 1e3
 MIN_W_FACTOR = 0.99
 MAX_W_FACTOR = 1.01
 
-BANDWIDTH_STRETCH_LAST_ZONE = 3 # factor to stretch the bandwidth of the last frequency zone
+BANDWIDTH_STRETCH_LAST_ZONE = 1 # factor to stretch the bandwidth of the last frequency zone (1 = no stretch)
+
+
+
+
+
+
 
 #parameters for the smoothing filter
 SAVGOL_WIN_LENGTH = 52 #window length(samples) default:52
 SAVGOL_POL_ORDER = 2 #polynomial order default:2
 
+#offset for the calculation of the nominal parameters; useful if the phase data does not behave properly
+#Note: changing this parameter can significantly improve goodness of fit (esp. for capacitors)
+NOMINAL_VALUE_CALC_OFFSET = 3 #samples
 
 MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the threshold
 
