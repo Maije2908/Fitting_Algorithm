@@ -36,10 +36,10 @@ class IOhandler:
 
 
 
-    def generate_Netlist_2_port(self, fitterinstance: Fitter, fit_type, path, I_L_table_input):
+    def generate_Netlist_2_port(self, parameters, fit_order , fit_type, path, I_L_table_input):
 
-        out = fitterinstance.out
-        order = fitterinstance.order
+        out = parameters
+        order = fit_order
 
         #TODO: generate main resonance here
         match fit_type:
@@ -47,7 +47,7 @@ class IOhandler:
 
                 # define the name of the model here:
                 model_name = "L_1"  # <inductor>
-                L = out.params['L'].value
+                L = out['L'].value
                 # table for current dependent inductance; 'I1,L1,I2,L2,...'
                 # example: '-0.3,<L_nom*0.4>,0,<L_nom>,0.3,<L_nom*0.4>'
 
@@ -60,16 +60,16 @@ class IOhandler:
                                                                                                      value=str(L), number=order)
                 lib += '.SUBCKT {name} PORT1 PORT2'.format(name=model_name) + '\n*\n'
 
-                C = out.params['C'].value
-                R_s = out.params['R_s'].value
+                C = out['C'].value
+                R_s = out['R_s'].value
 
-                R_p = out.params['R_Fe'].value
+                R_p = out['R_Fe'].value
 
                 # node connection between resonant circuits
                 for circuit in range(1, order + 1):
-                    Cx = out.params['C%s' % circuit].value
-                    Lx = out.params['L%s' % circuit].value
-                    Rx = out.params['R%s' % circuit].value
+                    Cx = out['C%s' % circuit].value
+                    Lx = out['L%s' % circuit].value
+                    Rx = out['R%s' % circuit].value
                     node2 = circuit + 1 if circuit < order else 'PORT2'
                     lib += 'C{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=node2) + str(Cx) + "\n"
                     lib += 'L{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=node2) + str(Lx) + "\n"
@@ -93,7 +93,7 @@ class IOhandler:
 
                 # define the name of the model here:
                 model_name = "C_1"  # <inductor>
-                C = out.params['C'].value
+                C = out['C'].value
                 # table for current dependent inductance; 'I1,L1,I2,L2,...'
                 # example: '-0.3,<C_dc/C_nom>,0,1,0.3,<Cdc/C_nom>'
                 I_L_table = I_L_table_input if I_L_table_input.count(',') else '0,' + "1.0"
@@ -105,9 +105,9 @@ class IOhandler:
                                                                                                     number=order)
                 lib += '.SUBCKT {name} PORT1 PORT2'.format(name=model_name) + '\n*\n'
 
-                Ls = out.params['L'].value
-                R_s = out.params['R_s'].value
-                R_iso = out.params['R_iso'].value
+                Ls = out['L'].value
+                R_s = out['R_s'].value
+                R_iso = out['R_iso'].value
 
                 # node connections from voltage dependent capacitor model
                 lib += 'R_s PORT1 LsRs ' + str(R_s) + "\n"
@@ -121,9 +121,9 @@ class IOhandler:
 
                 # node connection between resonant circuits
                 for circuit in range(1, order + 1):
-                    Cx = out.params['C%s' % circuit].value
-                    Lx = out.params['L%s' % circuit].value
-                    Rx = out.params['R%s' % circuit].value
+                    Cx = out['C%s' % circuit].value
+                    Lx = out['L%s' % circuit].value
+                    Rx = out['R%s' % circuit].value
 
                     lib += 'R{no} PORT1 {node2} '.format(no=circuit, node2=circuit) + str(Rx) + "\n"
                     lib += 'L{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=order + circuit) + str(

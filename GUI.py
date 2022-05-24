@@ -352,6 +352,7 @@ class GUI:
 
             #start the fit for the first file
             self.fitter.start_fit_file_1()
+            fit_1_order = self.fitter.order
             parameter_list.append(self.fitter.out.params)
 
             #fit for all other files
@@ -378,20 +379,26 @@ class GUI:
             path_out = self.selected_s2p_files[0]
             self.iohandler.export_parameters(parameter_list, self.fitter.order, fit_type, path_out)
 
-            # create saturation table
+            # create saturation table and get nominal value
             saturation_table = ''
+            match fit_type:
+                case fitterconstants.El.INDUCTOR:
+                    nominal = parameter_list[0]['L'].value
+                case fitterconstants.El.CAPACITOR:
+                    nominal = parameter_list[0]['C'].value
+            #write to saturation table
             for i, value in enumerate(current_voltage_values):
                 saturation_table += str(value) + ','
                 match fit_type:
                     case fitterconstants.El.INDUCTOR:
-                        saturation_table += str(parameter_list[i]['L'].value)
+                        saturation_table += str(parameter_list[i]['L'].value/nominal)
                     case fitterconstants.El.CAPACITOR:
-                        saturation_table += str(parameter_list[i]['L'].value)
+                        saturation_table += str(parameter_list[i]['C'].value/nominal)
                 if value != current_voltage_values[-1]:
                     saturation_table += ','
 
 
-            self.iohandler.generate_Netlist_2_port(self.fitter, fit_type, path_out, saturation_table)
+            self.iohandler.generate_Netlist_2_port(parameter_list[0],fit_1_order, fit_type, path_out, saturation_table)
 
 
         except Exception as e:
