@@ -34,7 +34,11 @@ MAX_CAP_FACTOR = 1e5 #was 1e3
 MIN_W_FACTOR = 0.99
 MAX_W_FACTOR = 1.01
 
-BANDWIDTH_STRETCH_LAST_ZONE = 1 # factor to stretch the bandwidth of the last frequency zone (1 = no stretch)
+# factor to stretch the bandwidth of the last frequency zone (1 = no stretch)
+BANDWIDTH_STRETCH_LAST_ZONE = 1
+
+#number of samples to crop at the start of data
+CROP_SAMPLES = 0
 
 
 

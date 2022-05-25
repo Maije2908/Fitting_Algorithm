@@ -337,6 +337,9 @@ class GUI:
                 case config.SERIES_THROUGH:
                     self.fitter.calc_series_thru(config.Z0)
 
+            #here you can crop the data, i.e. start at index x
+            self.fitter.crop_data(fitterconstants.CROP_SAMPLES)
+
             self.fitter.smooth_data()
 
             # parse specs to fitter

@@ -110,6 +110,10 @@ class Fitter:
     def calc_shunt_thru(self, Z0):
         self.z21_data = (Z0 * self.file.data.s[:, 1, 0]) / (2 * (1 - self.file.data.s[:, 1, 0]))
 
+    def crop_data(self,crop):
+        self.z21_data = self.z21_data[crop:]
+        self.frequency_vector = self.frequency_vector[crop:]
+
 
     def smooth_data(self):
         # Use Savitzky-Golay filter for smoothing the input data, because in the region of the global minimum there is
@@ -240,7 +244,6 @@ class Fitter:
         if w0 == 0:
             raise Exception('ERROR: Main resonant frequency could not be determined.')
 
-
     def get_resonances(self): #TODO: tidy up this whole method :/
 
         R_s = self.parasitive_resistance
@@ -257,15 +260,16 @@ class Fitter:
             case fitterconstants.El.INDUCTOR:
                 magnitude_data = self.data_mag
                 phase_data = self.data_ang
+                peak_min_height = np.log10(R_s)
             case fitterconstants.El.CAPACITOR:
                 magnitude_data = self.data_mag * (-1)
                 phase_data = self.data_ang * (-1)
+                #TODO: maybe look into that; there might be a better option for the peak height
+                peak_min_height = min(magnitude_data)
 
-
-        #TODO: find_peaks tends to detect "too many" peaks i.e. overfits!!! (Long term problem)
 
         #find peaks of Magnitude Impedance curve (using scipy.signal.find_peaks)
-        mag_maxima = find_peaks(magnitude_data, height=np.log10(R_s), prominence=prominence_mag)
+        mag_maxima = find_peaks(magnitude_data, height=peak_min_height, prominence=prominence_mag)
         mag_minima = find_peaks(magnitude_data * -1, prominence=prominence_mag)
         #find peaks of Phase curve
         phase_maxima = find_peaks(phase_data, prominence=prominence_phase)
@@ -413,6 +417,8 @@ class Fitter:
 
         freq = self.frequency_vector
         res_value = self.z21_data[freq == self.f0]
+        w0 = self.f0 * 2 * np.pi
+        self.parameters.add('w0',value=w0,vary=False)
 
         match self.fit_type:
             case fitterconstants.El.INDUCTOR:
@@ -437,21 +443,40 @@ class Fitter:
                 #calculate "perfect" capacitor for this resonance
                 cap_ideal = 1 / (self.nominal_value * ((self.f0*2*np.pi) ** 2))
                 #add to parameters
-                self.parameters.add('C', value=cap_ideal, min=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
-                                    max=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary=True)
+
 
                 self.parameters.add('R_Fe', value=R_Fe, min=fitterconstants.MIN_R_FE, max=fitterconstants.MAX_R_FE, vary=True)
                 #main element
                 self.parameters.add('L', value=self.nominal_value, min=self.nominal_value * 0.9, max=self.nominal_value * 1.1, vary=False)
+
+                # expression_string_C = '1/( w0 **2* L)'
+                self.parameters.add('C', value=cap_ideal,
+                                    min=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
+                                    max=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary=True)
+
+
+                #alternative -> varies the main element and keeps the parasitic element constrained via expression
+                # self.parameters.add('L', value=self.nominal_value, min=self.nominal_value * 0.9,max=self.nominal_value * 1.1, vary=True)
+                # self.parameters.add('C',expr=expression_string_C, vary=False)
+
+
             case fitterconstants.El.CAPACITOR:
                 # calculate "perfect" inductor for this resonance
                 ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
-                self.parameters.add('L', value=ind_ideal, min=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
-                                    max=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary = False)
+
                 self.parameters.add('R_iso', value=R_Iso, min=fitterconstants.MIN_R_ISO, max=fitterconstants.MAX_R_ISO, vary=True)
                 #main element
                 self.parameters.add('C', value=self.nominal_value, min=self.nominal_value * 0.3333333,
                                     max=self.nominal_value * 3, vary=False)
+
+                expression_string_L = '1/( w0 **2* L)'
+                self.parameters.add('L', value=ind_ideal,
+                                    min=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
+                                    max=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary=False)
+
+                # self.parameters.add('L',expr=expression_string_L,vary=False)
+
+
             case 3:
                 #TODO: CMCs -> eh scho wissen
                 dummy = 0
@@ -612,12 +637,16 @@ class Fitter:
                 else:
                     self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
 
+
                 # self.parameters.add(C_key, min=min_cap, max=max_cap, expr=expression_string_C, vary=False)
                 self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
 
                 # self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=False)
                 self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
+                # if self.bad_bandwidth_flag[key_number-1]:
+                #     self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
+                # else:
                 self.parameters.add(R_key, expr=expression_string_R, vary=False)
                 # self.parameters.add(R_key, value=r_value,min=r_min,max=r_max, vary=True)
 
@@ -915,30 +944,6 @@ class Fitter:
         self.out.params.pretty_print()
         # plt.show()
 
-    def fix_parameters(self):
-        #method to fix the parameters in place, except the nominal value, which varies with different current/voltage
-        match self.fit_type:
-            case fitterconstants.El.INDUCTOR:
-                self.parameters['C'].vary = False
-                self.parameters['R_Fe'].vary = False
-                self.parameters['R_s'].vary = False
-            case fitterconstants.El.CAPACITOR:
-                self.parameters['L'].vary = False
-                self.parameters['R_iso'].vary = False
-                self.parameters['R_s'].vary = False
-
-        for key_number in range(1, self.order + 1):
-            #create keys
-            C_key   = "C%s" % key_number
-            L_key   = "L%s" % key_number
-            R_key   = "R%s" % key_number
-            w_key   = "w%s" % key_number
-            BW_key  = "BW%s" % key_number
-            self.parameters[C_key].vary = False
-            self.parameters[L_key].vary = False
-            self.parameters[R_key].vary = False
-            self.parameters[w_key].vary = False
-            self.parameters[BW_key].vary = False
 
 
     def do_output(self):
@@ -984,32 +989,7 @@ class Fitter:
         # plt.savefig(file_title)
         # plt.close(fig)
 
-    def overwrite_main_resonance_parameters(self):
-        # method to overwrite the nominal parameters with the parameters obtained by modeling the main resonance circuit
 
-        self.parameters['R_s'].value = self.out.params['R_s'].value
-        self.parameters['R_s'].vary = False
-
-        match self.fit_type:
-            case 1:
-                self.parameters['L'].value = self.out.params['L'].value
-                self.parameters['R_Fe'].value = self.out.params['R_Fe'].value
-                self.parameters['C'].value = self.out.params['C'].value
-                self.parameters['L'].vary = False
-                self.parameters['R_Fe'].vary = False
-                self.parameters['C'].vary = False
-            case 2:
-                self.parameters['L'].value = self.out.params['L'].value
-                self.parameters['R_iso'].value = self.out.params['R_iso'].value
-                self.parameters['C'].value = self.out.params['C'].value
-                self.parameters['L'].vary = False
-                self.parameters['R_iso'].vary = False
-                self.parameters['C'].vary = False
-            case 3:
-                # TODO: CMCs -> eh scho wissen
-                dummy = 0
-
-        return 0
 
 
 
@@ -1040,8 +1020,6 @@ class Fitter:
                 return diff
             case fitterconstants.fcnmode.OUTPUT:
                 return Z
-
-
 
 
     def model_bandwidth(self, freqdata, data):
@@ -1075,8 +1053,57 @@ class Fitter:
         pass
 
 
+    def fix_parameters(self):
+        #method to fix the parameters in place, except the nominal value, which varies with different current/voltage
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                self.parameters['C'].vary = False
+                self.parameters['R_Fe'].vary = False
+                self.parameters['R_s'].vary = False
+            case fitterconstants.El.CAPACITOR:
+                self.parameters['L'].vary = False
+                self.parameters['R_iso'].vary = False
+                self.parameters['R_s'].vary = False
 
+        for key_number in range(1, self.order + 1):
+            #create keys
+            C_key   = "C%s" % key_number
+            L_key   = "L%s" % key_number
+            R_key   = "R%s" % key_number
+            w_key   = "w%s" % key_number
+            BW_key  = "BW%s" % key_number
+            self.parameters[C_key].vary = False
+            self.parameters[L_key].vary = False
+            self.parameters[R_key].vary = False
+            self.parameters[w_key].vary = False
+            self.parameters[BW_key].vary = False
 
+    def overwrite_main_resonance_parameters(self):
+        # method to overwrite the nominal parameters with the parameters obtained by modeling the main resonance circuit
+
+        self.parameters['R_s'].value = self.out.params['R_s'].value
+        self.parameters['R_s'].vary = False
+
+        match self.fit_type:
+            case 1:
+                self.parameters['L'].value = self.out.params['L'].value
+                self.parameters['R_Fe'].value = self.out.params['R_Fe'].value
+                self.parameters['C'].value = self.out.params['C'].value
+                self.parameters['L'].vary = False
+                self.parameters['R_Fe'].vary = False
+                self.parameters['C'].vary = False
+            case 2:
+                self.parameters['L'].value = self.out.params['L'].value
+                self.parameters['R_iso'].value = self.out.params['R_iso'].value
+                self.parameters['C'].value = self.out.params['C'].value
+                self.parameters['L'].vary = False
+                self.parameters['R_iso'].vary = False
+                self.parameters['C'].vary = False
+            case 3:
+                # TODO: CMCs -> eh scho wissen
+                dummy = 0
+
+        return 0
 
     #################################### V OBSOLETE V###################################################################
 

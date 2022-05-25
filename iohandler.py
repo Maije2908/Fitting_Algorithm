@@ -6,6 +6,7 @@
 from sNpfile import *
 import skrf as rf
 import pandas as pd
+import os
 import skidl
 from fitter import *
 import fitterconstants
@@ -132,15 +133,21 @@ class IOhandler:
 
                 lib += '.ENDS {name}'.format(name=model_name) + "\n"
 
-        #TODO: adapt for linux
-        file_name = path.split("\\")[-1][:-4]
-        out_path = '\\'.join(path.split("\\")[:-2])
-        #write to file
-        f2 = open(out_path + "/05_LTspice_" + file_name
-                  + ".lib", "w+")
-        f2.write(lib)
 
-        f2.close()
+        #create paths for the output folder and get the filename without extension
+        out_path = os.path.split(path)[0]
+        filename = os.path.splitext(os.path.split(path)[-1])[0]
+        out_folder = os.path.join(out_path, "fit_results_%s" % filename)
+
+        #create the folder; should not be necessary to handle an exception; however folder could be write protected
+        try:
+            os.makedirs(out_folder, exist_ok = True)
+        except Exception:
+            raise
+
+        file = open(os.path.join(out_folder, "LT_Spice_Model_" + filename + ".lib"), "w+")
+        file.write(lib)
+        file.close()
 
 
     def export_parameters(self, param_array, order, fit_type, path):
@@ -175,9 +182,15 @@ class IOhandler:
 
         data_out = pd.DataFrame(out_dict)
 
-        file_name = path.split("\\")[-1][:-4]
-        out_path = '\\'.join(path.split("\\")[:-1])
-        data_out.to_excel(out_path + file_name + '.xlsx')
+        out_path = os.path.split(path)[0]
+        filename = os.path.splitext(os.path.split(path)[-1])[0]
+        out_folder = os.path.join(out_path, "fit_results_%s" % filename)
+        try:
+            os.makedirs(out_folder, exist_ok = True)
+        except Exception:
+            raise
+
+        data_out.to_excel(os.path.join(out_folder, "Parameters_" + filename + ".xlsx"))
 
 
 
