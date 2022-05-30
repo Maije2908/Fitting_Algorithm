@@ -154,7 +154,47 @@ class IOhandler:
 
         out_dict = {}
 
+
+        #write the main resonance parameters to the dict
+        match fit_type:
+            case fitterconstants.El.INDUCTOR:
+                R_s_list = []
+                R_Fe_list =[]
+                L_list = []
+                C_list = []
+                for param_set in param_array:
+                    R_s_list.append(param_set['R_s'].value)
+                    R_Fe_list.append(param_set['R_Fe'].value)
+                    L_list.append(param_set['L'].value)
+                    C_list.append(param_set['C'].value)
+
+                out_dict['R_s'] = R_s_list
+                out_dict['R_Fe'] = R_Fe_list
+                out_dict['L'] = L_list
+                out_dict['C'] = C_list
+
+
+            case fitterconstants.El.CAPACITOR:
+                R_s_list = []
+                R_Iso_list = []
+                L_list = []
+                C_list = []
+                for param_set in param_array:
+                    R_s_list.append(param_set['R_s'].value)
+                    R_Iso_list.append(param_set['R_iso'].value)
+                    L_list.append(param_set['L'].value)
+                    C_list.append(param_set['C'].value)
+
+                out_dict['R_s'] = R_s_list
+                out_dict['R_iso'] = R_Iso_list
+                out_dict['L'] = L_list
+                out_dict['C'] = C_list
+
+
+
+
         for key  in range(1,order+1):
+            #generate key numbers and empty lists for the parameters
             C_key = "C%s" % key
             L_key = "L%s" % key
             R_key = "R%s" % key
@@ -167,6 +207,7 @@ class IOhandler:
             wlist = []
             bwlist = []
 
+            #iterate through parameter sets
             for param_set in param_array:
                 clist.append(param_set[C_key].value)
                 llist.append(param_set[L_key].value)
@@ -180,7 +221,9 @@ class IOhandler:
             out_dict[w_key] = wlist
             out_dict[BW_key] = bwlist
 
+        #write parameters to a pandas dataframe and transpose
         data_out = pd.DataFrame(out_dict)
+        data_out.transpose()
 
         out_path = os.path.split(path)[0]
         filename = os.path.splitext(os.path.split(path)[-1])[0]

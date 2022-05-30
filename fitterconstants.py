@@ -56,7 +56,7 @@ NOMINAL_VALUE_CALC_OFFSET = 3 #samples
 
 MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the threshold
 
-DEFAULT_OFFSET_PEAK = 20 #samples; this specifies the default offset for a resonance peak if the 3dB point can't be found
+DEFAULT_OFFSET_PEAK = 40 #samples; this specifies the default offset for a resonance peak if the 3dB point can't be found
 
 #mode flags
 class fcnmode:

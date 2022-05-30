@@ -1050,7 +1050,6 @@ class Fitter:
 
 
 
-        pass
 
 
     def fix_parameters(self):
