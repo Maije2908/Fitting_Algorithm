@@ -353,6 +353,9 @@ class GUI:
                 raise Exception("Error: Something went wrong while trying to create nominal parameters; "
                                 "check if the element type is correct")
 
+            # #TODO: testing the transfer function fit here
+            # self.fitter.fit_transfer_function()
+
             #start the fit for the first file
             self.fitter.start_fit_file_1()
             fit_1_order = self.fitter.order

@@ -9,6 +9,7 @@ import copy
 import matplotlib.pyplot as plt
 import numpy as np
 import scipy
+from scipy import signal as sg
 from lmfit import minimize, Parameters
 from scipy.signal import find_peaks
 import decimal
@@ -311,7 +312,7 @@ class Fitter:
         number_zones = len(mag_maxima_pos)
         bandwidth_list = []
         peak_heights = []
-        bad_BW_flag = np.zeros(number_zones)
+        bad_BW_flag = np.zeros((number_zones,2))
         for num_maximum in range(0, number_zones):
             #resonance frequency, corresponding height and index
             res_fq = ang_maxima_pos[num_maximum]
@@ -333,7 +334,7 @@ class Fitter:
                 f_lower_index = np.flipud(np.argwhere(np.logical_and(freq > min_zone_start, np.logical_and(freq < res_fq, (magnitude_data) < (bw_value)))))[0][0]
             except IndexError:
                 f_lower_index = res_index - fitterconstants.DEFAULT_OFFSET_PEAK
-                bad_BW_flag[num_maximum] = 1
+                bad_BW_flag[num_maximum][0] = 1
 
             try:
                 f_upper_index = np.argwhere(np.logical_and(freq > res_fq, (magnitude_data) < (bw_value)))[0][0]
@@ -341,7 +342,7 @@ class Fitter:
                 #here we need to account for the fact that we could overshoot the max index
                 if res_index + fitterconstants.DEFAULT_OFFSET_PEAK < len(freq):
                     f_upper_index = res_index + fitterconstants.DEFAULT_OFFSET_PEAK
-                    bad_BW_flag[num_maximum] = 1
+                    bad_BW_flag[num_maximum][1] = 1
                 else:
                     f_upper_index = len(freq) - 1
 
@@ -356,23 +357,24 @@ class Fitter:
                     #again we could overshoot the max index here
                     if res_index + fitterconstants.DEFAULT_OFFSET_PEAK < len(freq):
                         f_upper_index = res_index + fitterconstants.DEFAULT_OFFSET_PEAK
-                        bad_BW_flag[num_maximum] = 1
+                        bad_BW_flag[num_maximum][1] = 1
                     else:
                         f_upper_index = len(freq) - 1
-                        bad_BW_flag[num_maximum] = 1
+                        bad_BW_flag[num_maximum][1] = 1
 
             # this checks if the value of the upper/lower bound is greater than the value of the resonance peak
             # that is the case if we chose the default offset #TODO: look into how to handle this case
-            if ((magnitude_data[res_index]) < (magnitude_data[f_upper_index])) or ((magnitude_data[res_index]) < (magnitude_data[f_lower_index])):
-                # at the moment we are just skipping the peak in that case
-                pass
-            else:
-                f_tuple = [freq[f_lower_index], res_fq, freq[f_upper_index]]
-                bandwidth_list.append(f_tuple)
-                peak_heights.append(abs(res_value))
-                #THIS IS FOR TESTING
-                markerson = [f_lower_index,res_index,f_upper_index]
-                plt.loglog(self.data_mag, '-bD', markevery=markerson)
+
+            # if ((magnitude_data[res_index]) < (magnitude_data[f_upper_index])) or ((magnitude_data[res_index]) < (magnitude_data[f_lower_index])):
+            #     # at the moment we are just skipping the peak in that case
+            #     pass
+            # else:
+            f_tuple = [freq[f_lower_index], res_fq, freq[f_upper_index]]
+            bandwidth_list.append(f_tuple)
+            peak_heights.append(abs(res_value))
+            #THIS IS FOR TESTING
+            markerson = [f_lower_index,res_index,f_upper_index]
+            plt.loglog(self.data_mag, '-bD', markevery=markerson)
 
         try:
             #spread BW of last circuit; TODO: maybe center the band?
@@ -515,19 +517,43 @@ class Fitter:
             w_key   = "w%s" % key_number
             BW_key  = "BW%s" % key_number
 
-            # get frequencies for the band
-            # f_l = self.frequency_zones[key_number-1][0] #lower
-            # f_c = self.frequency_zones[key_number-1][1] #center
-            # f_u = self.frequency_zones[key_number-1][2] #upper
 
-            b_l = self.bandwidths[key_number-1][0]
-            b_c = self.bandwidths[key_number-1][1]
-            b_u = self.bandwidths[key_number-1][2]
+
+
+            #get upper and lower frequencies
+            b_l = self.bandwidths[key_number - 1][0]
+            b_c = self.bandwidths[key_number - 1][1]
+            b_u = self.bandwidths[key_number - 1][2]
+
+            # handle bandwidths here -> since the bandwidth detection relies on the 3dB points, which are not always
+            # present, we may need to "model" the BW. If we have one of the two 3dB points though, we can assume symmetric
+            # bandwidth
+
+            #bad bandwidth lower
+            if self.bad_bandwidth_flag[key_number-1][0]:
+                #difference from upper to center
+                diff_f = b_u - b_c
+                b_l = b_c - diff_f
+            # bad bandwidth upper
+            elif self.bad_bandwidth_flag[key_number-1][1]:
+                diff_f = b_c - b_l
+                b_u = b_c + diff_f
+            elif self.bad_bandwidth_flag.all():
+                pass
+                #TODO: here we need a model for the bandwidth
 
             # bandwidth
-            BW_min      = (b_u - b_l) * fitterconstants.BW_MIN_FACTOR
-            BW_max      = (b_u - b_l) * fitterconstants.BW_MAX_FACTOR
-            BW_value    = (b_u - b_l)  # BW_max / 8
+            BW_min = (b_u - b_l) * fitterconstants.BW_MIN_FACTOR
+            BW_max = (b_u - b_l) * fitterconstants.BW_MAX_FACTOR
+            BW_value = (b_u - b_l)  # BW_max / 8
+
+
+            # calculate Q-factor
+            q = b_c / BW_value
+
+
+
+
 
 
             # center frequency (omega)
@@ -535,8 +561,7 @@ class Fitter:
             min_w = b_l*2*np.pi * fitterconstants.MIN_W_FACTOR #np.sqrt( (f_l*2*np.pi) * w_c)
             max_w = b_u*2*np.pi * fitterconstants.MAX_W_FACTOR #np.sqrt( (f_u*2*np.pi) * w_c)
 
-            # calculate Q-factor
-            q = b_c/BW_value
+
 
 
             # r_offset = 0
@@ -593,8 +618,7 @@ class Fitter:
             # r_max = r_value * 1.01
             # r_min = r_value * 0.990
 
-            max_cap = value_cap * 2
-            min_cap = value_cap * 500e-3
+
 
             r_max = r_value * 1.25
             r_min = r_value * 0.5
@@ -623,32 +647,46 @@ class Fitter:
                 r_max = r_value * 1.01
                 r_min = r_value * 0.990
                 self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
+
                 self.parameters.add(R_key, min=r_min, max=r_max, value=r_value,vary=True)
+
                 self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
+
                 self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+
                 self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
             else:
+
+                max_cap = value_cap * 2
+                min_cap = value_cap * 500e-3
+
+
+                # #testing this expression string
+                # expression_string_L = '((' + R_key + '**2)*' + C_key + ')/('+str(q**2)+')'
+
+
                 self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
-                # self.parameters.add(R_key, min=r_min, max=r_max, value=r_value,vary=True)
 
-                if self.bad_bandwidth_flag[key_number-1]:
-                    self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
-                else:
-                    self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
+                self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
 
-
-                # self.parameters.add(C_key, min=min_cap, max=max_cap, expr=expression_string_C, vary=False)
                 self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
 
-                # self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=False)
+                # #config A -> does not perform too well
+                # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
+                # self.parameters.add(L_key, expr=expression_string_L, vary=False)
+
+                # #config B
+                # self.parameters.add(R_key, expr=expression_string_R, vary=False)
+                # self.parameters.add(L_key, expr=expression_string_L, vary=False)
+
+                # config C
+                expression_string_L = '((' + R_key + '**2)*' + C_key + ')/(' + str(q ** 2) + ')'
+                self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
                 self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
-                # if self.bad_bandwidth_flag[key_number-1]:
-                #     self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
-                # else:
-                self.parameters.add(R_key, expr=expression_string_R, vary=False)
-                # self.parameters.add(R_key, value=r_value,min=r_min,max=r_max, vary=True)
+
+
 
 
 
@@ -704,7 +742,6 @@ class Fitter:
 
 
         return 0
-
 
 
 
@@ -776,6 +813,10 @@ class Fitter:
                 return abs(diff)
             case fcnmode.OUTPUT:
                 return Z
+
+
+
+
 
 
     def start_fit_file_1(self):
@@ -1173,6 +1214,70 @@ class Fitter:
             self.parameters[key].min = self.parameters[key] * 0.8
             self.parameters[key].max = self.parameters[key] * 1.2
 
+
+    def calculate_transfer_function_data_diff(self,params,freq,data):
+
+        #initiate arrays for numerator and denominator
+        a_list = []
+        b_list = []
+        #calculate omega
+        w = freq *2*np.pi
+        #get the values from the parameters
+        b_list.append(params['b0'].value)
+        for it in range(1,self.order):
+            a_list.append(params['a%s' % it].value)
+            b_list.append(params['b%s' % it].value)
+        #create a transfer function and get magnitude and phase
+        TF = sg.TransferFunction(a_list,b_list)
+        w, mag, ph = TF.bode(w, n=len(self.z21_data))
+        #calculate (r+ji)
+        TF_data = mag * np.exp(np.radians(ph))
+
+        diff = (np.real(data) - np.real(TF_data)) + (np.imag(data) - np.imag(TF_data))
+        return diff
+
+
+    def fit_transfer_function(self):
+
+        #TODO: this needs to be invoked otherwise the self.order is not set
+
+        self.create_elements()
+
+        params = Parameters()
+
+        a_list = []
+        b_list = []
+
+        params.add('b0', value=1, min=1e-6, max=1e6)
+        for it in range(1,self.order):
+            params.add('a%s' % it, value = 1, min = 1e-6, max = 1e6)
+            params.add('b%s' % it, value = 1, min = 1e-6, max = 1e6)
+            a_list.append(params['a%s' % it].value)
+            b_list.append(params['b%s' % it].value)
+
+        out = minimize(self.calculate_transfer_function_data_diff, params,
+                            args=(self.frequency_vector, self.z21_data),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        #calculate transfer function data
+        a_list=[]
+        b_list=[]
+        b_list.append(out.params['b0'].value)
+        for it in range(1,self.order):
+            a_list.append(out.params['a%s' % it].value)
+            b_list.append(out.params['b%s' % it].value)
+
+        TF = sg.TransferFunction(a_list,b_list)
+
+        w, mag, ph = TF.bode(2*np.pi*self.frequency_vector, n = len(self.z21_data))
+
+        plt.figure()
+        plt.loglog(w,self.z21_data)
+        plt.loglog(w,mag)
+
+
+
+        pass
 
 
 
