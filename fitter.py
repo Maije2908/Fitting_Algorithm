@@ -529,8 +529,33 @@ class Fitter:
             # present, we may need to "model" the BW. If we have one of the two 3dB points though, we can assume symmetric
             # bandwidth
 
-            #bad bandwidth lower
-            if self.bad_bandwidth_flag[key_number-1][0]:
+            #both lower and upper BW value faulty
+            if self.bad_bandwidth_flag[key_number-1].all():
+                stretch_factor = 1.5
+                #get indices of the band
+                f_c_index = np.argwhere(self.frequency_vector == b_c)[0][0]
+                f_l_index = np.argwhere(self.frequency_vector == b_l)[0][0]
+                f_u_index = np.argwhere(self.frequency_vector == b_u)[0][0]
+                #calculate diffference between upper and lower, so the number of points is relative to where we are in
+                #the data, since the measurement points are not equally spaced
+                n_pts_offset = ((f_u_index - f_l_index) / 2) * stretch_factor
+                #recalc lower and upper bound
+                f_l_index = f_c_index - int(np.floor(n_pts_offset))
+                f_u_index = f_c_index + int(np.floor(n_pts_offset))
+                #get data for bandwidth model
+                freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
+                data_BW_mdl = self.data_mag[f_l_index:f_u_index]
+                #now model the BW
+                self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
+
+
+                freqdata = [2]
+
+                pass
+            #TODO: model bandwidth here
+
+            # bad bandwidth lower
+            elif self.bad_bandwidth_flag[key_number-1][0]:
                 #difference from upper to center
                 diff_f = b_u - b_c
                 b_l = b_c - diff_f
@@ -538,9 +563,6 @@ class Fitter:
             elif self.bad_bandwidth_flag[key_number-1][1]:
                 diff_f = b_c - b_l
                 b_u = b_c + diff_f
-            elif self.bad_bandwidth_flag.all():
-                pass
-                #TODO: here we need a model for the bandwidth
 
             # bandwidth
             BW_min = (b_u - b_l) * fitterconstants.BW_MIN_FACTOR
@@ -672,18 +694,18 @@ class Fitter:
 
                 self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
 
-                # #config A -> does not perform too well
-                # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
-                # self.parameters.add(L_key, expr=expression_string_L, vary=False)
+                #config A -> does not perform too well
+                self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
+                self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
                 # #config B
                 # self.parameters.add(R_key, expr=expression_string_R, vary=False)
                 # self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
-                # config C
-                expression_string_L = '((' + R_key + '**2)*' + C_key + ')/(' + str(q ** 2) + ')'
-                self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
-                self.parameters.add(L_key, expr=expression_string_L, vary=False)
+                # # config C
+                # expression_string_L = '((' + R_key + '**2)*' + C_key + ')/(' + str(q ** 2) + ')'
+                # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
+                # self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
 
 
@@ -1049,6 +1071,7 @@ class Fitter:
         Z_R = parameters['R'].value
         Z_L = parameters['L'].value * 1j * w
         Z_C = 1 / (parameters['C'].value * 1j * w)
+
         match ser_par:
             case 1:#serial
                 Z = Z_R + Z_L + Z_C
@@ -1058,35 +1081,64 @@ class Fitter:
         match mode:
             case fitterconstants.fcnmode.FIT:
                 diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
-                return diff
+                test_data = self.calc_Z_simple_RLC(parameters, freq, 2, 2, 2)
+                plt.loglog(freq,test_data)
+                return (diff)
             case fitterconstants.fcnmode.OUTPUT:
                 return Z
 
 
-    def model_bandwidth(self, freqdata, data):
+    def model_bandwidth(self, freqdata, data, peakfreq):
+
+        #get the height of the peak and the index(will be used later)
+        peakindex = np.argwhere(freqdata == peakfreq)[0][0]
+        peakheight = data[peakindex]
+        r_val = abs(peakheight)
+
+        #find pits in data
+        pits = find_peaks(-abs(data))
+
+        #get the indices of the pits closest to the peak
+        lower_pit_index = pits[0][np.flipud(np.argwhere(pits[0]<peakindex))[0][0]]
+        upper_pit_index = pits[0][(np.argwhere(pits[0]>peakindex))[0][0]]
+
+        #crop data
+        modelfreq = freqdata[lower_pit_index:upper_pit_index]
+        modeldata = data[lower_pit_index:upper_pit_index]
 
 
-        peak = find_peaks(data,prominence=0.05)
 
-        peakheight = data[peak[0][0]]
-        peakfreq = freqdata[peak[0][0]]
 
-        r_val = abs(peakheight) -100
 
         w_c = peakfreq * 2 * np.pi
-        C = 5e-8
+
+        #TODO: we need a good initial guess so that the lsq fitting is somewhat accurate, so we need a mehtod to find us a good capacitor...
+        C = 5e-9
         L = 1/ (C * w_c**2)
 
         temp_params = Parameters()
 
-        temp_params.add('R', value=abs(r_val), min = abs(r_val)*0.8,max=abs(r_val)*1.25)
-        temp_params.add('L', value = L,  min = L*0.8, max = L*1.25)
-        temp_params.add('C',value = C, min = C*0.8, max = C*1.25)
+        w_c2 = (peakfreq*2*np.pi)**2
+
+        expr_string_L = '1/(C*'+ str(w_c2)+')'
+        temp_params.add('R', value=abs(r_val), min = abs(r_val)*0.8,max=abs(r_val)*1.25,vary=False)
+        # temp_params.add('L', value = L,  min = L*1e-3, max = L*1e3)
+        temp_params.add('C',value = C, min = C*1e-3, max = C*1e6)
+        temp_params.add('L',expr=expr_string_L)
 
         test_data = self.calc_Z_simple_RLC(temp_params,freqdata,2,2,2)
 
+        plt.figure()
+        plt.loglog(freqdata,data)
+        plt.loglog(freqdata,test_data)
+        plt.ylim([min(data)-0.5, max(data)+0.5])
 
-        out = minimize(self.calc_Z_simple_RLC, temp_params, args=(freqdata,data,2,1))
+        out = minimize(self.calc_Z_simple_RLC, temp_params, args=(modelfreq,modeldata,2,1),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,2,2,2)
+
+        pass
 
 
 
