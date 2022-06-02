@@ -544,7 +544,7 @@ class Fitter:
                 f_u_index = f_c_index + int(np.floor(n_pts_offset))
                 #get data for bandwidth model
                 freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
-                data_BW_mdl = self.data_mag[f_l_index:f_u_index]
+                data_BW_mdl = self.data_mag[f_l_index:f_u_index]*np.exp(1J*np.radians(self.data_ang[f_l_index:f_u_index]))
                 #now model the BW
                 self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
 
@@ -1082,7 +1082,7 @@ class Fitter:
             case fitterconstants.fcnmode.FIT:
                 diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
                 test_data = self.calc_Z_simple_RLC(parameters, freq, 2, 2, 2)
-                plt.loglog(freq,test_data)
+                plt.loglog(freq,abs(test_data))
                 return (diff)
             case fitterconstants.fcnmode.OUTPUT:
                 return Z
@@ -1092,7 +1092,7 @@ class Fitter:
 
         #get the height of the peak and the index(will be used later)
         peakindex = np.argwhere(freqdata == peakfreq)[0][0]
-        peakheight = data[peakindex]
+        peakheight = abs(data[peakindex])
         r_val = abs(peakheight)
 
         #find pits in data
@@ -1113,8 +1113,12 @@ class Fitter:
         w_c = peakfreq * 2 * np.pi
 
         #TODO: we need a good initial guess so that the lsq fitting is somewhat accurate, so we need a mehtod to find us a good capacitor...
-        C = 5e-9
-        L = 1/ (C * w_c**2)
+        C_max_exp = 3
+        C_min_exp = -15
+        numsteps = (C_max_exp-C_min_exp) + 1
+        C_values = np.flipud(np.logspace(C_min_exp, C_max_exp, num=numsteps))
+        #C has to be set to some value, so the expr_string for L works
+        C = C_values[-1]
 
         temp_params = Parameters()
 
@@ -1126,6 +1130,62 @@ class Fitter:
         temp_params.add('C',value = C, min = C*1e-3, max = C*1e6)
         temp_params.add('L',expr=expr_string_L)
 
+        #now step through the C values and look at the diff from the objective function in order to obtain a good
+        #initial guess for lsq fitting
+
+        plt.figure()
+        plt.loglog(freqdata, abs(data))
+        plt.ylim([min(abs(data)) - 0.5, max(abs(data)) + 0.5])
+
+        diff_array = []
+        for C_val in C_values:
+            temp_params['C'].value = C_val
+            diff_data = self.calc_Z_simple_RLC(temp_params, modelfreq, modeldata, 2, 1)
+            diff_array.append(sum((diff_data)))
+            # diff_array.append(np.linalg.norm((diff_data)))
+
+        #check if we have a zero crossing
+        if any(np.signbit(diff_array) == True):
+            sign_change_index = np.argwhere(np.signbit(diff_array) == True)[0][0]
+            #do an interpolation in order to find the cap value at the zero crossing -> most accurate value for C
+            x = np.linspace(C_values[sign_change_index - 1], C_values[sign_change_index], 10000)
+            y = np.linspace(diff_array[sign_change_index - 1], diff_array[sign_change_index], 10000)
+            sign_change_index_interp = np.argwhere(np.signbit(y) == True)[0][0]
+            C_val_rough_fit = x[sign_change_index_interp]
+
+        else:
+            pass
+
+        temp_params.add('C',value=C_val_rough_fit, min=C_val_rough_fit * 0.1, max=C_val_rough_fit * 10)
+
+
+        # C_values = np.linspace(C_val_rough_fit*0.01,C_val_rough_fit*100,1000)
+        # diff_array=[]
+        #
+        # for C_val in C_values:
+        #     temp_params['C'].value = C_val
+        #     diff_data = self.calc_Z_simple_RLC(temp_params, modelfreq, modeldata, 2, 1)
+        #     diff_array.append(np.linalg.norm(diff_data))
+        # plt.figure()
+        # plt.plot(diff_array)
+
+        pass
+
+
+
+
+        # #testing block##########################################
+        #best_c_index = np.argwhere(np.abs(diff_array) == min(np.abs(diff_array)))[0][0]
+
+        # temp_params['C'].value = C_val_final
+        # test_data = self.calc_Z_simple_RLC(temp_params, freqdata, 2, 2, 2)
+        # plt.loglog(freqdata, abs(test_data))
+        # plt.loglog(freqdata, abs(data))
+        #
+        # ########################################################
+        plt.figure()
+        plt.loglog(freqdata, data)
+
         test_data = self.calc_Z_simple_RLC(temp_params,freqdata,2,2,2)
 
         plt.figure()
@@ -1133,10 +1193,18 @@ class Fitter:
         plt.loglog(freqdata,test_data)
         plt.ylim([min(data)-0.5, max(data)+0.5])
 
+        plt.figure()
+        plt.loglog(freqdata, data)
+
         out = minimize(self.calc_Z_simple_RLC, temp_params, args=(modelfreq,modeldata,2,1),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
 
         test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,2,2,2)
+
+        plt.figure()
+        plt.loglog(freqdata,abs(data))
+        plt.loglog(freqdata,abs(test_data_again))
+        plt.show()
 
         pass
 
