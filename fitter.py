@@ -546,13 +546,10 @@ class Fitter:
                 freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
                 data_BW_mdl = self.data_mag[f_l_index:f_u_index]*np.exp(1J*np.radians(self.data_ang[f_l_index:f_u_index]))
                 #now model the BW
-                self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
+                [b_l,b_u] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
 
 
-                freqdata = [2]
 
-                pass
-            #TODO: model bandwidth here
 
             # bad bandwidth lower
             elif self.bad_bandwidth_flag[key_number-1][0]:
@@ -1080,15 +1077,19 @@ class Fitter:
 
         match mode:
             case fitterconstants.fcnmode.FIT:
-                diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
-                test_data = self.calc_Z_simple_RLC(parameters, freq, 2, 2, 2)
-                plt.loglog(freq,abs(test_data))
+                # diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
+                # diff = np.linalg.norm(data-Z)
+                diff = abs(data) - abs(Z)
+                # test_data = self.calc_Z_simple_RLC(parameters, freq, 2, 2, 2)
+                # plt.loglog(freq,abs(test_data))
                 return (diff)
             case fitterconstants.fcnmode.OUTPUT:
                 return Z
 
 
     def model_bandwidth(self, freqdata, data, peakfreq):
+
+        #TODO: adapt for capacitors!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         #get the height of the peak and the index(will be used later)
         peakindex = np.argwhere(freqdata == peakfreq)[0][0]
@@ -1106,16 +1107,10 @@ class Fitter:
         modelfreq = freqdata[lower_pit_index:upper_pit_index]
         modeldata = data[lower_pit_index:upper_pit_index]
 
-
-
-
-
-        w_c = peakfreq * 2 * np.pi
-
-        #TODO: we need a good initial guess so that the lsq fitting is somewhat accurate, so we need a mehtod to find us a good capacitor...
+        #space through the usual capacitance values in logarithmic steps
         C_max_exp = 3
         C_min_exp = -15
-        numsteps = (C_max_exp-C_min_exp) + 1
+        numsteps = ((C_max_exp-C_min_exp) + 1)
         C_values = np.flipud(np.logspace(C_min_exp, C_max_exp, num=numsteps))
         #C has to be set to some value, so the expr_string for L works
         C = C_values[-1]
@@ -1132,17 +1127,11 @@ class Fitter:
 
         #now step through the C values and look at the diff from the objective function in order to obtain a good
         #initial guess for lsq fitting
-
-        plt.figure()
-        plt.loglog(freqdata, abs(data))
-        plt.ylim([min(abs(data)) - 0.5, max(abs(data)) + 0.5])
-
         diff_array = []
         for C_val in C_values:
             temp_params['C'].value = C_val
             diff_data = self.calc_Z_simple_RLC(temp_params, modelfreq, modeldata, 2, 1)
             diff_array.append(sum((diff_data)))
-            # diff_array.append(np.linalg.norm((diff_data)))
 
         #check if we have a zero crossing
         if any(np.signbit(diff_array) == True):
@@ -1154,59 +1143,61 @@ class Fitter:
             C_val_rough_fit = x[sign_change_index_interp]
 
         else:
+            #TODO: handle this case; should not be invoked, when cap values are stepped through well
+            # maybe throw an exception and all that... and think about what BW to take then
             pass
 
+        #TODO: look into what to do if the max and min values are too close to each other
         temp_params.add('C',value=C_val_rough_fit, min=C_val_rough_fit * 0.1, max=C_val_rough_fit * 10)
 
-
-        # C_values = np.linspace(C_val_rough_fit*0.01,C_val_rough_fit*100,1000)
-        # diff_array=[]
-        #
-        # for C_val in C_values:
-        #     temp_params['C'].value = C_val
-        #     diff_data = self.calc_Z_simple_RLC(temp_params, modelfreq, modeldata, 2, 1)
-        #     diff_array.append(np.linalg.norm(diff_data))
-        # plt.figure()
-        # plt.plot(diff_array)
-
-        pass
-
-
-
-
-        # #testing block##########################################
-        #best_c_index = np.argwhere(np.abs(diff_array) == min(np.abs(diff_array)))[0][0]
-
-        # temp_params['C'].value = C_val_final
-        # test_data = self.calc_Z_simple_RLC(temp_params, freqdata, 2, 2, 2)
-        # plt.loglog(freqdata, abs(test_data))
-        # plt.loglog(freqdata, abs(data))
-        #
-        # ########################################################
-        plt.figure()
-        plt.loglog(freqdata, data)
-
-        test_data = self.calc_Z_simple_RLC(temp_params,freqdata,2,2,2)
-
-        plt.figure()
-        plt.loglog(freqdata,data)
-        plt.loglog(freqdata,test_data)
-        plt.ylim([min(data)-0.5, max(data)+0.5])
-
-        plt.figure()
-        plt.loglog(freqdata, data)
-
+        #do a fit then after we have the approximate value of the cap
         out = minimize(self.calc_Z_simple_RLC, temp_params, args=(modelfreq,modeldata,2,1),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
 
-        test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,2,2,2)
+        ################################################################################################################
+        # #PLOTS ( for when you are in the mood for visual analysis ¯\_(ツ)_/¯ )
 
-        plt.figure()
-        plt.loglog(freqdata,abs(data))
-        plt.loglog(freqdata,abs(test_data_again))
-        plt.show()
+        # test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,2,2,2)
+        # test_data_again_rough = self.calc_Z_simple_RLC(temp_params,freqdata,2,2,2)
+        # plt.figure()
+        # plt.plot(diff_array)
+        # plt.figure()
+        # plt.loglog(freqdata,abs(data))
+        # plt.loglog(freqdata,abs(test_data_again))
+        # plt.loglog(freqdata,abs(test_data_again_rough))
+        # plt.show()
+        ################################################################################################################
 
-        pass
+        #now get the bandwidth
+        freq_interp = np.linspace(min(freqdata),max(freqdata),num= 10000)
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                data_interp = self.calc_Z_simple_RLC(out.params, freq_interp, 2, 2,fitterconstants.fcnmode.OUTPUT)
+                BW_3_dB_height = peakheight * 1/np.sqrt(2)
+
+                #get the 3dB-Points of the modeled curve
+                np.logical_and(data_interp < BW_3_dB_height, freq_interp > peakfreq)
+                b_u = freq_interp[np.argwhere(np.logical_and(data_interp < BW_3_dB_height, freq_interp > peakfreq))[0][0]]
+                b_l = freq_interp[np.argwhere(np.logical_and(data_interp < BW_3_dB_height, freq_interp < peakfreq))[-1][0]]
+
+                return [b_l, b_u]
+
+                pass
+
+
+            case fitterconstants.El.CAPACITOR:
+                data_interp = self.calc_Z_simple_RLC(out.params, freq_interp, 1, 2, fitterconstants.fcnmode.OUTPUT)
+
+
+
+
+        #TODO: actually we have good values for the final fit here, maybe use that in order to get a good estimate for
+        # the parameters? would be a good oppurtunity anyways
+
+
+
+
+
 
 
 
