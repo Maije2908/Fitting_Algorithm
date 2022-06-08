@@ -546,7 +546,7 @@ class Fitter:
                 freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
                 data_BW_mdl = self.data_mag[f_l_index:f_u_index]*np.exp(1J*np.radians(self.data_ang[f_l_index:f_u_index]))
                 #now model the BW
-                [b_l,b_u] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
+                [b_l,b_u,_,_,_] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
 
 
 
@@ -691,13 +691,15 @@ class Fitter:
 
                 self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
 
-                #config A -> does not perform too well
-                self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
-                self.parameters.add(L_key, expr=expression_string_L, vary=False)
-
-                # #config B
-                # self.parameters.add(R_key, expr=expression_string_R, vary=False)
+                # #config A -> does not perform too well
+                # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
                 # self.parameters.add(L_key, expr=expression_string_L, vary=False)
+
+                #config B
+                expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                expression_string_R = '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))*sqrt(' +  L_key + '/' + C_key + ')'
+                self.parameters.add(L_key, expr=expression_string_L, vary=False)
+                self.parameters.add(R_key, expr=expression_string_R, vary=False)
 
                 # # config C
                 # expression_string_L = '((' + R_key + '**2)*' + C_key + ')/(' + str(q ** 2) + ')'
@@ -1099,9 +1101,16 @@ class Fitter:
         #find pits in data
         pits = find_peaks(-abs(data))
 
-        #get the indices of the pits closest to the peak
-        lower_pit_index = pits[0][np.flipud(np.argwhere(pits[0]<peakindex))[0][0]]
-        upper_pit_index = pits[0][(np.argwhere(pits[0]>peakindex))[0][0]]
+        #get the indices of the pits closest to the peak (if they exist)
+        try:
+            lower_pit_index = pits[0][np.flipud(np.argwhere(pits[0]<peakindex))[0][0]]
+        except:
+            lower_pit_index = 0
+
+        try:
+            upper_pit_index = pits[0][(np.argwhere(pits[0]>peakindex))[0][0]]
+        except:
+            upper_pit_index = len(data)-1
 
         #crop data
         modelfreq = freqdata[lower_pit_index:upper_pit_index]
@@ -1157,19 +1166,19 @@ class Fitter:
         ################################################################################################################
         # #PLOTS ( for when you are in the mood for visual analysis ¯\_(ツ)_/¯ )
 
-        # test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,2,2,2)
-        # test_data_again_rough = self.calc_Z_simple_RLC(temp_params,freqdata,2,2,2)
-        # plt.figure()
-        # plt.plot(diff_array)
-        # plt.figure()
-        # plt.loglog(freqdata,abs(data))
-        # plt.loglog(freqdata,abs(test_data_again))
-        # plt.loglog(freqdata,abs(test_data_again_rough))
+        test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,2,2,2)
+        test_data_again_rough = self.calc_Z_simple_RLC(temp_params,freqdata,2,2,2)
+        plt.figure()
+        plt.plot(diff_array)
+        plt.figure()
+        plt.loglog(freqdata,abs(data))
+        plt.loglog(freqdata,abs(test_data_again))
+        plt.loglog(freqdata,abs(test_data_again_rough))
         # plt.show()
         ################################################################################################################
 
         #now get the bandwidth
-        freq_interp = np.linspace(min(freqdata),max(freqdata),num= 10000)
+        freq_interp = np.linspace(min(freqdata)-min(freqdata)*(1/1.5),max(freqdata)+max(freqdata)*1.5,num= 10000)
         match self.fit_type:
             case fitterconstants.El.INDUCTOR:
                 data_interp = self.calc_Z_simple_RLC(out.params, freq_interp, 2, 2,fitterconstants.fcnmode.OUTPUT)
@@ -1180,9 +1189,9 @@ class Fitter:
                 b_u = freq_interp[np.argwhere(np.logical_and(data_interp < BW_3_dB_height, freq_interp > peakfreq))[0][0]]
                 b_l = freq_interp[np.argwhere(np.logical_and(data_interp < BW_3_dB_height, freq_interp < peakfreq))[-1][0]]
 
-                return [b_l, b_u]
+                return [b_l, b_u, out.params['R'].value, out.params['L'].value, out.params['C'].value]
 
-                pass
+
 
 
             case fitterconstants.El.CAPACITOR:

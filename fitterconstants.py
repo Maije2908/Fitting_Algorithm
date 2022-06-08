@@ -27,12 +27,14 @@ RMAX = 1e5 #was 1e4
 RMIN = 1e-3
 LMIN = 1e-20
 LOG_FACTOR = 1.04 #multiplication factor for the min bandwidth #OBSOLETE
-BW_MIN_FACTOR = 1/1.5
-BW_MAX_FACTOR = 1.5
+
 MIN_CAP = 1e-20 #minimum capacitor
 MAX_CAP_FACTOR = 1e5 #was 1e3
+
 MIN_W_FACTOR = 0.99
 MAX_W_FACTOR = 1.01
+BW_MIN_FACTOR = 0.99
+BW_MAX_FACTOR = 1.01
 
 # factor to stretch the bandwidth of the last frequency zone (1 = no stretch)
 BANDWIDTH_STRETCH_LAST_ZONE = 1
