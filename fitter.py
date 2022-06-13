@@ -115,7 +115,6 @@ class Fitter:
         self.z21_data = self.z21_data[crop:]
         self.frequency_vector = self.frequency_vector[crop:]
 
-
     def smooth_data(self):
         # Use Savitzky-Golay filter for smoothing the input data, because in the region of the global minimum there is
         # oscillation. After filtering a global minimum can be found easier.
@@ -128,7 +127,6 @@ class Fitter:
         self.data_ang = np.clip(self.data_ang, -90, 90)
 
         return 0
-
 
     def calculate_nominal_value(self):
         offset = fitterconstants.NOMINAL_VALUE_CALC_OFFSET
@@ -551,6 +549,7 @@ class Fitter:
             #get data for bandwidth model
             freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
             data_BW_mdl = self.data_mag[f_l_index:f_u_index]*np.exp(1j*np.radians(self.data_ang[f_l_index:f_u_index]))
+
             #now model the BW
             [b_l,b_u,r_value,value_ind,value_cap] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
 
@@ -598,20 +597,22 @@ class Fitter:
 
             if self.fit_type == fitterconstants.El.CAPACITOR:
                 # good values for capacitor fitting
-                max_cap = value_cap * 100
-                min_cap = value_cap * 20e-3
+                max_cap = value_cap * 1.5
+                min_cap = value_cap * 0.75
 
                 r_max = r_value * 1.01
                 r_min = r_value * 0.990
+
+                expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                expression_string_R = '(1/(' + w_key + '/(' + BW_key + '*' + str(2 * np.pi) + ')))*sqrt(' + L_key + '/' + C_key + ')'
+
                 self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
-
-                self.parameters.add(R_key, min=r_min, max=r_max, value=r_value,vary=True)
-
                 self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
-
                 self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
 
                 self.parameters.add(L_key, expr=expression_string_L, vary=False)
+                self.parameters.add(R_key, expr=expression_string_R, vary=False)
+
 
             else:
 
@@ -646,8 +647,6 @@ class Fitter:
                 # self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
         return 0
-
-
 
     def calculate_Z(self, parameters, frequency_vector, data, fit_order, fit_main_res, modeflag):
         #method to calculate the impedance curve from chained parallel resonance circuits
@@ -718,11 +717,6 @@ class Fitter:
                 return (diff)
             case fcnmode.OUTPUT:
                 return Z
-
-
-
-
-
 
     def start_fit_file_1(self):
 
@@ -898,8 +892,6 @@ class Fitter:
         self.out.params.pretty_print()
         # plt.show()
 
-
-
     def do_output(self):
 
         title = "test"
@@ -974,7 +966,7 @@ class Fitter:
                 # diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
                 # diff = np.linalg.norm(data-Z)
                 diff = abs(data) - abs(Z)
-                # test_data = self.calc_Z_simple_RLC(parameters, freq, 2, 2, 2)
+                # test_data = self.calc_Z_simple_RLC(parameters, freq, 2, 1, 2)
                 # plt.loglog(freq,abs(test_data))
                 return (diff)
             case fitterconstants.fcnmode.OUTPUT:
@@ -990,8 +982,19 @@ class Fitter:
         peakheight = abs(data[peakindex])
         r_val = abs(peakheight)
 
+        #set the flag for parallel/serial circuit
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                ser_par_flag = 2
+            case fitterconstants.El.CAPACITOR:
+                ser_par_flag = 1
+
         #find pits in data
-        pits = find_peaks(-abs(data))
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                pits = find_peaks(-abs(data))
+            case fitterconstants.El.CAPACITOR:
+                pits = find_peaks(abs(data))
 
         #get the indices of the pits closest to the peak (if they exist)
         try:
@@ -1039,8 +1042,8 @@ class Fitter:
 
         diff_array = []
         for C_val in C_values:
-            temp_params['C'].value = C_val
-            diff_data = self.calc_Z_simple_RLC(temp_params, modelfreq, modeldata, 2, 1)
+            temp_params.add('C',value = C_val, min = C_val*1e-3, max = C_val*1e6)
+            diff_data = self.calc_Z_simple_RLC(temp_params, modelfreq, modeldata, ser_par_flag, 1)
             diff_array.append(sum((diff_data)))
 
         #check if we have a zero crossing
@@ -1061,14 +1064,14 @@ class Fitter:
         temp_params.add('C',value=C_val_rough_fit, min=C_val_rough_fit * 0.1, max=C_val_rough_fit * 10)
 
         #do a fit then after we have the approximate value of the cap
-        out = minimize(self.calc_Z_simple_RLC, temp_params, args=(modelfreq,modeldata,2,1),
+        out = minimize(self.calc_Z_simple_RLC, temp_params, args=(modelfreq,modeldata,ser_par_flag,1),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
 
         ################################################################################################################
         # #PLOTS ( for when you are in the mood for visual analysis ¯\_(ツ)_/¯ )
 
-        # test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,2,2,2)
-        # test_data_again_rough = self.calc_Z_simple_RLC(temp_params,freqdata,2,2,2)
+        # test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,[],ser_par_flag,2)
+        # test_data_again_rough = self.calc_Z_simple_RLC(temp_params,freqdata,[],ser_par_flag,2)
         # plt.figure()
         # plt.plot(diff_array, marker = "D")
         # plt.figure()
@@ -1082,13 +1085,12 @@ class Fitter:
         freq_interp = np.linspace(min(freqdata)-min(freqdata)*(1/1.5),max(freqdata)+max(freqdata)*1.5,num= 10000)
         match self.fit_type:
             case fitterconstants.El.INDUCTOR:
-                data_interp = self.calc_Z_simple_RLC(out.params, freq_interp, 2, 2,fitterconstants.fcnmode.OUTPUT)
-                BW_3_dB_height = peakheight * 1/np.sqrt(2)
+                data_interp = self.calc_Z_simple_RLC(out.params, freq_interp, [], ser_par_flag,fitterconstants.fcnmode.OUTPUT)
+                BW_3_dB_height = peakheight * (1/np.sqrt(2))
 
                 #get the 3dB-Points of the modeled curve
-                np.logical_and(data_interp < BW_3_dB_height, freq_interp > peakfreq)
-                b_u = freq_interp[np.argwhere(np.logical_and(data_interp < BW_3_dB_height, freq_interp > peakfreq))[0][0]]
-                b_l = freq_interp[np.argwhere(np.logical_and(data_interp < BW_3_dB_height, freq_interp < peakfreq))[-1][0]]
+                b_u = freq_interp[np.argwhere(np.logical_and(abs(data_interp) < BW_3_dB_height, freq_interp > peakfreq))[0][0]]
+                b_l = freq_interp[np.argwhere(np.logical_and(abs(data_interp) < BW_3_dB_height, freq_interp < peakfreq))[-1][0]]
 
                 return [b_l, b_u, out.params['R'].value, out.params['L'].value, out.params['C'].value]
 
@@ -1096,7 +1098,15 @@ class Fitter:
 
 
             case fitterconstants.El.CAPACITOR:
-                data_interp = self.calc_Z_simple_RLC(out.params, freq_interp, 1, 2, fitterconstants.fcnmode.OUTPUT)
+                data_interp = self.calc_Z_simple_RLC(out.params, freq_interp, [], ser_par_flag, fitterconstants.fcnmode.OUTPUT)
+
+                BW_3_dB_height = peakheight * np.sqrt(2)
+
+                # get the 3dB-Points of the modeled curve
+                b_u = freq_interp[np.argwhere(np.logical_and(abs(data_interp) > BW_3_dB_height, freq_interp > peakfreq))[0][0]]
+                b_l = freq_interp[np.argwhere(np.logical_and(abs(data_interp) > BW_3_dB_height, freq_interp < peakfreq))[-1][0]]
+
+                return [b_l, b_u, out.params['R'].value, out.params['L'].value, out.params['C'].value]
 
 
 
