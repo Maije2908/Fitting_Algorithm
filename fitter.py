@@ -50,7 +50,7 @@ class Fitter:
 
         self.f0 = None
         self.max_order = fitterconstants.MAX_ORDER
-        self.order = None
+        self.order = 0
 
 
     ####################################################################################################################
@@ -499,13 +499,20 @@ class Fitter:
             #TODO: and also throw and except please
             #TODO: some methods are not robust enough for this fit maybe?
 
-        C = self.parameters['C'].value
-        L = self.parameters['L'].value
 
-        min_cap = fitterconstants.MIN_CAP
-        max_cap = C * fitterconstants.MAX_CAP_FACTOR
-        value_cap = (max_cap-min_cap)/2
+        #model the main res, so we have good estimates for the impedance curve
+        #NOTE: THIS DOES NOT WORK THAT EASY VVVVVVVVVVVVV
 
+        # f_c_index = np.argwhere(self.frequency_vector == self.f0)[0][0]
+        # f_l_index = 0
+        # f_u_index = np.argwhere(self.frequency_vector == self.f0)[0][0]+1000
+        # # get data for bandwidth model
+        # freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
+        # data_BW_mdl = self.data_mag[f_l_index:f_u_index] * np.exp(1j * np.radians(self.data_ang[f_l_index:f_u_index]))
+        # # now model the BW
+        # [b_l, b_u, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, self.f0)
+
+        # main_res_data = self.calculate_Z(self.parameters, self.frequency_vector,2,0,1,fitterconstants.fcnmode.OUTPUT)
 
 
         for key_number in range(1, order + 1):
@@ -527,115 +534,46 @@ class Fitter:
 
             # handle bandwidths here -> since the bandwidth detection relies on the 3dB points, which are not always
             # present, we may need to "model" the BW. If we have one of the two 3dB points though, we can assume symmetric
-            # bandwidth
+            # bandwidth EDIT: bandwidth model has been applied to all peaks, since it gives good estimates for the
+            # parameter values
 
-            #both lower and upper BW value faulty
-            if self.bad_bandwidth_flag[key_number-1].all():
-                stretch_factor = 1.5
-                #get indices of the band
-                f_c_index = np.argwhere(self.frequency_vector == b_c)[0][0]
-                f_l_index = np.argwhere(self.frequency_vector == b_l)[0][0]
-                f_u_index = np.argwhere(self.frequency_vector == b_u)[0][0]
-                #calculate diffference between upper and lower, so the number of points is relative to where we are in
-                #the data, since the measurement points are not equally spaced
-                n_pts_offset = ((f_u_index - f_l_index) / 2) * stretch_factor
-                #recalc lower and upper bound
-                f_l_index = f_c_index - int(np.floor(n_pts_offset))
-                f_u_index = f_c_index + int(np.floor(n_pts_offset))
-                #get data for bandwidth model
-                freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
-                data_BW_mdl = self.data_mag[f_l_index:f_u_index]*np.exp(1J*np.radians(self.data_ang[f_l_index:f_u_index]))
-                #now model the BW
-                [b_l,b_u,_,_,_] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
+            stretch_factor = 1.5
+            #get indices of the band
+            f_c_index = np.argwhere(self.frequency_vector == b_c)[0][0]
+            f_l_index = np.argwhere(self.frequency_vector == b_l)[0][0]
+            f_u_index = np.argwhere(self.frequency_vector == b_u)[0][0]
+            #calculate diffference between upper and lower, so the number of points is relative to where we are in
+            #the data, since the measurement points are not equally spaced
+            n_pts_offset = ((f_u_index - f_l_index) / 2) * stretch_factor
+            #recalc lower and upper bound
+            f_l_index = f_c_index - int(np.floor(n_pts_offset))
+            f_u_index = f_c_index + int(np.floor(n_pts_offset))
+            #get data for bandwidth model
+            freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
+            data_BW_mdl = self.data_mag[f_l_index:f_u_index]*np.exp(1j*np.radians(self.data_ang[f_l_index:f_u_index]))
+            #now model the BW
+            [b_l,b_u,r_value,value_ind,value_cap] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
 
-
-
-
-            # bad bandwidth lower
-            elif self.bad_bandwidth_flag[key_number-1][0]:
-                #difference from upper to center
-                diff_f = b_u - b_c
-                b_l = b_c - diff_f
-            # bad bandwidth upper
-            elif self.bad_bandwidth_flag[key_number-1][1]:
-                diff_f = b_c - b_l
-                b_u = b_c + diff_f
 
             # bandwidth
             BW_min = (b_u - b_l) * fitterconstants.BW_MIN_FACTOR
             BW_max = (b_u - b_l) * fitterconstants.BW_MAX_FACTOR
             BW_value = (b_u - b_l)  # BW_max / 8
 
-
             # calculate Q-factor
             q = b_c / BW_value
 
-
-
-
-
-
             # center frequency (omega)
             w_c = b_c * 2 * np.pi
-            min_w = b_l*2*np.pi * fitterconstants.MIN_W_FACTOR #np.sqrt( (f_l*2*np.pi) * w_c)
-            max_w = b_u*2*np.pi * fitterconstants.MAX_W_FACTOR #np.sqrt( (f_u*2*np.pi) * w_c)
+            min_w = b_c*2*np.pi * fitterconstants.MIN_W_FACTOR
+            max_w = b_c*2*np.pi * fitterconstants.MAX_W_FACTOR
 
+            #TODO: look into how to handle the min==max errors
 
-
-
-            # r_offset = 0
-            # try:
-            #     r_offset = abs(self.calculate_Z(self.parameters, self.frequency_vector, 2,key_number-1,0, fitterconstants.fcnmode.OUTPUT)[np.argwhere(self.frequency_vector == self.bandwidths[key_number-1][1])])[0][0]
-            # except Exception:
-            #     pass
-
-            # take the value of the peak as the parallel resistor
-            r_value = self.peak_heights[key_number-1]
-
-
-            # if key_number <= order:
-            #     r_value = abs(self.z21_data[np.argwhere(self.frequency_vector == f_c)])[0][0]
-            # else:
-            #     #the last frequency zone is not really a resonant circuit, so we have to account for that
-            #     r_value = abs(self.z21_data[-1])
-
-            # shrink beginning of first zone (each step halves range on log scale)
-            # if key_number == 1:
-            #     max_w = np.sqrt(max_w * w_c)
-            #     for _ in range(4):
-            #         min_w = np.sqrt(min_w * w_c)
-
-            # expression strings
-            expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-            expression_string_C = '1/(' + w_key + '**2*' + L_key + ')'
-
-            L_value = 1 / (w_c**2 * value_cap)
-
-            match self.fit_type:
-                case fitterconstants.El.INDUCTOR: #INDUCTOR
-                    expression_string_R = '1/(2*' + str(np.pi) + '*' + BW_key + '*' + C_key + ')'
-                case fitterconstants.El.CAPACITOR:
-                    expression_string_R = '2*' + str(np.pi) + '*' + BW_key + '*' + L_key
-
-            #testing new expression strings for L and C dependent on Q-factor
-            expression_string_C = '(' + w_key + '/ (2*' + str(np.pi) + '))' + '/' + '(' + BW_key + '*' + w_key+ '*' + R_key + ')'
-            expression_string_L = '(' + BW_key + '*'+ R_key + ')' +'/ ((' + w_key + '/ (2*' + str(np.pi) + ')) *' + w_key + ')'
-            expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-
-            value_cap = (w_c / (2 * np.pi)) / (BW_value * w_c * r_value)
-            value_ind = (BW_value * r_value) / ( (w_c / (2 * np.pi)) * w_c)
-
-            #we get an error of min==max for the parameters, if one parameter is too small-> just subtract something i guess
-            while value_cap < fitterconstants.MINIMUM_PRECISION:
-                value_cap = value_cap * 2
-
-
-            # good values for capacitor fitting
-            # max_cap = value_cap * 100
-            # min_cap = value_cap * 20e-3
+            # #we get an error of min==max for the parameters, if one parameter is too small-> just subtract something i guess
+            # while value_cap < fitterconstants.MINIMUM_PRECISION:
+            #     value_cap = value_cap * 2
             #
-            # r_max = r_value * 1.01
-            # r_min = r_value * 0.990
 
 
 
@@ -677,8 +615,8 @@ class Fitter:
 
             else:
 
-                max_cap = value_cap * 2
-                min_cap = value_cap * 500e-3
+                max_cap = value_cap * 1e1#2
+                min_cap = value_cap * 1e-1#500e-3
 
 
                 # #testing this expression string
@@ -698,6 +636,7 @@ class Fitter:
                 #config B
                 expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
                 expression_string_R = '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))*sqrt(' +  L_key + '/' + C_key + ')'
+                self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
                 self.parameters.add(L_key, expr=expression_string_L, vary=False)
                 self.parameters.add(R_key, expr=expression_string_R, vary=False)
 
@@ -705,62 +644,6 @@ class Fitter:
                 # expression_string_L = '((' + R_key + '**2)*' + C_key + ')/(' + str(q ** 2) + ')'
                 # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
                 # self.parameters.add(L_key, expr=expression_string_L, vary=False)
-
-
-
-
-
-
-
-
-            #TODO: we might still need this block, i am just doing a test VVVVVVVVV
-
-            # #just vary the last resonant frequency since all other resonances are well determined
-            # #the last "resonance" is not really a resonance but rather the "end of data"
-            # if key_number == order:
-            #     expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-            #     #
-            #     #vary parameters so that none of them get too small
-            #     if (1/(w_c**2 * value_cap)) < fitterconstants.MINIMUM_PRECISION:
-            #         while (1/(w_c**2 * value_cap)) < fitterconstants.MINIMUM_PRECISION:
-            #             value_cap = value_cap/10
-            #         value_ind = 1 / (w_c ** 2 * value_cap)
-            #     elif (1/(w_c**2 * value_ind)) < fitterconstants.MINIMUM_PRECISION:
-            #         while (1/(w_c**2 * value_ind)) < fitterconstants.MINIMUM_PRECISION:
-            #             value_ind = value_ind/10
-            #         value_cap = 1 / (w_c ** 2 * value_ind)
-            #
-            #     max_cap = value_cap * 2
-            #     min_cap = value_cap * 0.5
-            #     min_ind = value_ind * 2
-            #     max_ind = value_ind * 0.5
-            #     expression_string_p = '1/(2*' + str(np.pi) + '*' + BW_key + '*' + C_key + ')'
-            #     BW_min = b_c*1.04 -b_c/1.04
-            #     BW_max = (b_u - b_l) * 1.1
-            #
-            #
-            #     self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_max/8, vary=True)
-            #     self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-            #
-            #     self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-            #     self.parameters.add(L_key, min=min_ind, max=max_ind, expr=expression_string_L , vary=True)
-            #     self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, expr=expression_string_p, vary=True)
-            # else:
-
-
-
-
-
-
-            # self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-            # self.parameters.add(L_key, min=min_ind, max=max_ind, value=value_ind, vary=True)
-
-            # self.parameters.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=True)
-            # self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-            # self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, expr=expression_string_L, vary=False)
-            # # self.parameters.add(L_key, min=fitterconstants.LMIN, max=L, value=L_value, vary=True)
-            # self.parameters.add(R_key, min=fitterconstants.RMIN, max=fitterconstants.RMAX, expr=expression_string_R, vary=False)
-
 
         return 0
 
@@ -829,9 +712,10 @@ class Fitter:
 
         match modeflag:
             case fcnmode.FIT:
-                diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
-                #diff = (np.real(data) - np.real(Z))**2 + (np.imag(data) - np.imag(Z))**2
-                return abs(diff)
+                diff = abs(data)-abs(Z)#(np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
+                # diff = (np.real(data) - np.real(Z))**2 + (np.imag(data) - np.imag(Z))**2
+                # diff = np.linalg.norm(data-Z)
+                return (diff)
             case fcnmode.OUTPUT:
                 return Z
 
@@ -844,12 +728,20 @@ class Fitter:
 
         freq = self.frequency_vector
         fit_data = self.z21_data
-        self.create_elements()
         fit_order = self.order
         mode = fitterconstants.fcnmode.FIT
 
         #TODO: for testing purposes
         self.plot_curve_before_fit()
+
+        # fit_main_resonance = 1
+        # freq_for_fit = freq[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        # data_for_fit = fit_data[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        # self.out = minimize(self.calculate_Z, self.parameters,
+        #                     args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+        #                     method='powell', options={'xtol': 1e-18, 'disp': True})
+        self.create_elements()
+        fit_order = self.order
 
 
         # #set mode flag for the method and tell the method to only fit the main resonance
@@ -1134,8 +1026,17 @@ class Fitter:
         temp_params.add('C',value = C, min = C*1e-3, max = C*1e6)
         temp_params.add('L',expr=expr_string_L)
 
-        #now step through the C values and look at the diff from the objective function in order to obtain a good
-        #initial guess for lsq fitting
+
+        ################################################################################################################
+        # plt.figure()
+        # plt.loglog(freqdata,abs(data))
+        # plt.ylim([min(abs(data))-0.5, max(abs(data))+0.5])
+        ################################################################################################################
+
+
+        # now step through the C values and look at the diff from the objective function in order to obtain a good
+        # initial guess for lsq fitting
+
         diff_array = []
         for C_val in C_values:
             temp_params['C'].value = C_val
@@ -1166,14 +1067,14 @@ class Fitter:
         ################################################################################################################
         # #PLOTS ( for when you are in the mood for visual analysis ¯\_(ツ)_/¯ )
 
-        test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,2,2,2)
-        test_data_again_rough = self.calc_Z_simple_RLC(temp_params,freqdata,2,2,2)
-        plt.figure()
-        plt.plot(diff_array)
-        plt.figure()
-        plt.loglog(freqdata,abs(data))
-        plt.loglog(freqdata,abs(test_data_again))
-        plt.loglog(freqdata,abs(test_data_again_rough))
+        # test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,2,2,2)
+        # test_data_again_rough = self.calc_Z_simple_RLC(temp_params,freqdata,2,2,2)
+        # plt.figure()
+        # plt.plot(diff_array, marker = "D")
+        # plt.figure()
+        # plt.loglog(freqdata,abs(data))
+        # plt.loglog(freqdata,abs(test_data_again))
+        # plt.loglog(freqdata,abs(test_data_again_rough))
         # plt.show()
         ################################################################################################################
 
@@ -1197,11 +1098,6 @@ class Fitter:
             case fitterconstants.El.CAPACITOR:
                 data_interp = self.calc_Z_simple_RLC(out.params, freq_interp, 1, 2, fitterconstants.fcnmode.OUTPUT)
 
-
-
-
-        #TODO: actually we have good values for the final fit here, maybe use that in order to get a good estimate for
-        # the parameters? would be a good oppurtunity anyways
 
 
 
