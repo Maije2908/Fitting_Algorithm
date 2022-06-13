@@ -444,15 +444,23 @@ class Fitter:
                 cap_ideal = 1 / (self.nominal_value * ((self.f0*2*np.pi) ** 2))
                 #add to parameters
 
+                expression_string_L = '1/(' + str(self.f0*2*np.pi) + '**2*' + 'C)'
 
                 self.parameters.add('R_Fe', value=R_Fe, min=fitterconstants.MIN_R_FE, max=fitterconstants.MAX_R_FE, vary=True)
-                #main element
-                self.parameters.add('L', value=self.nominal_value, min=self.nominal_value * 0.9, max=self.nominal_value * 1.1, vary=False)
 
-                # expression_string_C = '1/( w0 **2* L)'
+                # #config A
+                # #main element
+                # self.parameters.add('L', value=self.nominal_value, min=self.nominal_value * 0.9, max=self.nominal_value * 1.1, vary=False)
+                # # expression_string_C = '1/( w0 **2* L)'
+                # self.parameters.add('C', value=cap_ideal,
+                #                     min=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
+                #                     max=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary=True)
+
+                #Config B
                 self.parameters.add('C', value=cap_ideal,
                                     min=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
                                     max=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary=True)
+                self.parameters.add('L', expr = expression_string_L, vary=False)
 
 
                 #alternative -> varies the main element and keeps the parasitic element constrained via expression
@@ -510,7 +518,7 @@ class Fitter:
         # # now model the BW
         # [b_l, b_u, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, self.f0)
 
-        # main_res_data = self.calculate_Z(self.parameters, self.frequency_vector,2,0,1,fitterconstants.fcnmode.OUTPUT)
+        main_res_data = self.calculate_Z(self.parameters, self.frequency_vector,2,0,1,fitterconstants.fcnmode.OUTPUT)
 
 
         for key_number in range(1, order + 1):
@@ -616,8 +624,8 @@ class Fitter:
 
             else:
 
-                max_cap = value_cap * 1e1#2
-                min_cap = value_cap * 1e-1#500e-3
+                max_cap = value_cap * 1e2#2
+                min_cap = value_cap * 1e-2#500e-3
 
 
                 # #testing this expression string
@@ -728,12 +736,13 @@ class Fitter:
         #TODO: for testing purposes
         self.plot_curve_before_fit()
 
-        # fit_main_resonance = 1
-        # freq_for_fit = freq[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
-        # data_for_fit = fit_data[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
-        # self.out = minimize(self.calculate_Z, self.parameters,
-        #                     args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
-        #                     method='powell', options={'xtol': 1e-18, 'disp': True})
+        fit_main_resonance = 1
+        freq_for_fit = freq[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        data_for_fit = fit_data[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
+        self.out = minimize(self.calculate_Z, self.parameters,
+                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+        self.parameters = self.out.params
         self.create_elements()
         fit_order = self.order
 
