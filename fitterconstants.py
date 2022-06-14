@@ -68,3 +68,11 @@ class fcnmode:
 class multiple_fit:
     FULL_FIT = 1
     MAIN_RES_FIT = 2
+
+
+#Debug Plots
+DEBUG_BW_MODEL = 0
+DEBUG_BW_MODEL_VERBOSE = 0
+DEBUG_FIT = 1
+DEBUG_BW_DETECTION = 0
+

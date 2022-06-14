@@ -248,7 +248,8 @@ class Fitter:
         R_s = self.parasitive_resistance
         freq = self.frequency_vector
         #create one figure for the resonance plots
-        plt.figure()
+        if fitterconstants.DEBUG_BW_DETECTION:
+            plt.figure()
 
         prominence_mag = self.prominence
         prominence_phase = self.prominence
@@ -371,8 +372,9 @@ class Fitter:
             bandwidth_list.append(f_tuple)
             peak_heights.append(abs(res_value))
             #THIS IS FOR TESTING
-            markerson = [f_lower_index,res_index,f_upper_index]
-            plt.loglog(self.data_mag, '-bD', markevery=markerson)
+            if fitterconstants.DEBUG_BW_DETECTION:
+                markerson = [f_lower_index,res_index,f_upper_index]
+                plt.loglog(self.data_mag, '-bD', markevery=markerson)
 
         try:
             #spread BW of last circuit; TODO: maybe center the band?
@@ -558,8 +560,21 @@ class Fitter:
             freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
             data_BW_mdl = self.data_mag[f_l_index:f_u_index]*np.exp(1j*np.radians(self.data_ang[f_l_index:f_u_index]))
 
-            #now model the BW
-            [b_l,b_u,r_value,value_ind,value_cap] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
+            #upper and lower 3dB point faulty
+            if self.bad_bandwidth_flag[key_number-1].all:
+                #now model the BW
+                [b_l,b_u,r_value,value_ind,value_cap] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
+            #only lower 3dB point faulty
+            elif self.bad_bandwidth_flag[key_number-1][0]:
+                [_,_, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, b_c)
+                b_l = b_c - (b_u - b_c)
+            # only upper 3dB point faulty
+            elif self.bad_bandwidth_flag[key_number - 1][1]:
+                [_,_, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, b_c)
+                b_u = b_c + (b_c - b_l)
+            #both points present
+            else:
+                [_,_, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, b_c)
 
 
             # bandwidth
@@ -734,8 +749,10 @@ class Fitter:
         mode = fitterconstants.fcnmode.FIT
 
         #TODO: for testing purposes
-        self.plot_curve_before_fit()
-
+        if fitterconstants.DEBUG_FIT:
+            self.plot_curve_before_fit()
+        
+        #fit main resonance (if we do that here, we have the main res curve -> might prove to be useful)
         fit_main_resonance = 1
         freq_for_fit = freq[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
         data_for_fit = fit_data[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
@@ -743,6 +760,12 @@ class Fitter:
                             args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
         self.parameters = self.out.params
+
+        #plot curve again with fitted main resonance
+        if fitterconstants.DEBUG_FIT:
+            self.plot_curve_before_fit()
+
+
         self.create_elements()
         fit_order = self.order
 
@@ -975,8 +998,9 @@ class Fitter:
                 # diff = (np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
                 # diff = np.linalg.norm(data-Z)
                 diff = abs(data) - abs(Z)
-                # test_data = self.calc_Z_simple_RLC(parameters, freq, 2, 1, 2)
-                # plt.loglog(freq,abs(test_data))
+                if fitterconstants.DEBUG_BW_MODEL_VERBOSE:
+                    test_data = self.calc_Z_simple_RLC(parameters, freq, [], ser_par, 2)
+                    plt.loglog(freq,abs(test_data))
                 return (diff)
             case fitterconstants.fcnmode.OUTPUT:
                 return Z
@@ -1023,7 +1047,7 @@ class Fitter:
         #space through the usual capacitance values in logarithmic steps
         C_max_exp = 3
         C_min_exp = -15
-        numsteps = ((C_max_exp-C_min_exp) + 1)
+        numsteps = ((C_max_exp-C_min_exp) + 1) + 25
         C_values = np.flipud(np.logspace(C_min_exp, C_max_exp, num=numsteps))
         #C has to be set to some value, so the expr_string for L works
         C = C_values[-1]
@@ -1040,9 +1064,10 @@ class Fitter:
 
 
         ################################################################################################################
-        # plt.figure()
-        # plt.loglog(freqdata,abs(data))
-        # plt.ylim([min(abs(data))-0.5, max(abs(data))+0.5])
+        if fitterconstants.DEBUG_BW_MODEL_VERBOSE:
+            plt.figure()
+            plt.loglog(freqdata,abs(data))
+            plt.ylim([min(abs(data))-0.5, max(abs(data))+0.5])
         ################################################################################################################
 
 
@@ -1078,16 +1103,16 @@ class Fitter:
 
         ################################################################################################################
         # #PLOTS ( for when you are in the mood for visual analysis ¯\_(ツ)_/¯ )
+        if fitterconstants.DEBUG_BW_MODEL:
+            test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,[],ser_par_flag,2)
+            test_data_again_rough = self.calc_Z_simple_RLC(temp_params,freqdata,[],ser_par_flag,2)
+            plt.figure()
+            plt.plot(diff_array, marker = "D")
+            plt.figure()
+            plt.loglog(freqdata,abs(data))
+            plt.loglog(freqdata,abs(test_data_again))
+            plt.loglog(freqdata,abs(test_data_again_rough))
 
-        # test_data_again = self.calc_Z_simple_RLC(out.params,freqdata,[],ser_par_flag,2)
-        # test_data_again_rough = self.calc_Z_simple_RLC(temp_params,freqdata,[],ser_par_flag,2)
-        # plt.figure()
-        # plt.plot(diff_array, marker = "D")
-        # plt.figure()
-        # plt.loglog(freqdata,abs(data))
-        # plt.loglog(freqdata,abs(test_data_again))
-        # plt.loglog(freqdata,abs(test_data_again_rough))
-        # plt.show()
         ################################################################################################################
 
         #now get the bandwidth
