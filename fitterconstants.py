@@ -31,8 +31,8 @@ LOG_FACTOR = 1.04 #multiplication factor for the min bandwidth #OBSOLETE
 MIN_CAP = 1e-20 #minimum capacitor
 MAX_CAP_FACTOR = 1e5 #was 1e3
 
-MIN_W_FACTOR = 0.952
-MAX_W_FACTOR = 1.05
+MIN_W_FACTOR = 1/1.1
+MAX_W_FACTOR = 1.1
 BW_MIN_FACTOR = 0.99
 BW_MAX_FACTOR = 1.01
 
@@ -74,5 +74,8 @@ class multiple_fit:
 DEBUG_BW_MODEL = 0
 DEBUG_BW_MODEL_VERBOSE = 0
 DEBUG_FIT = 1
-DEBUG_BW_DETECTION = 0
+DEBUG_BW_DETECTION = 1
+
+#logging
+LOGGING_VERBOSE = 0
 

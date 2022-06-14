@@ -13,6 +13,7 @@ from scipy import signal as sg
 from lmfit import minimize, Parameters
 from scipy.signal import find_peaks
 import decimal
+import sys
 
 
 # import constants into the same namespace
@@ -51,6 +52,8 @@ class Fitter:
         self.f0 = None
         self.max_order = fitterconstants.MAX_ORDER
         self.order = 0
+
+        sys.setrecursionlimit(1000)
 
 
     ####################################################################################################################
@@ -587,8 +590,8 @@ class Fitter:
 
             # center frequency (omega)
             w_c = b_c * 2 * np.pi
-            min_w = b_c*2*np.pi * fitterconstants.MIN_W_FACTOR
-            max_w = b_c*2*np.pi * fitterconstants.MAX_W_FACTOR
+            min_w = w_c * fitterconstants.MIN_W_FACTOR
+            max_w = w_c * fitterconstants.MAX_W_FACTOR
 
             #TODO: look into how to handle the min==max errors
 
@@ -660,7 +663,7 @@ class Fitter:
                 #config B
                 expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
                 expression_string_R = '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))*sqrt(' +  L_key + '/' + C_key + ')'
-                self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
+                self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
                 self.parameters.add(L_key, expr=expression_string_L, vary=False)
                 self.parameters.add(R_key, expr=expression_string_R, vary=False)
 
@@ -668,6 +671,17 @@ class Fitter:
                 # expression_string_L = '((' + R_key + '**2)*' + C_key + ')/(' + str(q ** 2) + ')'
                 # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
                 # self.parameters.add(L_key, expr=expression_string_L, vary=False)
+
+                # # config D (assuming perfectly fitted main resonance)
+                # # if (r_value - abs(main_res_data[f_c_index])) > 0:
+                # #     r_value = r_value - abs(main_res_data[f_c_index])
+                # expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                # expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))' + '/' + R_key + ')**2'
+                # expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + ')))/('+R_key+'*'+w_key+')'
+                # self.parameters.add(R_key, value = r_value, min = r_value * 0.2, max = r_value * 5)
+                # self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+                # self.parameters.add(L_key, expr=expression_string_L)
+                # # self.parameters.add(C_key, expr=expression_string_C)
 
         return 0
 
@@ -768,6 +782,9 @@ class Fitter:
 
         self.create_elements()
         fit_order = self.order
+
+        if fitterconstants.DEBUG_FIT:
+            self.plot_curve_before_fit()
 
 
         # #set mode flag for the method and tell the method to only fit the main resonance
