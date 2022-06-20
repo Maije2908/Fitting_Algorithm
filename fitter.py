@@ -270,6 +270,11 @@ class Fitter:
                 #TODO: maybe look into that; there might be a better option for the peak height
                 peak_min_height = min(magnitude_data)
 
+        #frequency limit the data
+        magnitude_data = magnitude_data[freq < fitterconstants.FREQ_UPPER_LIMIT]
+        phase_data = phase_data[freq < fitterconstants.FREQ_UPPER_LIMIT]
+        freq = freq[freq < fitterconstants.FREQ_UPPER_LIMIT]
+
 
         #find peaks of Magnitude Impedance curve (using scipy.signal.find_peaks)
         mag_maxima = find_peaks(magnitude_data, height=peak_min_height, prominence=prominence_mag)
@@ -660,33 +665,52 @@ class Fitter:
                 # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
                 # self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
-                # #config B -> default config; this goes via the Q factor
-                # expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                # expression_string_R = '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))*sqrt(' +  L_key + '/' + C_key + ')'
-                # self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                # self.parameters.add(L_key, expr=expression_string_L, vary=False)
-                # self.parameters.add(R_key, expr=expression_string_R, vary=False)
+                match fitterconstants.COIL_CONFIG:
+                    case 1:
+                        #config B -> default config; this goes via the Q factor
+                        expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                        expression_string_R = '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))*sqrt(' +  L_key + '/' + C_key + ')'
+                        self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+                        self.parameters.add(L_key, expr=expression_string_L, vary=False)
+                        self.parameters.add(R_key, expr=expression_string_R, vary=False)
+                    case 2:
+                        # config D (assuming perfectly fitted main resonance)
+                        if (r_value - abs(main_res_data[f_c_index])) > 0:
+                            r_value = r_value - abs(main_res_data[f_c_index])*(abs(main_res_data[f_c_index])/r_value)
+                            value_cap = q/(w_c*r_value)
+                            max_cap = value_cap * 1e1  # 2
+                            min_cap = value_cap * 1e-1  # 500e-3
+
+                        expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                        expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))' + '/' + R_key + ')**2'
+                        expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + ')))/('+R_key+'*'+w_key+')'
+                        self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+                        self.parameters.add(R_key, value = r_value, min = r_value * 0.2, max = r_value * 5)
+                        self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+                        self.parameters.add(L_key, expr=expression_string_L)
+                        # self.parameters.add(C_key, expr=expression_string_C)
+
 
                 # # config C
                 # expression_string_L = '((' + R_key + '**2)*' + C_key + ')/(' + str(q ** 2) + ')'
                 # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
                 # self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
-                # config D (assuming perfectly fitted main resonance)
-                if (r_value - abs(main_res_data[f_c_index])) > 0:
-                    r_value = r_value - abs(main_res_data[f_c_index])*(abs(main_res_data[f_c_index])/r_value)
-                    value_cap = q/(w_c*r_value)
-                    max_cap = value_cap * 1e1  # 2
-                    min_cap = value_cap * 1e-1  # 500e-3
-
-                expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))' + '/' + R_key + ')**2'
-                expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + ')))/('+R_key+'*'+w_key+')'
-                self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-                self.parameters.add(R_key, value = r_value, min = r_value * 0.2, max = r_value * 5)
-                self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                self.parameters.add(L_key, expr=expression_string_L)
-                # self.parameters.add(C_key, expr=expression_string_C)
+                # # config D (assuming perfectly fitted main resonance)
+                # if (r_value - abs(main_res_data[f_c_index])) > 0:
+                #     r_value = r_value - abs(main_res_data[f_c_index])*(abs(main_res_data[f_c_index])/r_value)
+                #     value_cap = q/(w_c*r_value)
+                #     max_cap = value_cap * 1e1  # 2
+                #     min_cap = value_cap * 1e-1  # 500e-3
+                #
+                # expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                # expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))' + '/' + R_key + ')**2'
+                # expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + ')))/('+R_key+'*'+w_key+')'
+                # self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+                # self.parameters.add(R_key, value = r_value, min = r_value * 0.2, max = r_value * 5)
+                # self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+                # self.parameters.add(L_key, expr=expression_string_L)
+                # # self.parameters.add(C_key, expr=expression_string_C)
 
         return 0
 

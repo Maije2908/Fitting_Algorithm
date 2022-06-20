@@ -7,7 +7,7 @@ class El:
 PROMINENCE_DEFAULT = 0.5
 MAIN_RESONANCE_OFFSET = 50 #obsolete
 MAX_ORDER = 15
-FREQ_UPPER_LIMIT = 100e6
+FREQ_UPPER_LIMIT = 500e6
 
 # offset factor for the first resonance detected after the main peak (min_f = f0 * OFFSET_FACTOR)
 # if the first resonance after the main peak is not fitted, consider setting this to a lower value
@@ -74,9 +74,11 @@ class multiple_fit:
 #Debug Plots
 DEBUG_BW_MODEL = 0
 DEBUG_BW_MODEL_VERBOSE = 0
-DEBUG_FIT = 0
+DEBUG_FIT = 1
 DEBUG_BW_DETECTION = 0
 
 #logging
 LOGGING_VERBOSE = 0
 
+#parameter configurations
+COIL_CONFIG = 1 #1=config B, 2=config D
