@@ -15,7 +15,12 @@ class IOhandler:
 
     def __init__(self):
         self.files = []
+        self.outpath = None
         #self.number_of_files = 0 <- obsolete! info is in the list
+
+    def set_out_path(self, path):
+        self.outpath = path
+
 
 
     def load_file(self, path, ind_cap_cmc):
@@ -37,7 +42,7 @@ class IOhandler:
 
 
 
-    def generate_Netlist_2_port(self, parameters, fit_order , fit_type, path, I_L_table_input):
+    def generate_Netlist_2_port(self, parameters, fit_order , fit_type, I_L_table_input):
 
         out = parameters
         order = fit_order
@@ -135,8 +140,8 @@ class IOhandler:
 
 
         #create paths for the output folder and get the filename without extension
-        out_path = os.path.split(path)[0]
-        filename = os.path.splitext(os.path.split(path)[-1])[0]
+        out_path = os.path.split(self.outpath)[0]
+        filename = os.path.splitext(os.path.split(self.outpath)[-1])[0]
         out_folder = os.path.join(out_path, "fit_results_%s" % filename)
 
         #create the folder; should not be necessary to handle an exception; however folder could be write protected
@@ -150,7 +155,7 @@ class IOhandler:
         file.close()
 
 
-    def export_parameters(self, param_array, order, fit_type, path):
+    def export_parameters(self, param_array, order, fit_type):
 
         out_dict = {}
 
@@ -225,8 +230,8 @@ class IOhandler:
         data_out = pd.DataFrame(out_dict)
         data_out.transpose()
 
-        out_path = os.path.split(path)[0]
-        filename = os.path.splitext(os.path.split(path)[-1])[0]
+        out_path = os.path.split(self.outpath)[0]
+        filename = os.path.splitext(os.path.split(self.outpath)[-1])[0]
         out_folder = os.path.join(out_path, "fit_results_%s" % filename)
         try:
             os.makedirs(out_folder, exist_ok = True)
@@ -235,6 +240,64 @@ class IOhandler:
 
         data_out.to_excel(os.path.join(out_folder, "Parameters_" + filename + ".xlsx"))
 
+
+
+
+
+    def output_plot(self,freq, z21, mag, ang, mdl):
+
+        out_path = os.path.split(self.outpath)[0]
+        filename = os.path.splitext(os.path.split(self.outpath)[-1])[0]
+        out_folder = os.path.join(out_path, "fit_results_%s" % filename)
+        try:
+            os.makedirs(out_folder, exist_ok=True)
+        except Exception:
+            raise
+
+        title = filename
+        fig = plt.figure(figsize=(20, 20))
+        #file_title = get_file_path.results + '/03_Parameter-Fitting_' + file_name + "_" + mode
+        plt.subplot(211)
+        plt.title(str(title), pad=20, fontsize=25, fontweight="bold")
+        plt.xscale('log')
+        plt.yscale('log')
+        plt.xlim([min(freq), max(freq)])
+        plt.ylabel('Magnitude in \u03A9', fontsize=16)
+        plt.xlabel('Frequency in Hz', fontsize=16)
+        plt.grid(True, which="both")
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.plot(freq, abs(z21), 'r', linewidth=3, alpha=0.33, label='Measured Data')
+        plt.plot(freq, mag, 'r', linewidth=3, alpha=1, label='Filtered Data')
+        # Plot magnitude of model in blue
+        plt.plot(freq, abs(mdl), 'b--', linewidth=3, label='Model')
+        plt.legend(fontsize=16)
+
+        #Phase
+        curve = np.angle(z21, deg=True)
+
+        plt.subplot(212)
+        plt.xscale('log')
+        plt.xlim([min(freq), max(freq)])
+        plt.ylabel('Phase in °', fontsize=16)
+        plt.xlabel('Frequency in Hz', fontsize=16)
+        plt.grid(True, which="both")
+        plt.yticks(np.arange(45 * (round(min(curve) / 45)), 45 * (round(max(curve) / 45)) + 1, 45.0))
+        plt.xticks(fontsize=16)
+        plt.yticks(fontsize=16)
+        plt.plot(freq, np.angle(z21, deg=True), 'r', linewidth=3, zorder=-2, alpha=0.33, label='Measured Data')
+        plt.plot(freq, ang, 'r', linewidth=3, zorder=-2, alpha=1, label='Filtered Data')
+        #   Plot Phase of model in magenta
+        plt.plot(freq, np.angle(mdl, deg=True), 'b--', linewidth=3, label='Model', zorder=-1)
+        #plt.scatter(resonances_pos, np.zeros_like(resonances_pos) - 90, linewidth=3, color='green', s=200, marker="2",
+        #            label='Resonances')
+        plt.legend(fontsize=16)
+
+
+
+        plt.savefig(os.path.join(out_folder, "Bode_plot_" + filename + ".png"))
+        plt.show()
+        # plt.close(fig)
 
 
 

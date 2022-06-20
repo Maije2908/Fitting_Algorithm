@@ -660,28 +660,33 @@ class Fitter:
                 # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
                 # self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
-                #config B
-                expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                expression_string_R = '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))*sqrt(' +  L_key + '/' + C_key + ')'
-                self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                self.parameters.add(L_key, expr=expression_string_L, vary=False)
-                self.parameters.add(R_key, expr=expression_string_R, vary=False)
+                # #config B -> default config; this goes via the Q factor
+                # expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                # expression_string_R = '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))*sqrt(' +  L_key + '/' + C_key + ')'
+                # self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+                # self.parameters.add(L_key, expr=expression_string_L, vary=False)
+                # self.parameters.add(R_key, expr=expression_string_R, vary=False)
 
                 # # config C
                 # expression_string_L = '((' + R_key + '**2)*' + C_key + ')/(' + str(q ** 2) + ')'
                 # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
                 # self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
-                # # config D (assuming perfectly fitted main resonance)
-                # # if (r_value - abs(main_res_data[f_c_index])) > 0:
-                # #     r_value = r_value - abs(main_res_data[f_c_index])
-                # expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                # expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))' + '/' + R_key + ')**2'
-                # expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + ')))/('+R_key+'*'+w_key+')'
-                # self.parameters.add(R_key, value = r_value, min = r_value * 0.2, max = r_value * 5)
-                # self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                # self.parameters.add(L_key, expr=expression_string_L)
-                # # self.parameters.add(C_key, expr=expression_string_C)
+                # config D (assuming perfectly fitted main resonance)
+                if (r_value - abs(main_res_data[f_c_index])) > 0:
+                    r_value = r_value - abs(main_res_data[f_c_index])*(abs(main_res_data[f_c_index])/r_value)
+                    value_cap = q/(w_c*r_value)
+                    max_cap = value_cap * 1e1  # 2
+                    min_cap = value_cap * 1e-1  # 500e-3
+
+                expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))' + '/' + R_key + ')**2'
+                expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + ')))/('+R_key+'*'+w_key+')'
+                self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+                self.parameters.add(R_key, value = r_value, min = r_value * 0.2, max = r_value * 5)
+                self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+                self.parameters.add(L_key, expr=expression_string_L)
+                # self.parameters.add(C_key, expr=expression_string_C)
 
         return 0
 
@@ -811,16 +816,22 @@ class Fitter:
         #                         args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
         #                         method='powell', options={'xtol': 1e-18, 'disp': True})
 
+
+
+
         fit_main_resonance = 0
+
         self.out = minimize(self.calculate_Z, self.parameters,
                             args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
 
-
-
-
-
-        #TODO: here we have the model -> do some output here
+        # for it in range(self.order):
+        #     fit_order = it+1
+        #     freq_for_fit = freq[:np.argwhere(freq < self.bandwidths[it][2])[-1][0]]
+        #     data_for_fit = fit_data[:np.argwhere(freq < self.bandwidths[it][2])[-1][0]]
+        #     self.out = minimize(self.calculate_Z, self.parameters,
+        #                         args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+        #                         method='powell', options={'xtol': 1e-18, 'disp': True})
 
 
         #calculate output
@@ -836,14 +847,14 @@ class Fitter:
 
 
         #for testin purposes
-        plt.figure()
-        plt.loglog(self.frequency_vector, abs(fit_data))
-        plt.loglog(freq, abs(model_data))
+        if fitterconstants.DEBUG_FIT:
+            plt.figure()
+            plt.loglog(self.frequency_vector, abs(fit_data))
+            plt.loglog(freq, abs(model_data))
         # plt.show()
         # manager = plt.get_current_fig_manager()
         # manager.full_screen_toggle()
 
-        # self.do_output()
 
         return 0
 
@@ -940,52 +951,6 @@ class Fitter:
         manager.full_screen_toggle()
         self.out.params.pretty_print()
         # plt.show()
-
-    def do_output(self):
-
-        title = "test"
-        fig = plt.figure(figsize=(20, 20))
-        #file_title = get_file_path.results + '/03_Parameter-Fitting_' + file_name + "_" + mode
-        plt.subplot(311)
-        plt.title(str(title), pad=20, fontsize=25, fontweight="bold")
-        plt.xscale('log')
-        plt.yscale('log')
-        plt.xlim([min(self.frequency_vector), max(self.frequency_vector)])
-        plt.ylabel('Magnitude in \u03A9', fontsize=16)
-        plt.xlabel('Frequency in Hz', fontsize=16)
-        plt.grid(True, which="both")
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
-        plt.plot(self.frequency_vector, abs(self.z21_data), 'r', linewidth=3, alpha=0.33, label='Measured Data')
-        plt.plot(self.frequency_vector, self.data_mag, 'r', linewidth=3, alpha=1, label='Filtered Data')
-        # Plot magnitude of model in blue
-        plt.plot(self.frequency_vector, abs(self.model_data), 'b--', linewidth=3, label='Model')
-        plt.legend(fontsize=16)
-
-        #Phase
-        curve = np.angle(self.z21_data, deg=True)
-
-        plt.subplot(312)
-        plt.xscale('log')
-        plt.xlim([min(self.frequency_vector), max(self.frequency_vector)])
-        plt.ylabel('Phase in °', fontsize=16)
-        plt.xlabel('Frequency in Hz', fontsize=16)
-        plt.grid(True, which="both")
-        plt.yticks(np.arange(45 * (round(min(curve) / 45)), 45 * (round(max(curve) / 45)) + 1, 45.0))
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
-        plt.plot(self.frequency_vector, np.angle(self.z21_data, deg=True), 'r', linewidth=3, zorder=-2, alpha=0.33, label='Measured Data')
-        plt.plot(self.frequency_vector, self.data_ang, 'r', linewidth=3, zorder=-2, alpha=1, label='Filtered Data')
-        #   Plot Phase of model in magenta
-        plt.plot(self.frequency_vector, np.angle(self.model_data, deg=True), 'b--', linewidth=3, label='Model', zorder=-1)
-        #plt.scatter(resonances_pos, np.zeros_like(resonances_pos) - 90, linewidth=3, color='green', s=200, marker="2",
-        #            label='Resonances')
-        plt.legend(fontsize=16)
-        # plt.savefig(file_title)
-        # plt.close(fig)
-
-
-
 
 
     ####################################V AUXILLIARY V##################################################################

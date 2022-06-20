@@ -383,7 +383,9 @@ class GUI:
 
             #generate output
             path_out = self.selected_s2p_files[0]
-            self.iohandler.export_parameters(parameter_list, self.fitter.order, fit_type, path_out)
+            self.iohandler.set_out_path(path_out)
+
+            self.iohandler.export_parameters(parameter_list, self.fitter.order, fit_type)
 
             # create saturation table and get nominal value
             saturation_table = ''
@@ -404,7 +406,9 @@ class GUI:
                     saturation_table += ','
 
 
-            self.iohandler.generate_Netlist_2_port(parameter_list[0],fit_1_order, fit_type, path_out, saturation_table)
+            self.iohandler.generate_Netlist_2_port(parameter_list[0],fit_1_order, fit_type, saturation_table)
+            self.iohandler.output_plot(self.fitter.frequency_vector, self.fitter.z21_data, self.fitter.data_mag,
+                                       self.fitter.data_ang, self.fitter.model_data)
 
 
         except Exception as e:
