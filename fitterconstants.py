@@ -7,7 +7,7 @@ class El:
 PROMINENCE_DEFAULT = 0.5
 MAIN_RESONANCE_OFFSET = 50 #obsolete
 MAX_ORDER = 15
-FREQ_UPPER_LIMIT = 500e6#2e9
+FREQ_UPPER_LIMIT = 2e9#500e6#2e9
 
 # offset factor for the first resonance detected after the main peak (min_f = f0 * OFFSET_FACTOR)
 # if the first resonance after the main peak is not fitted, consider setting this to a lower value
@@ -61,6 +61,8 @@ MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the
 
 DEFAULT_OFFSET_PEAK = 40 #samples; this specifies the default offset for a resonance peak if the 3dB point can't be found
 
+MAIN_RES_FIT_OFFSET_SAMPLES = 100 #samples; this is because at the start of the curve the slope might be off
+
 #mode flags
 class fcnmode:
     FIT: int = 1
@@ -81,4 +83,5 @@ DEBUG_BW_DETECTION = 0
 LOGGING_VERBOSE = 0
 
 #parameter configurations
-COIL_CONFIG = 1 #1=config B, 2=config D
+#OBSOLETE!!!!
+COIL_CONFIG = 2 #1=config B, 2=config D
