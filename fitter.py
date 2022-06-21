@@ -840,13 +840,16 @@ class Fitter:
         #                         args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
         #                         method='powell', options={'xtol': 1e-18, 'disp': True})
 
+        #Frequency limit for fit data
+        fit_data_frq_lim = fit_data[freq < fitterconstants.FREQ_UPPER_LIMIT]
+        freq_data_frq_lim = freq[freq < fitterconstants.FREQ_UPPER_LIMIT]
 
 
 
         fit_main_resonance = 0
 
         self.out = minimize(self.calculate_Z, self.parameters,
-                            args=(freq, fit_data, fit_order, fit_main_resonance, mode,),
+                            args=(freq_data_frq_lim, fit_data_frq_lim, fit_order, fit_main_resonance, mode,),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
 
         # for it in range(self.order):
