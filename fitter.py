@@ -629,8 +629,8 @@ class Fitter:
 
             if self.fit_type == fitterconstants.El.CAPACITOR:
                 # good values for capacitor fitting
-                max_cap = value_cap * 1.5
-                min_cap = value_cap * 0.75
+                max_cap = value_cap * 1e2
+                min_cap = value_cap * 1e-2
 
                 r_max = r_value * 1.01
                 r_min = r_value * 0.990
@@ -645,15 +645,43 @@ class Fitter:
                 self.parameters.add(L_key, expr=expression_string_L, vary=False)
                 self.parameters.add(R_key, expr=expression_string_R, vary=False)
 
+                match config_number:
+                    case 1:
+                        # config B -> default config; this goes via the Q factor
+                        expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                        expression_string_R = '((' + BW_key + '*' + str(2 * np.pi) + ')/(' + w_key  + '))*sqrt(' + L_key + '/' + C_key + ')'
+                        self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+                        self.parameters.add(L_key, expr=expression_string_L, vary=False)
+                        self.parameters.add(R_key, expr=expression_string_R, vary=False)
+                    case 2:
+                        # config D (assuming perfectly fitted main resonance)
+                        if (r_value - abs(main_res_data[f_c_index])) > 0:
+                            r_value = r_value - abs(main_res_data[f_c_index]) * (
+                                        abs(main_res_data[f_c_index]) / r_value)
+                            value_cap = q / (w_c * r_value)
+                            max_cap = value_cap * 1e1  # 2
+                            min_cap = value_cap * 1e-1  # 500e-3
+
+                        expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
+                        expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(
+                            2 * np.pi) + '))' + '/' + R_key + ')**2'
+                        expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(
+                            2 * np.pi) + ')))/(' + R_key + '*' + w_key + ')'
+                        self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+                        self.parameters.add(R_key, value=r_value, min=r_value * 0.2, max=r_value * 5)
+                        self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+                        self.parameters.add(L_key, expr=expression_string_L)
+                        # self.parameters.add(C_key, expr=expression_string_C)
+
+
+
+
+
 
             else:
 
                 max_cap = value_cap * 1e2#2
                 min_cap = value_cap * 1e-2#500e-3
-
-
-                # #testing this expression string
-                # expression_string_L = '((' + R_key + '**2)*' + C_key + ')/('+str(q**2)+')'
 
 
                 self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
@@ -697,21 +725,6 @@ class Fitter:
                 # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
                 # self.parameters.add(L_key, expr=expression_string_L, vary=False)
 
-                # # config D (assuming perfectly fitted main resonance)
-                # if (r_value - abs(main_res_data[f_c_index])) > 0:
-                #     r_value = r_value - abs(main_res_data[f_c_index])*(abs(main_res_data[f_c_index])/r_value)
-                #     value_cap = q/(w_c*r_value)
-                #     max_cap = value_cap * 1e1  # 2
-                #     min_cap = value_cap * 1e-1  # 500e-3
-                #
-                # expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                # expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))' + '/' + R_key + ')**2'
-                # expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + ')))/('+R_key+'*'+w_key+')'
-                # self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-                # self.parameters.add(R_key, value = r_value, min = r_value * 0.2, max = r_value * 5)
-                # self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                # self.parameters.add(L_key, expr=expression_string_L)
-                # # self.parameters.add(C_key, expr=expression_string_C)
 
         return 0
 
@@ -885,7 +898,10 @@ class Fitter:
         norm_2_mdl = self.calculate_Z(param_set_2, freq_data_frq_lim, [], self.order, fit_main_resonance, mode)
 
         #decide which param set to take
-        if np.linalg.norm(fit_data_frq_lim - norm_1_mdl) < np.linalg.norm(fit_data_frq_lim - norm_2_mdl):
+        #TODO: the np.linalg.norm() command might lead to unexpected behaviour i.e. taking the fit that is worse...
+        # I do not know why this is the case, and I don't really want to do this via abs() but I'm going with this now
+        if np.linalg.norm(abs(fit_data_frq_lim) - abs(norm_1_mdl)) < np.linalg.norm(abs(fit_data_frq_lim) - abs(norm_2_mdl)):
+        # if abs(sum(abs(fit_data_frq_lim)-abs(norm_1_mdl))) < abs(sum(abs(fit_data_frq_lim)-abs(norm_2_mdl))):
             self.parameters = param_set_1
             self.model_data = model_data_1
             if fitterconstants.DEBUG_FIT:
