@@ -821,7 +821,7 @@ class Fitter:
             self.parameters = self.parameters
 
         #fix main resonance parameters in place
-        self.fix_main_res_params()
+        self.fix_main_resonance_parameters()
 
         if fitterconstants.DEBUG_FIT:#debug plot -> fitted main resonance
             self.plot_curve_before_fit()
@@ -829,8 +829,8 @@ class Fitter:
         ###################### Higher order resonances #################################################################
 
         # Frequency limit for fit data
-        fit_data_frq_lim = fit_data[freq < fitterconstants.FREQ_UPPER_LIMIT]
-        freq_data_frq_lim = freq[freq < fitterconstants.FREQ_UPPER_LIMIT]
+        fit_data_frq_lim = fit_data[np.logical_and(freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR ,freq < fitterconstants.FREQ_UPPER_LIMIT)]
+        freq_data_frq_lim = freq[np.logical_and(freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR ,freq < fitterconstants.FREQ_UPPER_LIMIT)]
 
         ##################### config 1 fit
 
@@ -880,17 +880,21 @@ class Fitter:
             plt.loglog(freq, abs(model_data_1))
             plt.loglog(freq, abs(model_data_2))
 
-        #calculate frequency limited data-model norms
+        #calculate frequency limited data
         norm_1_mdl = self.calculate_Z(param_set_1, freq_data_frq_lim, [], self.order, fit_main_resonance, mode)
-        norm_2_mdl = self.calculate_Z(param_set_1, freq_data_frq_lim, [], self.order, fit_main_resonance, mode)
+        norm_2_mdl = self.calculate_Z(param_set_2, freq_data_frq_lim, [], self.order, fit_main_resonance, mode)
 
         #decide which param set to take
         if np.linalg.norm(fit_data_frq_lim - norm_1_mdl) < np.linalg.norm(fit_data_frq_lim - norm_2_mdl):
             self.parameters = param_set_1
             self.model_data = model_data_1
+            if fitterconstants.DEBUG_FIT:
+                self.logger.info("Debug: Took Parameter config 1 (Q constrained)")
         else:
             self.parameters = param_set_2
             self.model_data = model_data_2
+            if fitterconstants.DEBUG_FIT:
+                self.logger.info("Debug: Took Parameter config 2 (R free/C free)")
 
         ################################################################################################################
 
@@ -1179,7 +1183,7 @@ class Fitter:
 
 
 
-    def fix_main_res_params(self):
+    def fix_main_resonance_parameters(self):
         self.parameters['R_s'].vary = False
         self.parameters['L'].vary = False
         self.parameters['C'].vary = False
@@ -1188,8 +1192,6 @@ class Fitter:
                 self.parameters['R_Fe'].vary = False
             case fitterconstants.El.CAPACITOR:
                 self.parameters['R_iso'].vary = False
-
-
 
 
     def fix_parameters(self):
