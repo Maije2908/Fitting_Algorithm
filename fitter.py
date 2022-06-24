@@ -138,9 +138,10 @@ class Fitter:
 
         match self.fit_type:
             case El.INDUCTOR:
-                # find first point where the phase crosses 0 using numpy.argwhere
+                # find first point where the phase crosses 0 using numpy.argwhere --> f0
                 index_angle_smaller_zero = np.argwhere(self.data_ang < 0)
                 index_ang_zero_crossing = index_angle_smaller_zero[0][0]
+                f0 = freq[index_ang_zero_crossing]
 
                 # if the first zero crossing is smaller that the offset i.e. the first zero crossing is at the start of
                 # the data, raise an exception
@@ -153,10 +154,25 @@ class Fitter:
                     raise Exception("Error: Inductive range not detected (max phase = {value}°).\n"
                                     "Please specify nominal inductance.".format(value=np.round(max(self.data_ang), 1)))
 
-                for sample in range(offset, len(freq)):
-                    if self.data_ang[sample] == max(self.data_ang[offset:index_ang_zero_crossing]): #TODO: I AM NOT SURE IF THIS WORKS RIGHT!!! HAVE ANOTHER LOOK AT THAT
-                        self.nominal_value = self.data_mag[sample] / (2 * np.pi * freq[sample])
-                        break
+                #crop data to [offset:f0] in order to find the linear range for the calculation of nominal value
+                ang_test_data = self.data_ang[freq < f0][offset:]
+                curve_data = self.z21_data[freq < f0][offset:]
+                w_data = (freq[freq < f0][offset:])*2*np.pi
+
+                #then ceil the data, and select all values that have max value (we can assume linear range here, ideally
+                # phase should be 90° here)
+                ang_test_ceil = np.ceil(ang_test_data)
+                bool_select = ang_test_ceil == max(ang_test_ceil)
+
+                #create an array filled with possible values for L; calculation is L = imag(Z)/w
+                L_vals = []
+                for it, curve_sample in enumerate(zip(curve_data, w_data)):
+                    if bool_select[it]:
+                        L_vals.append(np.imag(curve_sample[0])/curve_sample[1])
+
+                # TODO: using min() here is entirely based on empirical observations, NOT MATHEMATICALLY SOUND
+                self.nominal_value = min(L_vals)
+
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value)) #TODO: this has to be normalized output to 1e-3/-6/-9 etc
                 self.logger.info("Nominal Inductance not provided, calculated: " + output_dec.to_eng_string())
 
@@ -165,6 +181,7 @@ class Fitter:
                 # find first point where the phase crosses 0
                 index_angle_larger_zero = np.argwhere(self.data_ang > 0)
                 index_ang_zero_crossing = index_angle_larger_zero[0][0]
+                f0 = freq[index_ang_zero_crossing]
 
                 # if the first zero crossing is smaller that the offset i.e. the first zero crossing is at the start of
                 # the data, raise an exception
@@ -176,20 +193,44 @@ class Fitter:
                     raise Exception("Error: Capacitive range not detected (min phase = {value}°).\n"
                                     "Please specify nominal capacitance.".format(value=np.round(min(self.data_ang), 1)))
 
-                test_values = []
-                for sample in range(offset, len(freq)):
-                    if self.data_ang[sample] == min(self.data_ang[offset:index_ang_zero_crossing]):
-                        nominal_value = 1 / (2 * np.pi * freq[sample] * self.data_mag[sample])
-                        self.nominal_value = nominal_value
-                        test_values.append(self.nominal_value)
-                        # break
-                try:
-                    test_values_gradient = abs(np.gradient(test_values, 2))
-                    # it takes the first values instead of the "linear" range. need to fix this. possibly by taking the longest min gradient
-                    #TODO: i dont have a single clue how this works for capacitors EDIT: if we can't calculate gradient, just don't do it i guess
-                    self.nominal_value = test_values[np.argmin(np.amin(test_values_gradient))]
-                except Exception:
-                    pass
+                #TODO: the calculation for nominal parameters for capacitors seems to be off --> check on that again
+
+                #crop data to [offset:f0] in order to find the linear range for the calculation of nominal value
+                ang_test_data = self.data_ang[freq < f0][offset:]
+                curve_data = self.z21_data[freq < f0][offset:]
+                w_data = (freq[freq < f0][offset:])*2*np.pi
+
+                #then floor the data, and select all values that have max value (we can assume linear range here, ideally
+                # phase should be -90° here)
+                ang_test_ceil = np.floor(ang_test_data)
+                bool_select = ang_test_ceil == min(ang_test_ceil)
+
+                #create an array filled with possible values for L; calculation is L = imag(Z)/w
+                C_vals = []
+                for it, curve_sample in enumerate(zip(curve_data, w_data)):
+                    if bool_select[it]:
+                        C_vals.append(-1/(np.imag(curve_sample[0])*curve_sample[1]))
+
+                #TODO: using min() here is entirely based on empirical observations, NOT MATHEMATICALLY SOUND
+                self.nominal_value = min(C_vals)
+
+
+
+
+                # test_values = []
+                # for sample in range(offset, len(freq)):
+                #     if self.data_ang[sample] == min(self.data_ang[offset:index_ang_zero_crossing]):
+                #         nominal_value = 1 / (2 * np.pi * freq[sample] * self.data_mag[sample])
+                #         self.nominal_value = nominal_value
+                #         test_values.append(self.nominal_value)
+                #         # break
+                # try:
+                #     test_values_gradient = abs(np.gradient(test_values, 2))
+                #     # it takes the first values instead of the "linear" range. need to fix this. possibly by taking the longest min gradient
+                #     #TODO: i dont have a single clue how this works for capacitors EDIT: if we can't calculate gradient, just don't do it i guess
+                #     self.nominal_value = test_values[np.argmin(np.amin(test_values_gradient))]
+                # except Exception:
+                #     pass
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value))
                 self.logger.info("Nominal Capacitance not provided, calculated: " + output_dec.to_eng_string())
 
@@ -826,6 +867,7 @@ class Fitter:
         old_data = self.calculate_Z(self.parameters, freq, [], 0, fit_main_resonance, fitterconstants.fcnmode.OUTPUT)
         new_data = self.calculate_Z(self.out.params, freq, [], 0, fit_main_resonance, fitterconstants.fcnmode.OUTPUT)
 
+        #TODO: fix fit behaviour--> the worse (before fit) parameter set is taken for the 0v_cap file at the moment
         #check if the main resonance fit yields good results -> else: go with initial guess
         if np.linalg.norm(new_data - self.z21_data) < np.linalg.norm(old_data - self.z21_data):
             self.parameters = self.out.params
@@ -933,6 +975,7 @@ class Fitter:
         # voltage dependent main element
 
         freq = self.frequency_vector
+        fit_data = self.z21_data
         res_value = self.z21_data[freq == self.f0]
 
         #determine wether to perform a full fit (i.e. fit all parameters) or if only the main resonance should be fit
@@ -946,6 +989,7 @@ class Fitter:
                 match self.fit_type:
                     case fitterconstants.El.INDUCTOR:
                         C_val = self.parameters['C'].value
+                        R_Fe_val = self.parameters['R_Fe'].value
                         #clear and re-initiate parameters
                         self.parameters = Parameters()
                         self.create_nominal_parameters()
@@ -976,6 +1020,7 @@ class Fitter:
                 self.parameters['L'].vary = True
                 self.parameters['L'].min = L_ideal*0.8
                 self.parameters['L'].max = L_ideal*1.25
+                self.parameters['L'].expr = ''
                 #
                 bw_value = res_value / np.sqrt(2)
                 f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
@@ -983,11 +1028,22 @@ class Fitter:
                 BW = freq[f_upper_index] - freq[f_lower_index]
                 R_Fe = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
 
-                self.parameters['R_Fe'].vary = True
+                match fitting_mode:
+                    case fitterconstants.multiple_fit.FULL_FIT:
+                        self.parameters['R_Fe'].vary = True
+                        self.parameters['R_Fe'].value = R_Fe
+                        self.parameters['R_Fe'].min = R_Fe * 0.8
+                        self.parameters['R_Fe'].max = R_Fe * 1.25
+                        freq_for_fit = freq
+                        data_for_fit = fit_data
+                    case fitterconstants.multiple_fit.MAIN_RES_FIT:
+                        self.parameters['R_Fe'].vary = False
+                        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+                        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+                        freq_for_fit = freq_for_fit[fitterconstants.MAIN_RES_FIT_OFFSET_SAMPLES:]
+                        data_for_fit = data_for_fit[fitterconstants.MAIN_RES_FIT_OFFSET_SAMPLES:]
 
-                self.parameters['R_Fe'].value = R_Fe
-                self.parameters['R_Fe'].min = R_Fe * 0.8
-                self.parameters['R_Fe'].max = R_Fe * 1.25
+
                 #
                 # self.parameters['R_s'].vary = True
 
@@ -998,14 +1054,11 @@ class Fitter:
                 self.parameters['C'].min = C_ideal * 0.8
                 self.parameters['C'].max = C_ideal * 1.25
 
-        freq = self.frequency_vector
-        fit_data = self.z21_data
+
 
         mode = fitterconstants.fcnmode.FIT
         # if only main res fit -> order = 0; fit_main_res = 1
         fit_order = self.order
-        freq_for_fit = freq#[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
-        data_for_fit = fit_data#[freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR]
         # call the minimizer and pass the arguments
         self.out = minimize(self.calculate_Z, self.parameters,
                             args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
@@ -1014,11 +1067,12 @@ class Fitter:
         self.logger.info("debug: calculated main element{value:.3E}".format(value = self.parameters['L'].value))
 
         model_data = self.calculate_Z(self.out.params, freq,2,self.order,0,fitterconstants.fcnmode.OUTPUT)
-        plt.figure()
-        plt.loglog(self.frequency_vector, abs(fit_data))
-        plt.loglog(freq, abs(model_data))
-        manager = plt.get_current_fig_manager()
-        manager.full_screen_toggle()
+        if fitterconstants.DEBUG_FIT:
+            plt.figure()
+            plt.loglog(self.frequency_vector, abs(fit_data))
+            plt.loglog(freq, abs(model_data))
+            # manager = plt.get_current_fig_manager()
+            # manager.full_screen_toggle()
         self.out.params.pretty_print()
         # plt.show()
 

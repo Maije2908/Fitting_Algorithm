@@ -342,6 +342,9 @@ class GUI:
 
             self.fitter.smooth_data()
 
+
+
+
             # parse specs to fitter
             self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
             # invoke methods for data preprocessing
@@ -374,7 +377,7 @@ class GUI:
                 self.fitter.smooth_data()
                 self.fitter.get_main_resonance()
 
-                n_file_fit_type = fitterconstants.multiple_fit.FULL_FIT
+                n_file_fit_type = fitterconstants.multiple_fit.MAIN_RES_FIT
 
                 self.fitter.start_fit_file_n(n_file_fit_type)
                 parameter_list.append(self.fitter.out.params)
