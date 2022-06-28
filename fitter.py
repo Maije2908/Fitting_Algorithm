@@ -14,6 +14,7 @@ from lmfit import minimize, Parameters
 from scipy.signal import find_peaks
 import decimal
 import sys
+import pandas as pd
 
 
 # import constants into the same namespace
@@ -161,17 +162,21 @@ class Fitter:
 
                 #then ceil the data, and select all values that have max value (we can assume linear range here, ideally
                 # phase should be 90° here)
-                ang_test_ceil = np.ceil(ang_test_data)
-                bool_select = ang_test_ceil == max(ang_test_ceil)
+                # ang_test_ceil = np.ceil(ang_test_data)
+                # bool_select = 1#ang_test_ceil == max(ang_test_ceil)
 
                 #create an array filled with possible values for L; calculation is L = imag(Z)/w
                 L_vals = []
                 for it, curve_sample in enumerate(zip(curve_data, w_data)):
-                    if bool_select[it]:
-                        L_vals.append(np.imag(curve_sample[0])/curve_sample[1])
+                    #if bool_select[it]:
+                    L_vals.append(np.imag(curve_sample[0])/curve_sample[1])
 
-                # TODO: using min() here is entirely based on empirical observations, NOT MATHEMATICALLY SOUND
-                self.nominal_value = min(L_vals)
+                #find the 50% quantile of the slope data and define the max slope allowed
+                quantile_50 = np.quantile(np.gradient(self.data_mag)[freq<f0],0.5)
+                max_slope = quantile_50 * fitterconstants.QUANTILE_MULTIPLICATION_FACTOR
+                #boolean index the data that has lower than max slope and calculate the mean
+                L_vals_eff = np.array(L_vals)[np.gradient(self.data_mag)[freq<f0][offset:] < max_slope]
+                self.nominal_value = np.mean(L_vals_eff)
 
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value)) #TODO: this has to be normalized output to 1e-3/-6/-9 etc
                 self.logger.info("Nominal Inductance not provided, calculated: " + output_dec.to_eng_string())
@@ -202,18 +207,22 @@ class Fitter:
 
                 #then floor the data, and select all values that have max value (we can assume linear range here, ideally
                 # phase should be -90° here)
-                ang_test_ceil = np.floor(ang_test_data)
-                bool_select = ang_test_ceil == min(ang_test_ceil)
+                # ang_test_ceil = np.floor(ang_test_data)
+                # bool_select = ang_test_ceil == min(ang_test_ceil)
 
                 #create an array filled with possible values for L; calculation is L = imag(Z)/w
                 C_vals = []
                 for it, curve_sample in enumerate(zip(curve_data, w_data)):
-                    if bool_select[it]:
-                        C_vals.append(-1/(np.imag(curve_sample[0])*curve_sample[1]))
+                    # if bool_select[it]:
+                    C_vals.append(-1/(np.imag(curve_sample[0])*curve_sample[1]))
 
-                #TODO: using min() here is entirely based on empirical observations, NOT MATHEMATICALLY SOUND
-                self.nominal_value = min(C_vals)
 
+                # find the 50% quantile of the slope data and define the max slope allowed
+                quantile_50 = np.quantile(np.gradient(self.data_mag)[freq < f0], 0.5)
+                max_slope = quantile_50 * fitterconstants.QUANTILE_MULTIPLICATION_FACTOR
+                # boolean index the data that has lower than max slope and calculate the mean
+                C_vals_eff = np.array(C_vals)[np.gradient(self.data_mag)[freq < f0][offset:] < max_slope]
+                self.nominal_value = np.mean(C_vals_eff)
 
 
 
@@ -295,9 +304,6 @@ class Fitter:
         if fitterconstants.DEBUG_BW_DETECTION:
             plt.figure()
 
-        prominence_mag = self.prominence
-        prominence_phase = self.prominence
-
         # in order to use the same methods for capacitors as we do for inductors, we simply flip the dataset, so we still
         # detect "peaks" although there are pits
         match self.fit_type:
@@ -316,13 +322,21 @@ class Fitter:
         phase_data = phase_data[freq < fitterconstants.FREQ_UPPER_LIMIT]
         freq = freq[freq < fitterconstants.FREQ_UPPER_LIMIT]
 
+        #calculate prominence in decimal (from dB)
+        prominence_mag = self.prominence
+        prominence_phase = fitterconstants.PROMINENCE_DEFAULT
 
         #find peaks of Magnitude Impedance curve (using scipy.signal.find_peaks)
-        mag_maxima = find_peaks(magnitude_data, height=peak_min_height, prominence=prominence_mag)
+        mag_maxima = find_peaks(20*np.log10(magnitude_data), height=peak_min_height, prominence=prominence_mag)
         mag_minima = find_peaks(magnitude_data * -1, prominence=prominence_mag)
         #find peaks of Phase curve
         phase_maxima = find_peaks(phase_data, prominence=prominence_phase)
         phase_minima = find_peaks(phase_data * -1, prominence=prominence_phase)
+
+        ######FOR MANUAL TESTING!!!VVV
+        # test_prom = find_peaks(magnitude_data, height=peak_min_height, prominence=prominence_mag)
+        # plt.loglog(magnitude_data)
+        # plt.plot(test_prom[0], test_prom[1]['peak_heights'], marker='D', linestyle='')
 
         #map to frequency; TODO: we are using the file here, so if there are multiple files, need to change this
         #TODO: why are we even calculating the magnitude maxima if they are never used???
@@ -365,7 +379,7 @@ class Fitter:
             #resonance frequency, corresponding height and index
             res_fq = ang_maxima_pos[num_maximum]
             res_index = mag_maxima_index[num_maximum]
-            res_value = mag_maxima_value[num_maximum]
+            res_value = magnitude_data[res_index]
 
             #get 3dB value
             # if we work with an inductor the curve is mirrored, so we have to account for that

@@ -131,7 +131,7 @@ class GUI:
         self.entry_saturation.grid(column=1, row=4, sticky=tk.W, **config.ENTRY_PADDING)
 
         # Prominence
-        label_prominence = tk.Label(self.root, text="Prominence in °", bg=config.BCKGND_COLOR)
+        label_prominence = tk.Label(self.root, text="Prominence in dB", bg=config.BCKGND_COLOR)
         label_prominence.config(font=config.ENTRY_FONT)
         label_prominence.grid(column=0, row=5, sticky=tk.W, **config.SPEC_PADDING)
 

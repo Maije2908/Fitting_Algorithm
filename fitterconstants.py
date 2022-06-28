@@ -32,16 +32,17 @@ LOG_FACTOR = 1.04 #multiplication factor for the min bandwidth #OBSOLETE
 MIN_CAP = 1e-20 #minimum capacitor
 MAX_CAP_FACTOR = 1e5 #was 1e3
 
-MIN_W_FACTOR = 1/1.05
+
 MAX_W_FACTOR = 1.05
-BW_MIN_FACTOR = 0.99
+MIN_W_FACTOR = 1/MAX_W_FACTOR
 BW_MAX_FACTOR = 1.01
+BW_MIN_FACTOR = 1/BW_MAX_FACTOR
 
 # factor to stretch the bandwidth of the last frequency zone (1 = no stretch)
 BANDWIDTH_STRETCH_LAST_ZONE = 1
 
 #number of samples to crop at the start of data
-CROP_SAMPLES = 0
+CROP_SAMPLES = 00
 
 
 
@@ -56,6 +57,10 @@ SAVGOL_POL_ORDER = 2 #polynomial order default:2
 #offset for the calculation of the nominal parameters; useful if the phase data does not behave properly
 #Note: changing this parameter can significantly improve goodness of fit (esp. for capacitors)
 NOMINAL_VALUE_CALC_OFFSET = 3 #samples
+
+#multiplication factor for statistical evaluation of the nominal values; this value will be multiplied to the .50 quanti
+#le of the slope and gives the max deviation of the .50 quantile
+QUANTILE_MULTIPLICATION_FACTOR = 5
 
 MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the threshold
 
@@ -77,7 +82,7 @@ class multiple_fit:
 DEBUG_BW_MODEL = 0
 DEBUG_BW_MODEL_VERBOSE = 0
 DEBUG_FIT = 1
-DEBUG_BW_DETECTION = 0
+DEBUG_BW_DETECTION = 1
 
 #logging
 LOGGING_VERBOSE = 0
