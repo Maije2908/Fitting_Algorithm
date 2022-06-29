@@ -17,7 +17,7 @@ import sys
 import pandas as pd
 
 
-# import constants into the same namespace
+# import constants
 import fitterconstants
 from fitterconstants import *
 
@@ -36,6 +36,8 @@ class Fitter:
         self.model_data = None
 
         self.fit_type = None
+        self.ser_shunt = None
+
         self.out = None
 
         self.parameters = Parameters()
@@ -54,7 +56,6 @@ class Fitter:
         self.max_order = fitterconstants.MAX_ORDER
         self.order = 0
 
-        sys.setrecursionlimit(1000)
 
 
     ####################################################################################################################
@@ -111,9 +112,11 @@ class Fitter:
 
     def calc_series_thru(self, Z0):
         self.z21_data = 2 * Z0 * ((1 - self.file.data.s[:, 1, 0]) / self.file.data.s[:, 1, 0])
+        self.ser_shunt = fitterconstants.calc_method.SERIES
 
     def calc_shunt_thru(self, Z0):
         self.z21_data = (Z0 * self.file.data.s[:, 1, 0]) / (2 * (1 - self.file.data.s[:, 1, 0]))
+        self.ser_shunt = fitterconstants.calc_method.SHUNT
 
     def crop_data(self,crop):
         self.z21_data = self.z21_data[crop:]
@@ -312,8 +315,8 @@ class Fitter:
                 phase_data = self.data_ang
                 peak_min_height = np.log10(R_s)
             case fitterconstants.El.CAPACITOR:
-                magnitude_data = self.data_mag * (-1)
-                phase_data = self.data_ang * (-1)
+                magnitude_data = self.data_mag
+                phase_data = self.data_ang
                 #TODO: maybe look into that; there might be a better option for the peak height
                 peak_min_height = min(magnitude_data)
 
@@ -322,12 +325,18 @@ class Fitter:
         phase_data = phase_data[freq < fitterconstants.FREQ_UPPER_LIMIT]
         freq = freq[freq < fitterconstants.FREQ_UPPER_LIMIT]
 
-        #calculate prominence in decimal (from dB)
+
         prominence_mag = self.prominence
-        prominence_phase = fitterconstants.PROMINENCE_DEFAULT
+        prominence_phase = self.prominence
 
         #find peaks of Magnitude Impedance curve (using scipy.signal.find_peaks)
-        mag_maxima = find_peaks(20*np.log10(magnitude_data), height=peak_min_height, prominence=prominence_mag)
+        match self.ser_shunt:
+            case fitterconstants.calc_method.SERIES:
+                mag_maxima = find_peaks(20*np.log10(magnitude_data), height=peak_min_height, prominence=prominence_mag)
+            case fitterconstants.calc_method.SHUNT:
+                mag_maxima = find_peaks(-20 * np.log10(magnitude_data), height=peak_min_height, prominence=prominence_mag)
+
+
         mag_minima = find_peaks(magnitude_data * -1, prominence=prominence_mag)
         #find peaks of Phase curve
         phase_maxima = find_peaks(phase_data, prominence=prominence_phase)
@@ -949,14 +958,11 @@ class Fitter:
             plt.loglog(freq, abs(model_data_1))
             plt.loglog(freq, abs(model_data_2))
 
-        #calculate frequency limited data
-        norm_1_mdl = self.calculate_Z(param_set_1, freq_data_frq_lim, [], self.order, fit_main_resonance, mode)
-        norm_2_mdl = self.calculate_Z(param_set_2, freq_data_frq_lim, [], self.order, fit_main_resonance, mode)
+        norm_mdl1 = self.calculate_band_norm(model_data_1)
+        norm_mdl2 = self.calculate_band_norm(model_data_2)
 
         #decide which param set to take
-        #TODO: the np.linalg.norm() command might lead to unexpected behaviour i.e. taking the fit that is worse...
-        # I do not know why this is the case, and I don't really want to do this via abs() but I'm going with this now
-        if np.linalg.norm(abs(fit_data_frq_lim) - abs(norm_1_mdl)) < np.linalg.norm(abs(fit_data_frq_lim) - abs(norm_2_mdl)):
+        if norm_mdl1 < norm_mdl2:
         # if abs(sum(abs(fit_data_frq_lim)-abs(norm_1_mdl))) < abs(sum(abs(fit_data_frq_lim)-abs(norm_2_mdl))):
             self.parameters = param_set_1
             self.model_data = model_data_1
@@ -1092,6 +1098,24 @@ class Fitter:
 
 
     ####################################V AUXILLIARY V##################################################################
+
+
+    def calculate_band_norm(self, model):
+        #function to compare the two fit results
+        freq = self.frequency_vector
+        cumnorm = 0
+        zone_factor = 1.2
+
+        #check the bandwidth regions and check their least squares diff
+        for it, band in enumerate(self.bandwidths):
+            bandmask = np.logical_and((freq > band[0]/zone_factor), (freq < band[2]*zone_factor))
+            raw_data  = abs(self.z21_data[bandmask])
+            mdl1_data = abs(model[bandmask])
+            norm1 = np.linalg.norm(raw_data - mdl1_data)
+            cumnorm += norm1
+
+        return cumnorm
+
 
     def plot_curve_before_fit(self):
 
@@ -1263,10 +1287,6 @@ class Fitter:
                 return [b_l, b_u, out.params['R'].value, out.params['L'].value, out.params['C'].value]
 
 
-
-
-
-
     def fix_main_resonance_parameters(self):
         self.parameters['R_s'].vary = False
         self.parameters['L'].vary = False
@@ -1302,6 +1322,7 @@ class Fitter:
             self.parameters[R_key].vary = False
             self.parameters[w_key].vary = False
             self.parameters[BW_key].vary = False
+
 
     def overwrite_main_resonance_parameters(self):
         # method to overwrite the nominal parameters with the parameters obtained by modeling the main resonance circuit
