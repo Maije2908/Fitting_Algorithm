@@ -44,6 +44,9 @@ BANDWIDTH_STRETCH_LAST_ZONE = 1
 #number of samples to crop at the start of data
 CROP_SAMPLES = 00
 
+#threshold for the calculation of the offset; necessary for small coils that have a lot of zero crossings at low frequencies
+PHASE_OFFSET_THRESHOLD = 60 #°
+
 
 
 
@@ -54,9 +57,6 @@ CROP_SAMPLES = 00
 SAVGOL_WIN_LENGTH = 52 #window length(samples) default:52
 SAVGOL_POL_ORDER = 2 #polynomial order default:2
 
-#offset for the calculation of the nominal parameters; useful if the phase data does not behave properly
-#Note: changing this parameter can significantly improve goodness of fit (esp. for capacitors)
-NOMINAL_VALUE_CALC_OFFSET = 3 #samples
 
 #multiplication factor for statistical evaluation of the nominal values; this value will be multiplied to the .50 quanti
 #le of the slope and gives the max deviation of the .50 quantile
@@ -86,7 +86,8 @@ class calc_method:
 DEBUG_BW_MODEL = 0
 DEBUG_BW_MODEL_VERBOSE = 0
 DEBUG_FIT = 1
-DEBUG_BW_DETECTION = 1
+DEBUG_BW_DETECTION = 0
+DEBUG_MULTIPLE_FITE_FIT = 1#1
 
 #logging
 LOGGING_VERBOSE = 0

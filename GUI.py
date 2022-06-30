@@ -366,7 +366,7 @@ class GUI:
 
             #fit for all other files
             for file in other_files:
-
+                self.fitter.file = None
                 self.fitter.set_file(file)
                 match shunt_series:
                     case config.SHUNT_THROUGH:
@@ -434,13 +434,19 @@ class GUI:
     def entry_number_callback(self, checkstring):
         # regular expression copied from: https://stackoverflow.com/questions/46116037/tkinter-restrict-entry-data-to-float
         regex = re.compile(r"(\+|\-)?[0-9.]*$")
+
+        # https://regexlib.com/REDetails.aspx?regexp_id=857
+        # regex = re.compile("\b-?[1-9](?:\.\d+)?[Ee][-+]?\d+\b")
+
         result = regex.match(checkstring)
+
         checkval = (checkstring == ""
                     or (checkstring.count('+') <= 1
                         and checkstring.count('-') <= 1
                         and checkstring.count('.') <= 1
                         and result is not None
                         and result.group(0) != ""))
+        # print(checkval)
         return checkval
 
     #function to cast the strings from the entry boxes to float, if it does not work, "None" is returned

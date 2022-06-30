@@ -26,7 +26,7 @@ class Fitter:
 
     def __init__(self, logger_instance):
         self.nominal_value = None
-        self.parasitive_resistance = None
+        self.series_resistance = None
         self.prominence = None
         self.saturation = None
         self.file = None
@@ -56,6 +56,8 @@ class Fitter:
         self.max_order = fitterconstants.MAX_ORDER
         self.order = 0
 
+        self.offset = 0
+
 
 
     ####################################################################################################################
@@ -67,6 +69,14 @@ class Fitter:
 
         self.fit_type = fit_type
 
+
+
+        if para_r is None:
+            self.calculate_nominal_Rs()
+        else:
+            self.series_resistance = para_r
+
+
         if pass_val is None:
             #if we do not have the nominal value try to calculate it
             try:
@@ -77,10 +87,6 @@ class Fitter:
         else:
             self.nominal_value = pass_val
 
-        if para_r is None:
-            self.calculate_nominal_Rs()
-        else:
-            self.parasitive_resistance = para_r
 
         if prom is None:
             self.prominence = fitterconstants.PROMINENCE_DEFAULT
@@ -136,22 +142,21 @@ class Fitter:
         return 0
 
     def calculate_nominal_value(self):
-        offset = fitterconstants.NOMINAL_VALUE_CALC_OFFSET
+        offset = 0
         nominal_value = 0
         freq = self.frequency_vector
 
         match self.fit_type:
             case El.INDUCTOR:
-                # find first point where the phase crosses 0 using numpy.argwhere --> f0
-                index_angle_smaller_zero = np.argwhere(self.data_ang < 0)
-                index_ang_zero_crossing = index_angle_smaller_zero[0][0]
-                f0 = freq[index_ang_zero_crossing]
 
-                # if the first zero crossing is smaller that the offset i.e. the first zero crossing is at the start of
-                # the data, raise an exception
-                if index_ang_zero_crossing <= offset:
-                    raise Exception("Error: Could not calculate nominal value;"
-                                    "the Phase of the dataset seems to be bad, consider cropping the data")
+                #calculate the offset, i.e. the sample at which the phase does not have zero crossings anymore
+                offset = np.argwhere(self.data_ang > fitterconstants.PHASE_OFFSET_THRESHOLD)[0][0]
+
+                # find first point where the phase crosses 0 using numpy.argwhere --> f0
+                index_angle_smaller_zero = np.argwhere(self.data_ang[offset:] < 0)
+                #we need to add the offset here again
+                index_ang_zero_crossing = index_angle_smaller_zero[0][0] + offset
+                f0 = freq[index_ang_zero_crossing]
 
                 if max(self.data_ang[offset:index_ang_zero_crossing]) < 85:
                     #if we can't detect the nominal value raise exception
@@ -159,20 +164,16 @@ class Fitter:
                                     "Please specify nominal inductance.".format(value=np.round(max(self.data_ang), 1)))
 
                 #crop data to [offset:f0] in order to find the linear range for the calculation of nominal value
-                ang_test_data = self.data_ang[freq < f0][offset:]
                 curve_data = self.z21_data[freq < f0][offset:]
                 w_data = (freq[freq < f0][offset:])*2*np.pi
-
-                #then ceil the data, and select all values that have max value (we can assume linear range here, ideally
-                # phase should be 90° here)
-                # ang_test_ceil = np.ceil(ang_test_data)
-                # bool_select = 1#ang_test_ceil == max(ang_test_ceil)
 
                 #create an array filled with possible values for L; calculation is L = imag(Z)/w
                 L_vals = []
                 for it, curve_sample in enumerate(zip(curve_data, w_data)):
                     #if bool_select[it]:
                     L_vals.append(np.imag(curve_sample[0])/curve_sample[1])
+
+                self.offset = offset
 
                 #find the 50% quantile of the slope data and define the max slope allowed
                 quantile_50 = np.quantile(np.gradient(self.data_mag)[freq<f0],0.5)
@@ -186,38 +187,32 @@ class Fitter:
 
 
             case El.CAPACITOR:
-                # find first point where the phase crosses 0
-                index_angle_larger_zero = np.argwhere(self.data_ang > 0)
-                index_ang_zero_crossing = index_angle_larger_zero[0][0]
-                f0 = freq[index_ang_zero_crossing]
 
-                # if the first zero crossing is smaller that the offset i.e. the first zero crossing is at the start of
-                # the data, raise an exception
-                if index_ang_zero_crossing <= offset:
-                    raise Exception("Error: Could not calculate nominal value;"
-                                    "the Phase of the dataset seems to be bad, consider cropping the data")
+                offset = np.argwhere(self.data_ang < -fitterconstants.PHASE_OFFSET_THRESHOLD)[0][0]
+
+                # find first point where the phase crosses 0
+                index_angle_larger_zero = np.argwhere(self.data_ang[offset:] > 0)
+                index_ang_zero_crossing = index_angle_larger_zero[0][0] + offset
+                f0 = freq[index_ang_zero_crossing]
 
                 if min(self.data_ang[offset:index_ang_zero_crossing]) > -85:
                     raise Exception("Error: Capacitive range not detected (min phase = {value}°).\n"
                                     "Please specify nominal capacitance.".format(value=np.round(min(self.data_ang), 1)))
 
-                #TODO: the calculation for nominal parameters for capacitors seems to be off --> check on that again
 
                 #crop data to [offset:f0] in order to find the linear range for the calculation of nominal value
-                ang_test_data = self.data_ang[freq < f0][offset:]
                 curve_data = self.z21_data[freq < f0][offset:]
                 w_data = (freq[freq < f0][offset:])*2*np.pi
-
-                #then floor the data, and select all values that have max value (we can assume linear range here, ideally
-                # phase should be -90° here)
-                # ang_test_ceil = np.floor(ang_test_data)
-                # bool_select = ang_test_ceil == min(ang_test_ceil)
 
                 #create an array filled with possible values for L; calculation is L = imag(Z)/w
                 C_vals = []
                 for it, curve_sample in enumerate(zip(curve_data, w_data)):
                     # if bool_select[it]:
                     C_vals.append(-1/(np.imag(curve_sample[0])*curve_sample[1]))
+
+
+                #write calculted offset to instance variable
+                self.offset = offset
 
 
                 # find the 50% quantile of the slope data and define the max slope allowed
@@ -227,22 +222,6 @@ class Fitter:
                 C_vals_eff = np.array(C_vals)[np.gradient(self.data_mag)[freq < f0][offset:] < max_slope]
                 self.nominal_value = np.mean(C_vals_eff)
 
-
-
-                # test_values = []
-                # for sample in range(offset, len(freq)):
-                #     if self.data_ang[sample] == min(self.data_ang[offset:index_ang_zero_crossing]):
-                #         nominal_value = 1 / (2 * np.pi * freq[sample] * self.data_mag[sample])
-                #         self.nominal_value = nominal_value
-                #         test_values.append(self.nominal_value)
-                #         # break
-                # try:
-                #     test_values_gradient = abs(np.gradient(test_values, 2))
-                #     # it takes the first values instead of the "linear" range. need to fix this. possibly by taking the longest min gradient
-                #     #TODO: i dont have a single clue how this works for capacitors EDIT: if we can't calculate gradient, just don't do it i guess
-                #     self.nominal_value = test_values[np.argmin(np.amin(test_values_gradient))]
-                # except Exception:
-                #     pass
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value))
                 self.logger.info("Nominal Capacitance not provided, calculated: " + output_dec.to_eng_string())
 
@@ -255,7 +234,7 @@ class Fitter:
 
     def calculate_nominal_Rs(self):
         R_s_input = min(abs(self.z21_data))
-        self.parasitive_resistance = R_s_input
+        self.series_resistance = R_s_input
         #log
         output_dec = decimal.Decimal("{value:.3E}".format(value=R_s_input))
         self.logger.info("Nominal Resistance not provided, calculated: " + output_dec.to_eng_string())
@@ -270,18 +249,24 @@ class Fitter:
 
         match self.fit_type:
 
-            case 1: #INDUCTOR
-                index_angle_smaller_zero = np.argwhere(self.data_ang < 0)
-                index_ang_zero_crossing = index_angle_smaller_zero[0][0]
+            case fitterconstants.El.INDUCTOR: #INDUCTOR
+                offset = np.argwhere(self.data_ang > fitterconstants.PHASE_OFFSET_THRESHOLD)[0][0]
+                index_angle_smaller_zero = np.argwhere(self.data_ang[offset:] < 0)
+                index_ang_zero_crossing = offset + index_angle_smaller_zero[0][0]
                 continuity_check = index_angle_smaller_zero[10][0]
 
-            case 2: #CAPACITOR
-                index_angle_larger_zero = np.argwhere(self.data_ang > 0)
-                index_ang_zero_crossing = index_angle_larger_zero[0][0]
+            case fitterconstants.El.CAPACITOR: #CAPACITOR
+                offset = np.argwhere(self.data_ang < -fitterconstants.PHASE_OFFSET_THRESHOLD)[0][0]
+                index_angle_larger_zero = np.argwhere(self.data_ang[offset:] > 0)
+                index_ang_zero_crossing = offset + index_angle_larger_zero[0][0]
                 continuity_check = index_angle_larger_zero[10][0]
 
             case 3: #CMC
                 sign = 1
+
+
+        #write the calculated offset to the instance variable
+        self.offset = offset
 
         # TODO: there could be some problems here: a) the resonant frequency could be at the start of the data and
         #   b) the resonant frequency could be at the end of data... those are cases in which the phase data is faulty.
@@ -296,29 +281,23 @@ class Fitter:
             self.logger.info("Detected f0: "+ output_dec.to_eng_string())
             print("Detected f0: "+output_dec.to_eng_string())
 
+        if fitterconstants.DEBUG_MULTIPLE_FITE_FIT:
+            print(index_ang_zero_crossing)
+
         if w0 == 0:
             raise Exception('ERROR: Main resonant frequency could not be determined.')
 
     def get_resonances(self): #TODO: tidy up this whole method :/
 
-        R_s = self.parasitive_resistance
+        R_s = self.series_resistance
         freq = self.frequency_vector
         #create one figure for the resonance plots
         if fitterconstants.DEBUG_BW_DETECTION:
             plt.figure()
 
-        # in order to use the same methods for capacitors as we do for inductors, we simply flip the dataset, so we still
-        # detect "peaks" although there are pits
-        match self.fit_type:
-            case fitterconstants.El.INDUCTOR:
-                magnitude_data = self.data_mag
-                phase_data = self.data_ang
-                peak_min_height = np.log10(R_s)
-            case fitterconstants.El.CAPACITOR:
-                magnitude_data = self.data_mag
-                phase_data = self.data_ang
-                #TODO: maybe look into that; there might be a better option for the peak height
-                peak_min_height = min(magnitude_data)
+
+        magnitude_data = self.data_mag
+        phase_data = self.data_ang
 
         #frequency limit the data
         magnitude_data = magnitude_data[freq < fitterconstants.FREQ_UPPER_LIMIT]
@@ -332,9 +311,9 @@ class Fitter:
         #find peaks of Magnitude Impedance curve (using scipy.signal.find_peaks)
         match self.ser_shunt:
             case fitterconstants.calc_method.SERIES:
-                mag_maxima = find_peaks(20*np.log10(magnitude_data), height=peak_min_height, prominence=prominence_mag)
+                mag_maxima = find_peaks(20*np.log10(magnitude_data), prominence=prominence_mag)
             case fitterconstants.calc_method.SHUNT:
-                mag_maxima = find_peaks(-20 * np.log10(magnitude_data), height=peak_min_height, prominence=prominence_mag)
+                mag_maxima = find_peaks(-20 * np.log10(magnitude_data), prominence=prominence_mag)
 
 
         mag_minima = find_peaks(magnitude_data * -1, prominence=prominence_mag)
@@ -347,31 +326,15 @@ class Fitter:
         # plt.loglog(magnitude_data)
         # plt.plot(test_prom[0], test_prom[1]['peak_heights'], marker='D', linestyle='')
 
-        #map to frequency; TODO: we are using the file here, so if there are multiple files, need to change this
-        #TODO: why are we even calculating the magnitude maxima if they are never used???
+        #map to frequency;
         f_mag_maxima = freq[mag_maxima[0]]
-        f_mag_minima = freq[mag_minima[0]]
-
-        f_phase_maxima = freq[phase_maxima[0]]
-        f_phase_minima = freq[phase_minima[0]]
 
         #ignore all peaks that lie "before" the main resonance and that are to close to the main resonance
         min_zone_start = self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR
 
-        # TODO: delete unnecessary variables here
-        ang_minima_pos = f_phase_minima[f_phase_minima > min_zone_start]
-        ang_maxima_pos = f_phase_maxima[f_phase_maxima > min_zone_start]
-
-        ang_minima_pos = f_mag_minima[f_mag_minima > min_zone_start]
-        ang_maxima_pos = f_mag_maxima[f_mag_maxima > min_zone_start]
-
-        mag_minima_pos = f_mag_minima[f_mag_minima > min_zone_start]
         mag_maxima_pos = f_mag_maxima[f_mag_maxima > min_zone_start]
-
-        mag_minima_index = mag_minima[0][f_mag_minima > min_zone_start]
         mag_maxima_index = mag_maxima[0][f_mag_maxima > min_zone_start]
 
-        mag_maxima_value = mag_maxima[1]['peak_heights'][f_mag_maxima > min_zone_start]
 
 
         # plot commands to check peak values TODO: this is for testing
@@ -386,7 +349,7 @@ class Fitter:
         bad_BW_flag = np.zeros((number_zones,2))
         for num_maximum in range(0, number_zones):
             #resonance frequency, corresponding height and index
-            res_fq = ang_maxima_pos[num_maximum]
+            res_fq = mag_maxima_pos[num_maximum]
             res_index = mag_maxima_index[num_maximum]
             res_value = magnitude_data[res_index]
 
@@ -463,26 +426,13 @@ class Fitter:
         except IndexError:
             self.logger.info("INFO: No resonances found except the main resonance, consider a lower value for the prominence")
 
-
-        #TODO: this block is for testing the bandwidth model
-
-        # # testing the modeled bandwidth here
-        # mdl_offset = 0
-        # for it in range(0, number_zones):
-        #     if bad_BW_flag[it]:
-        #         freq_data = freq[np.logical_and(freq > bandwidth_list[it][0],freq < bandwidth_list[it][2])]
-        #         mdl_mag_data = magnitude_data[np.logical_and(freq > bandwidth_list[it][0],freq < bandwidth_list[it][2])]
-        #         mdl_phase_data = phase_data[np.logical_and(freq > bandwidth_list[it][0], freq < bandwidth_list[it][2])]
-        #         mdl_data = mdl_mag_data * np.exp(1j * np.radians(mdl_phase_data))
-        #         self.model_bandwidth(freq_data,mdl_data)
-
         self.peak_heights = peak_heights
         self.bandwidths = bandwidth_list
         self.bad_bandwidth_flag = bad_BW_flag
 
     def create_nominal_parameters(self):
 
-        self.parameters.add('R_s', value=self.parasitive_resistance, min=self.parasitive_resistance*0.9,max=self.parasitive_resistance*1.111, vary=False)
+        self.parameters.add('R_s', value=self.series_resistance, min=self.series_resistance * 0.9, max=self.series_resistance * 1.111, vary=False)
 
 
 
@@ -878,8 +828,8 @@ class Fitter:
         data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
 
         #crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
-        freq_for_fit = freq_for_fit[fitterconstants.MAIN_RES_FIT_OFFSET_SAMPLES:]
-        data_for_fit = data_for_fit[fitterconstants.MAIN_RES_FIT_OFFSET_SAMPLES:]
+        freq_for_fit = freq_for_fit[self.offset:]
+        data_for_fit = data_for_fit[self.offset:]
 
         #now do the fit
         self.out = minimize(self.calculate_Z, self.parameters,
@@ -1003,6 +953,7 @@ class Fitter:
             case fitterconstants.multiple_fit.MAIN_RES_FIT:
                 self.fix_parameters()
                 fit_main_resonance = 1
+
             case fitterconstants.multiple_fit.FULL_FIT:
                 #if we want to perform a full fit, we unfortunately have to remake the parameters, without loosing the
                 #value for C though (R_s is stored as instance variable anyways)
@@ -1025,7 +976,7 @@ class Fitter:
                         self.create_nominal_parameters()
                         self.get_resonances()
                         self.create_elements()
-                        # write back value for C and keep it in place
+                        # write back value for L and keep it in place
                         self.parameters['L'].value = L_val
                         self.parameters['L'].vary = False
                 fit_main_resonance = 0
@@ -1036,6 +987,7 @@ class Fitter:
         match self.fit_type:
             case fitterconstants.El.INDUCTOR:
                 L_ideal = 1 / ((self.f0 * 2 * np.pi)**2 * self.parameters['C'].value)
+
                 self.parameters['L'].value = L_ideal
                 self.parameters['L'].vary = True
                 self.parameters['L'].min = L_ideal*0.8
@@ -1056,23 +1008,42 @@ class Fitter:
                         self.parameters['R_Fe'].max = R_Fe * 1.25
                         freq_for_fit = freq
                         data_for_fit = fit_data
+
                     case fitterconstants.multiple_fit.MAIN_RES_FIT:
                         self.parameters['R_Fe'].vary = False
                         freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
                         data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
-                        freq_for_fit = freq_for_fit[fitterconstants.MAIN_RES_FIT_OFFSET_SAMPLES:]
-                        data_for_fit = data_for_fit[fitterconstants.MAIN_RES_FIT_OFFSET_SAMPLES:]
 
-
-                #
-                # self.parameters['R_s'].vary = True
 
             case fitterconstants.El.CAPACITOR:
-                C_ideal = 1 / ((self.f0 * 2 * np.pi) * self.parameters['L'].value)
+                C_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * self.parameters['L'].value)
+
                 self.parameters['C'].value = C_ideal
                 self.parameters['C'].vary = True
                 self.parameters['C'].min = C_ideal * 0.8
                 self.parameters['C'].max = C_ideal * 1.25
+                self.parameters['C'].expr = ''
+
+                bw_value = res_value * np.sqrt(2)
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
+                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
+                BW = freq[f_upper_index] - freq[f_lower_index]
+                R_iso = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
+
+                match fitting_mode:
+                    case fitterconstants.multiple_fit.FULL_FIT:
+                        self.parameters['R_iso'].vary = True
+                        self.parameters['R_iso'].value = R_iso
+                        self.parameters['R_iso'].min = R_iso * 0.8
+                        self.parameters['R_iso'].max = R_iso * 1.25
+                        freq_for_fit = freq
+                        data_for_fit = fit_data
+
+                    case fitterconstants.multiple_fit.MAIN_RES_FIT:
+                        self.parameters['R_iso'].vary = False
+                        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+                        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+
 
 
 
@@ -1087,7 +1058,7 @@ class Fitter:
         self.logger.info("debug: calculated main element{value:.3E}".format(value = self.parameters['L'].value))
 
         model_data = self.calculate_Z(self.out.params, freq,2,self.order,0,fitterconstants.fcnmode.OUTPUT)
-        if fitterconstants.DEBUG_FIT:
+        if fitterconstants.DEBUG_MULTIPLE_FITE_FIT:
             plt.figure()
             plt.loglog(self.frequency_vector, abs(fit_data))
             plt.loglog(freq, abs(model_data))
