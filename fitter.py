@@ -365,13 +365,21 @@ class Fitter:
                 #find the index where the 3db value is reached; also check if the frequency is lower than the resonance,
                 #but higher than the min zone; if that does not work use the default offset
                 #NOTE: since we need the first value in front of the resonance we have to flipud the array
-                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq > min_zone_start, np.logical_and(freq < res_fq, (magnitude_data) < (bw_value)))))[0][0]
+                match self.fit_type:
+                    case fitterconstants.El.INDUCTOR:
+                        f_lower_index = np.flipud(np.argwhere(np.logical_and(freq > min_zone_start, np.logical_and(freq < res_fq, (magnitude_data) < (bw_value)))))[0][0]
+                    case fitterconstants.El.CAPACITOR:
+                        f_lower_index = np.flipud(np.argwhere(np.logical_and(freq > min_zone_start, np.logical_and(freq < res_fq, (magnitude_data) > (bw_value)))))[0][0]
             except IndexError:
                 f_lower_index = res_index - fitterconstants.DEFAULT_OFFSET_PEAK
                 bad_BW_flag[num_maximum][0] = 1
 
             try:
-                f_upper_index = np.argwhere(np.logical_and(freq > res_fq, (magnitude_data) < (bw_value)))[0][0]
+                match self.fit_type:
+                    case fitterconstants.El.INDUCTOR:
+                        f_upper_index = np.argwhere(np.logical_and(freq > res_fq, (magnitude_data) < (bw_value)))[0][0]
+                    case fitterconstants.El.CAPACITOR:
+                        f_upper_index = np.argwhere(np.logical_and(freq > res_fq, (magnitude_data) > (bw_value)))[0][0]
             except IndexError:
                 #here we need to account for the fact that we could overshoot the max index
                 if res_index + fitterconstants.DEFAULT_OFFSET_PEAK < len(freq):
@@ -431,12 +439,6 @@ class Fitter:
         self.bad_bandwidth_flag = bad_BW_flag
 
     def create_nominal_parameters(self):
-
-        self.parameters.add('R_s', value=self.series_resistance, min=self.series_resistance * 0.9, max=self.series_resistance * 1.111, vary=False)
-
-
-
-
         #get bandwidth
 
         freq = self.frequency_vector
@@ -471,6 +473,8 @@ class Fitter:
                 expression_string_L = '1/(' + str(self.f0*2*np.pi) + '**2*' + 'C)'
 
                 self.parameters.add('R_Fe', value=R_Fe, min=fitterconstants.MIN_R_FE, max=fitterconstants.MAX_R_FE, vary=True)
+                self.parameters.add('R_s', value=self.series_resistance, min=self.series_resistance * 0.01,
+                                    max=self.series_resistance * 1.111, vary=True)
 
                 # #config A
                 # #main element
@@ -497,9 +501,10 @@ class Fitter:
                 ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
 
                 self.parameters.add('R_iso', value=R_Iso, min=fitterconstants.MIN_R_ISO, max=fitterconstants.MAX_R_ISO, vary=True)
+                self.parameters.add('R_s', value=self.series_resistance, min=self.series_resistance * 0.01,
+                                    max=self.series_resistance * 1.111, vary=False)
+
                 #main element
-
-
                 expression_string_C = '1/(' + str(self.f0*2*np.pi) + '**2*' + 'L)'
                 self.parameters.add('L', value=ind_ideal,
                                     min=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
@@ -643,8 +648,8 @@ class Fitter:
 
             if self.fit_type == fitterconstants.El.CAPACITOR:
                 # good values for capacitor fitting
-                max_cap = value_cap * 1e2
-                min_cap = value_cap * 1e-2
+                max_cap = value_cap * 1e1
+                min_cap = value_cap * 1e-1
 
                 r_max = r_value * 1.01
                 r_min = r_value * 0.990
@@ -811,6 +816,8 @@ class Fitter:
                 return (diff)
             case fcnmode.OUTPUT:
                 return Z
+            case fcnmode.ANGLE:
+                return np.angle(data)-np.angle(Z)
 
     def start_fit_file_1(self):
 
@@ -831,22 +838,57 @@ class Fitter:
         freq_for_fit = freq_for_fit[self.offset:]
         data_for_fit = data_for_fit[self.offset:]
 
+
+
+
         #now do the fit
+
+        #start by fitting the main res with all parameters set to vary
         self.out = minimize(self.calculate_Z, self.parameters,
                             args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
 
-        #create datasets for data before/after fit
-        old_data = self.calculate_Z(self.parameters, freq, [], 0, fit_main_resonance, fitterconstants.fcnmode.OUTPUT)
-        new_data = self.calculate_Z(self.out.params, freq, [], 0, fit_main_resonance, fitterconstants.fcnmode.OUTPUT)
+        #set all parameters to not vary; let only R_s vary
+        for pname, par in self.out.params.items():
+            par.vary = False
+        self.out.params['R_s'].vary = True
 
-        #TODO: fix fit behaviour--> the worse (before fit) parameter set is taken for the 0v_cap file at the moment
-        #check if the main resonance fit yields good results -> else: go with initial guess
-        if np.linalg.norm(new_data - self.z21_data) < np.linalg.norm(old_data - self.z21_data):
+        #fit R_s via the phase of the data
+        self.out = minimize(self.calculate_Z, self.out.params,
+                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, fitterconstants.fcnmode.ANGLE,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        #fitting R_s again does change the main res fit, so set L an C to vary
+        self.out.params['R_s'].vary = False
+        self.out.params['C'].vary = True
+        self.out.params['L'].vary = True
+
+        #and fit again
+        self.out = minimize(self.calculate_Z, self.out.params,
+                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+
+
+
+        if self.fit_type == fitterconstants.El.INDUCTOR:
             self.parameters = self.out.params
-        else:
-            #redundant, but for readability
-            self.parameters = self.parameters
+
+        #for capacitors the first configuration (i.e. the parameters read frome the data) often works better than the fit
+        # hence we have to check whether the fit is better or the initial configuration (R_s can be read from the plot here
+        # quite accurately, so this often makes the fit worse than the initial config)
+        if self.fit_type == fitterconstants.El.CAPACITOR:
+            #create datasets for data before/after fit
+            old_data = self.calculate_Z(self.parameters, freq_for_fit, [], 0, fit_main_resonance, fitterconstants.fcnmode.OUTPUT)
+            new_data = self.calculate_Z(self.out.params, freq_for_fit, [], 0, fit_main_resonance, fitterconstants.fcnmode.OUTPUT)
+            data_frq_lim = self.z21_data[(freq < self.f0*fitterconstants.MIN_ZONE_OFFSET_FACTOR)][self.offset:]
+
+            #check if the main resonance fit yields good results -> else: go with initial guess
+            if abs(sum(new_data - data_frq_lim)) < abs(sum(old_data - data_frq_lim)):
+                self.parameters = self.out.params
+            else:
+                #redundant, but for readability
+                self.parameters = self.parameters
 
         #fix main resonance parameters in place
         self.fix_main_resonance_parameters()
@@ -1058,6 +1100,8 @@ class Fitter:
         self.logger.info("debug: calculated main element{value:.3E}".format(value = self.parameters['L'].value))
 
         model_data = self.calculate_Z(self.out.params, freq,2,self.order,0,fitterconstants.fcnmode.OUTPUT)
+        self.model_data = model_data
+
         if fitterconstants.DEBUG_MULTIPLE_FITE_FIT:
             plt.figure()
             plt.loglog(self.frequency_vector, abs(fit_data))
@@ -1361,8 +1405,6 @@ class Fitter:
         plt.loglog(freq, abs(model_data))
         plt.loglog(self.frequency_vector, abs(self.z21_data))
         plt.show()
-
-
 
 
     def test_fit_main_res(self):

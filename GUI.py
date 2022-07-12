@@ -6,6 +6,7 @@ from tkinter import filedialog
 #import logging
 from fitter import *
 import config
+import copy
 import os
 import re
 from tkinter import scrolledtext
@@ -362,7 +363,13 @@ class GUI:
             #start the fit for the first file
             self.fitter.start_fit_file_1()
             fit_1_order = self.fitter.order
-            parameter_list.append(self.fitter.out.params)
+            parameter_list.append(copy.copy(self.fitter.out.params))
+
+            # output the plot for 0A
+            path_out = self.selected_s2p_files[0]
+            self.iohandler.set_out_path(path_out)
+            self.iohandler.output_plot(self.fitter.frequency_vector, self.fitter.z21_data, self.fitter.data_mag,
+                                       self.fitter.data_ang, self.fitter.model_data, ref_file.name)
 
             #fit for all other files
             for file in other_files:
@@ -380,13 +387,15 @@ class GUI:
                 n_file_fit_type = fitterconstants.multiple_fit.MAIN_RES_FIT
 
                 self.fitter.start_fit_file_n(n_file_fit_type)
-                parameter_list.append(self.fitter.out.params)
+                parameter_list.append(copy.copy(self.fitter.out.params))
+                self.iohandler.output_plot(self.fitter.frequency_vector, self.fitter.z21_data, self.fitter.data_mag,
+                                           self.fitter.data_ang, self.fitter.model_data, file.name)
 
 
 
             #generate output
-            path_out = self.selected_s2p_files[0]
-            self.iohandler.set_out_path(path_out)
+
+
 
             self.iohandler.export_parameters(parameter_list, self.fitter.order, fit_type)
 
@@ -410,8 +419,7 @@ class GUI:
 
 
             self.iohandler.generate_Netlist_2_port(parameter_list[0],fit_1_order, fit_type, saturation_table)
-            self.iohandler.output_plot(self.fitter.frequency_vector, self.fitter.z21_data, self.fitter.data_mag,
-                                       self.fitter.data_ang, self.fitter.model_data)
+
 
 
         except Exception as e:

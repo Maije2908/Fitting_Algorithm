@@ -141,8 +141,8 @@ class IOhandler:
 
         #create paths for the output folder and get the filename without extension
         out_path = os.path.split(self.outpath)[0]
-        filename = os.path.splitext(os.path.split(self.outpath)[-1])[0]
-        out_folder = os.path.join(out_path, "fit_results_%s" % filename)
+        dir_name = os.path.normpath(self.outpath).split(os.sep)[-2]
+        out_folder = os.path.join(out_path, "fit_results_%s" % dir_name)
 
         #create the folder; should not be necessary to handle an exception; however folder could be write protected
         try:
@@ -150,7 +150,7 @@ class IOhandler:
         except Exception:
             raise
 
-        file = open(os.path.join(out_folder, "LT_Spice_Model_" + filename + ".lib"), "w+")
+        file = open(os.path.join(out_folder, "LT_Spice_Model_" + dir_name + ".lib"), "w+")
         file.write(lib)
         file.close()
 
@@ -231,28 +231,35 @@ class IOhandler:
         data_out.transpose()
 
         out_path = os.path.split(self.outpath)[0]
-        filename = os.path.splitext(os.path.split(self.outpath)[-1])[0]
-        out_folder = os.path.join(out_path, "fit_results_%s" % filename)
+        dir_name = os.path.normpath(self.outpath).split(os.sep)[-2]
+        out_folder = os.path.join(out_path, "fit_results_%s" % dir_name)
         try:
             os.makedirs(out_folder, exist_ok = True)
         except Exception:
             raise
 
-        data_out.to_excel(os.path.join(out_folder, "Parameters_" + filename + ".xlsx"))
+        data_out.to_excel(os.path.join(out_folder, "Parameters_" + dir_name + ".xlsx"))
 
 
 
-
-
-    def output_plot(self,freq, z21, mag, ang, mdl):
+    def output_plot(self,freq, z21, mag, ang, mdl, filename):
 
         out_path = os.path.split(self.outpath)[0]
-        filename = os.path.splitext(os.path.split(self.outpath)[-1])[0]
-        out_folder = os.path.join(out_path, "fit_results_%s" % filename)
+        dir_name = os.path.normpath(self.outpath).split(os.sep)[-2]
+        out_folder = os.path.join(out_path, "fit_results_%s" % dir_name)
+        plot_folder = os.path.join(out_folder, "plots")
+
+
         try:
             os.makedirs(out_folder, exist_ok=True)
         except Exception:
             raise
+
+        try:
+            os.makedirs(plot_folder, exist_ok=True)
+        except Exception:
+            raise
+
 
         title = filename
         fig = plt.figure(figsize=(20, 20))
@@ -295,8 +302,11 @@ class IOhandler:
 
 
 
-        plt.savefig(os.path.join(out_folder, "Bode_plot_" + filename + ".png"))
-        plt.show()
+        plt.savefig(os.path.join(plot_folder, "Bode_plot_" + filename + ".png"))
+        if fitterconstants.SHOW_BODE_PLOTS:
+            plt.show()
+        else:
+            plt.close(fig)
         # plt.close(fig)
 
 
