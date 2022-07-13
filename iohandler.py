@@ -57,7 +57,7 @@ class IOhandler:
                 # table for current dependent inductance; 'I1,L1,I2,L2,...'
                 # example: '-0.3,<L_nom*0.4>,0,<L_nom>,0.3,<L_nom*0.4>'
 
-                # TODO: look into I_L_table
+
                 I_L_table = I_L_table_input if I_L_table_input.count(',') else '0,' + "1.0"
 
                 # do not change the rest of this section, as it defines the structure of the model
@@ -90,7 +90,7 @@ class IOhandler:
                 lib += 'F1 0 L B1 1' + "\n"
                 lib += '* The values for the Current-Inductance-Table can be edited here:' + "\n"
                 #   lib += '* e.g. -0.3, <L_sat>, 0, <L_nom>, 0.3, <L_sat>' + "\n"
-                #TODO: I_L_Table again
+
                 lib += 'B2 inductance 0 V=table(I(B1),{table})'.format(table=I_L_table) + "\n"
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
 
