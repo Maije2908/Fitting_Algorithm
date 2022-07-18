@@ -453,6 +453,7 @@ class Fitter:
                 f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
                 BW = freq[f_upper_index] - freq[f_lower_index]
                 R_Fe = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
+                R_Fe = abs(self.z21_data[freq == self.f0])[0]
             case fitterconstants.El.CAPACITOR:
                 bw_value = res_value * np.sqrt(2)
                 f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag > bw_value)))[0][0]
@@ -828,7 +829,7 @@ class Fitter:
 
         if fitterconstants.DEBUG_FIT: #debug plot -> main res before fit
             self.plot_curve_before_fit()
-        
+
         #frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
         fit_main_resonance = 1
         freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
@@ -867,6 +868,9 @@ class Fitter:
         self.out = minimize(self.calculate_Z, self.out.params,
                             args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        #write series resistance to class variable (important if other files are fit)
+        self.series_resistance = self.out.params['R_s'].value
 
 
 
@@ -982,7 +986,7 @@ class Fitter:
 
         return 0
 
-    def start_fit_file_n(self, fitting_mode):
+    def start_fit_file_n_main_element(self, fitting_mode):
         #fix parameters in place, so the high order resonances are not affected by the fitting process of the current/
         # voltage dependent main element
 
@@ -1111,6 +1115,249 @@ class Fitter:
         self.out.params.pretty_print()
         # plt.show()
 
+    def start_fit_file_n_ext(self, fitting_mode):
+
+        self.get_main_resonance()
+
+        freq = self.frequency_vector
+        fit_data = self.z21_data
+        res_value = self.z21_data[freq == self.f0]
+
+        #determine wether to perform a full fit (i.e. fit all parameters) or if only the main resonance should be fit
+        match fitting_mode:
+            case fitterconstants.multiple_fit.MAIN_RES_FIT:
+
+                # fix parameters in place, so the high order resonances are not affected by the fitting process of the current/
+                # voltage dependent main element
+                self.fix_parameters()
+                fit_main_resonance = 1
+
+            case fitterconstants.multiple_fit.FULL_FIT:
+                #if we want to perform a full fit, we unfortunately have to remake the parameters, without loosing the
+                #value for C though (R_s is stored as instance variable anyways)
+                match self.fit_type:
+                    case fitterconstants.El.INDUCTOR:
+                        C_val = self.parameters['C'].value
+                        R_Fe_val = self.parameters['R_Fe'].value
+                        #clear and re-initiate parameters
+                        self.parameters = Parameters()
+                        self.create_nominal_parameters()
+                        self.get_resonances()
+                        self.create_elements() #TODO: this is hardcoded
+                        #write back value for C and keep it in place
+                        self.parameters['C'].value = C_val
+                        self.parameters['C'].vary = False
+                    case fitterconstants.El.CAPACITOR:
+                        L_val = self.parameters['L'].value
+                        # clear and re-initiate parameters
+                        self.parameters = Parameters()
+                        self.create_nominal_parameters()
+                        self.get_resonances()
+                        self.create_elements()
+                        # write back value for L and keep it in place
+                        self.parameters['L'].value = L_val
+                        self.parameters['L'].vary = False
+                fit_main_resonance = 0
+
+
+
+        #calculate ideal value for the dependent element, so we are as close as possible to the detected resonance
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                L_ideal = 1 / ((self.f0 * 2 * np.pi)**2 * self.parameters['C'].value)
+
+                self.parameters['L'].value = L_ideal
+                self.parameters['L'].vary = True
+                self.parameters['L'].min = L_ideal*0.8
+                self.parameters['L'].max = L_ideal*1.25
+                self.parameters['L'].expr = ''
+                #
+                bw_value = res_value / np.sqrt(2)
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
+                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
+                BW = freq[f_upper_index] - freq[f_lower_index]
+                R_Fe = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
+                R_Fe = abs(res_value)[0]
+
+                match fitting_mode:
+                    case fitterconstants.multiple_fit.FULL_FIT:
+                        self.parameters['R_Fe'].vary = True
+                        self.parameters['R_Fe'].value = R_Fe
+                        self.parameters['R_Fe'].min = R_Fe * 0.8
+                        self.parameters['R_Fe'].max = R_Fe * 1.25
+                        freq_for_fit = freq
+                        data_for_fit = fit_data
+
+                    case fitterconstants.multiple_fit.MAIN_RES_FIT:
+                        self.parameters['R_Fe'].vary = True
+                        self.parameters['R_Fe'].value = R_Fe
+                        self.parameters['R_Fe'].min = R_Fe * 0.8
+                        self.parameters['R_Fe'].max = R_Fe * 1.25
+
+                        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+                        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+
+
+            case fitterconstants.El.CAPACITOR:
+                C_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * self.parameters['L'].value)
+
+                self.parameters['C'].value = C_ideal
+                self.parameters['C'].vary = True
+                self.parameters['C'].min = C_ideal * 0.8
+                self.parameters['C'].max = C_ideal * 1.25
+                self.parameters['C'].expr = ''
+
+                bw_value = res_value * np.sqrt(2)
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
+                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
+                BW = freq[f_upper_index] - freq[f_lower_index]
+                R_iso = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
+
+                match fitting_mode:
+                    case fitterconstants.multiple_fit.FULL_FIT:
+                        self.parameters['R_iso'].vary = True
+                        self.parameters['R_iso'].value = R_iso
+                        self.parameters['R_iso'].min = R_iso * 0.8
+                        self.parameters['R_iso'].max = R_iso * 1.25
+                        freq_for_fit = freq
+                        data_for_fit = fit_data
+
+                    case fitterconstants.multiple_fit.MAIN_RES_FIT:
+                        self.parameters['R_iso'].vary = False
+                        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+                        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+
+
+
+
+        mode = fitterconstants.fcnmode.FIT
+        # if only main res fit -> order = 0; fit_main_res = 1
+        fit_order = self.order
+        # call the minimizer and pass the arguments
+        self.out = minimize(self.calculate_Z, self.parameters,
+                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        self.logger.info("debug: calculated main element{value:.3E}".format(value = self.parameters['L'].value))
+
+        model_data = self.calculate_Z(self.out.params, freq,2,self.order,0,fitterconstants.fcnmode.OUTPUT)
+        self.model_data = model_data
+
+        if fitterconstants.DEBUG_MULTIPLE_FITE_FIT:
+            plt.figure()
+            plt.loglog(self.frequency_vector, abs(fit_data))
+            plt.loglog(freq, abs(model_data))
+            # manager = plt.get_current_fig_manager()
+            # manager.full_screen_toggle()
+        self.out.params.pretty_print()
+        # plt.show()
+
+    def start_fit_file_n_full_fit(self):
+
+        self.get_main_resonance()
+
+        freq = self.frequency_vector
+        fit_data = self.z21_data
+        res_value = self.z21_data[freq == self.f0]
+
+
+        # if we want to perform a full fit, we unfortunately have to remake the parameters, without loosing the
+        # value for C though (R_s is stored as instance variable anyways)
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                L_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * self.parameters['C'].value)
+                self.nominal_value = L_ideal
+
+                C_val = self.parameters['C'].value
+                R_Fe_val = self.parameters['R_Fe'].value
+                # clear and re-initiate parameters
+                self.parameters = Parameters()
+                self.create_nominal_parameters()
+                self.get_resonances()
+                self.create_elements(2)#TODO: config number is hardcoded
+                # write back value for C and keep it in place
+                self.parameters['C'].value = C_val
+                self.parameters['C'].vary = False
+            case fitterconstants.El.CAPACITOR:
+                C_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * self.parameters['L'].value)
+                self.nominal_value = C_ideal
+
+                L_val = self.parameters['L'].value
+                # clear and re-initiate parameters
+                self.parameters = Parameters()
+                self.create_nominal_parameters()
+                self.get_resonances()
+                self.create_elements(2)
+                # write back value for L and keep it in place
+                self.parameters['L'].value = L_val
+                self.parameters['L'].vary = False
+        fit_main_resonance = 0
+
+        # calculate ideal value for the dependent element, so we are as close as possible to the detected resonance
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+
+                self.parameters['L'].value = L_ideal
+                self.parameters['L'].vary = True
+                self.parameters['L'].min = L_ideal * 0.8
+                self.parameters['L'].max = L_ideal * 1.25
+                self.parameters['L'].expr = ''
+                #
+                bw_value = res_value / np.sqrt(2)
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
+                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
+                BW = freq[f_upper_index] - freq[f_lower_index]
+                R_Fe = abs(res_value)[0]
+
+                self.parameters['R_Fe'].vary = True
+                self.parameters['R_Fe'].value = R_Fe
+                self.parameters['R_Fe'].min = R_Fe * 0.8
+                self.parameters['R_Fe'].max = R_Fe * 1.25
+                freq_for_fit = freq
+                data_for_fit = fit_data
+
+            case fitterconstants.El.CAPACITOR:
+
+                self.parameters['C'].value = C_ideal
+                self.parameters['C'].vary = True
+                self.parameters['C'].min = C_ideal * 0.8
+                self.parameters['C'].max = C_ideal * 1.25
+                self.parameters['C'].expr = ''
+
+                bw_value = res_value * np.sqrt(2)
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
+                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
+                BW = freq[f_upper_index] - freq[f_lower_index]
+                R_iso = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
+
+                self.parameters['R_iso'].vary = True
+                self.parameters['R_iso'].value = R_iso
+                self.parameters['R_iso'].min = R_iso * 0.8
+                self.parameters['R_iso'].max = R_iso * 1.25
+                freq_for_fit = freq
+                data_for_fit = fit_data
+
+        mode = fitterconstants.fcnmode.FIT
+        # if only main res fit -> order = 0; fit_main_res = 1
+        fit_order = self.order
+        # call the minimizer and pass the arguments
+        self.out = minimize(self.calculate_Z, self.parameters,
+                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        self.logger.info("debug: calculated main element{value:.3E}".format(value=self.parameters['L'].value))
+
+        model_data = self.calculate_Z(self.out.params, freq, 2, self.order, 0, fitterconstants.fcnmode.OUTPUT)
+        self.model_data = model_data
+
+        if fitterconstants.DEBUG_MULTIPLE_FITE_FIT:
+            plt.figure()
+            plt.loglog(self.frequency_vector, abs(fit_data))
+            plt.loglog(freq, abs(model_data))
+            # manager = plt.get_current_fig_manager()
+            # manager.full_screen_toggle()
+        self.out.params.pretty_print()
+        # plt.show()
 
     ####################################V AUXILLIARY V##################################################################
 

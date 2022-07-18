@@ -373,6 +373,7 @@ class GUI:
 
             #fit for all other files
             for file in other_files:
+                #do the file fit/calc/smooth thingy
                 self.fitter.file = None
                 self.fitter.set_file(file)
                 match shunt_series:
@@ -380,13 +381,18 @@ class GUI:
                         self.fitter.calc_shunt_thru(config.Z0)
                     case config.SERIES_THROUGH:
                         self.fitter.calc_series_thru(config.Z0)
-
                 self.fitter.smooth_data()
-                self.fitter.get_main_resonance()
+
+                # self.fitter.get_main_resonance()
 
                 n_file_fit_type = fitterconstants.multiple_fit.MAIN_RES_FIT
 
-                self.fitter.start_fit_file_n(n_file_fit_type)
+
+                #TODO: select fitting mode here (might want to solve this via an input box/constant later)
+
+                # self.fitter.start_fit_file_n_ext(n_file_fit_type)
+                self.fitter.start_fit_file_n_full_fit()
+
                 parameter_list.append(copy.copy(self.fitter.out.params))
                 self.iohandler.output_plot(self.fitter.frequency_vector, self.fitter.z21_data, self.fitter.data_mag,
                                            self.fitter.data_ang, self.fitter.model_data, file.name)
@@ -399,26 +405,97 @@ class GUI:
 
             self.iohandler.export_parameters(parameter_list, self.fitter.order, fit_type)
 
+
+            ############################################################################################################
+            # SATURATION TABLE(S)
+
+            #saturation table for nominal value
             # create saturation table and get nominal value
-            saturation_table = ''
+            saturation_table = {}
             match fit_type:
                 case fitterconstants.El.INDUCTOR:
+                    saturation_table['L'] = ''
                     nominal = parameter_list[0]['L'].value
                 case fitterconstants.El.CAPACITOR:
+                    saturation_table['C'] = ''
                     nominal = parameter_list[0]['C'].value
-            #write to saturation table
+
+            #write to saturation table main element
             for i, value in enumerate(current_voltage_values):
-                saturation_table += str(value) + ','
                 match fit_type:
                     case fitterconstants.El.INDUCTOR:
-                        saturation_table += str(parameter_list[i]['L'].value/nominal)
+                        saturation_table['L'] += str(value) + ','
+                        saturation_table['L'] += str(parameter_list[i]['L'].value/nominal)
+                        if value != current_voltage_values[-1]:
+                            saturation_table['L'] += ','
+
                     case fitterconstants.El.CAPACITOR:
-                        saturation_table += str(parameter_list[i]['C'].value/nominal)
-                if value != current_voltage_values[-1]:
-                    saturation_table += ','
+                        saturation_table['C'] += str(value) + ','
+                        saturation_table['C'] += str(parameter_list[i]['C'].value / nominal)
+                        if value != current_voltage_values[-1]:
+                            saturation_table['C'] += ','
 
 
-            self.iohandler.generate_Netlist_2_port(parameter_list[0],fit_1_order, fit_type, saturation_table)
+            #saturation table for R_Fe/R_s
+            #TODO: I am unsure if R_s is right for capacitors
+            match fit_type:
+                case fitterconstants.El.INDUCTOR:
+                    saturation_table['R_Fe'] = ''
+                    nominal = parameter_list[0]['R_Fe'].value
+                case fitterconstants.El.CAPACITOR:
+                    saturation_table['R_s'] = ''
+                    nominal = parameter_list[0]['R_s'].value
+
+            for i, value in enumerate(current_voltage_values):
+                match fit_type:
+                    case fitterconstants.El.INDUCTOR:
+                        saturation_table['R_Fe'] += str(value) + ','
+                        saturation_table['R_Fe'] += str(parameter_list[i]['R_Fe'].value / nominal)
+                        if value != current_voltage_values[-1]:
+                            saturation_table['R_Fe'] += ','
+
+                    case fitterconstants.El.CAPACITOR:
+                        saturation_table['R_s'] += str(value) + ','
+                        saturation_table['R_s'] += str(parameter_list[i]['R_s'].value / nominal)
+                        if value != current_voltage_values[-1]:
+                            saturation_table['R_s'] += ','
+
+
+
+            #TODO: this is unstable and some edge cases are not considered
+
+            # create saturation tables for ALL parameters
+            for key_number in range(1, self.fitter.order + 1):
+                # create keys
+                C_key = "C%s" % key_number
+                L_key = "L%s" % key_number
+                R_key = "R%s" % key_number
+
+                nominal_C = parameter_list[0][C_key].value
+                nominal_L = parameter_list[0][L_key].value
+                nominal_R = parameter_list[0][R_key].value
+
+                saturation_table[C_key] = ''
+                saturation_table[L_key] = ''
+                saturation_table[R_key] = ''
+                #TODO: we need to consider what happens if a certain resonance is not contained in the resulting parameter set
+                for i, value in enumerate(current_voltage_values):
+                    saturation_table[C_key] += str(value) + ','
+                    saturation_table[L_key] += str(value) + ','
+                    saturation_table[R_key] += str(value) + ','
+                    saturation_table[C_key] += str(parameter_list[i][C_key].value / nominal_C)
+                    saturation_table[L_key] += str(parameter_list[i][L_key].value / nominal_L)
+                    saturation_table[R_key] += str(parameter_list[i][R_key].value / nominal_R)
+                    if value != current_voltage_values[-1]:
+                        saturation_table[C_key] += ','
+                        saturation_table[L_key] += ','
+                        saturation_table[R_key] += ','
+
+
+            #TODO: again type of fit can be selected here --> should be done via button etc
+
+            self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],fit_1_order, fit_type, saturation_table)
+            # self.iohandler.generate_Netlist_2_port(parameter_list[0],fit_1_order, fit_type, saturation_table)
 
 
 
