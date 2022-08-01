@@ -96,10 +96,10 @@ class IOhandler:
 
                 #proportionality factor for L
                 lib += '* current dependent proportionality factor for L' + "\n"
-                lib += 'B2 K_L 0 V=table(I(B1),{table})'.format(table=saturation_table['L']) + "\n"
+                lib += 'B2 K_L 0 V=table(abs(I(B1)),{table})'.format(table=saturation_table['L']) + "\n"
                 #proportionality factor for R_Fe
                 lib += '* current dependent proportionality factor for R_Fe' + "\n"
-                lib += 'B3 K_FE 0 V=table(I(B1),{table})'.format(table=saturation_table['R_Fe']) + "\n"
+                lib += 'B3 K_FE 0 V=table(abs(I(B1)),{table})'.format(table=saturation_table['R_Fe']) + "\n"
 
 
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
@@ -129,7 +129,7 @@ class IOhandler:
                 lib += 'R_s PORT1 LsRs ' + str(R_s) + "\n"
                 lib += 'R_iso Vcap 0 ' + str(R_iso) + "\n"
                 lib += '* The values for the Voltage-Capacitance-Table can be edited here:' + "\n"
-                lib += 'B2 K 0 V=table(V(PORT1),{table}) '.format(table=I_L_table) + "\n"
+                lib += 'B2 K 0 V=table(abs(V(PORT1)),{table}) '.format(table=I_L_table) + "\n"
                 lib += 'L_s LsRs Vcap ' + str(Ls) + "\n"
                 lib += 'E1 E1 0 Vcap 0 1 ' + "\n"
                 lib += 'C E1 0 ' + str(C) + "\n"
@@ -206,7 +206,7 @@ class IOhandler:
                     lib += 'FL{no} 0 VL{no} BL{no} 1'.format(no=circuit) + "\n"
 
                     lib += '* current dependent proportionality factor for L{no}'.format(no=circuit) + "\n"
-                    lib += 'BLK{no} K_L{no} 0 V=table(I(BL),{table})'.format(no=circuit, table=saturation_table['L%s' % circuit]) + "\n"
+                    lib += 'BLK{no} K_L{no} 0 V=table(abs(I(BL)),{table})'.format(no=circuit, table=saturation_table['L%s' % circuit]) + "\n"
                     lib += "\n"
 
                     # current dependent cap for higher order res:
@@ -215,14 +215,14 @@ class IOhandler:
                     lib += 'BCT{no} VC{no} 0 '.format(no=circuit) + 'V=V({node1})-V({node2})'.format(node1=circuit, node2=node2) + "\n"
 
                     lib += '* current dependent proportionality factor for C{no}'.format(no=circuit) + "\n"
-                    lib += 'BCK{no} K_C{no} 0 V=table(I(BL),{table})'.format(no=circuit, table=saturation_table['C%s' % circuit]) + "\n"
+                    lib += 'BCK{no} K_C{no} 0 V=table(abs(I(BL)),{table})'.format(no=circuit, table=saturation_table['C%s' % circuit]) + "\n"
                     lib += "\n"
 
                     #current dependent resistor
                     lib += 'R_{no} {node1} {node2} R = limit({lo}, {hi}, {R_x} * V(K_R{no}))'.format(no=circuit, node1=circuit,node2=node2, lo=Rx * 1e-8, hi=Rx * 1e8,R_x=Rx) + "\n"
 
                     lib += '* current dependent proportionality factor for R{no}'.format(no=circuit) + "\n"
-                    lib += 'BRK{no} K_R{no} 0 V=table(I(BL),{table})'.format(no=circuit, table=saturation_table['R%s' % circuit]) + "\n"
+                    lib += 'BRK{no} K_R{no} 0 V=table(abs(I(BL)),{table})'.format(no=circuit, table=saturation_table['R%s' % circuit]) + "\n"
                     lib += "\n"
 
                 # node connections from current dependent inductor model
@@ -241,10 +241,10 @@ class IOhandler:
 
                 #proportionality factor for L
                 lib += '* current dependent proportionality factor for L' + "\n"
-                lib += 'B2 K_L 0 V=table(I(BL),{table})'.format(table=saturation_table['L']) + "\n"
+                lib += 'B2 K_L 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['L']) + "\n"
                 #proportionality factor for R_Fe
                 lib += '* current dependent proportionality factor for R_Fe' + "\n"
-                lib += 'B3 K_FE 0 V=table(I(BL),{table})'.format(table=saturation_table['R_Fe']) + "\n"
+                lib += 'B3 K_FE 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['R_Fe']) + "\n"
 
 
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
@@ -253,7 +253,7 @@ class IOhandler:
             case fitterconstants.El.CAPACITOR:
 
                 # define the name of the model here:
-                model_name = "C_1"  # <inductor>
+                model_name = "C_1"  # <cap>
                 C = out['C'].value
                 # table for current dependent inductance; 'I1,L1,I2,L2,...'
                 # example: '-0.3,<C_dc/C_nom>,0,1,0.3,<Cdc/C_nom>'
@@ -264,6 +264,7 @@ class IOhandler:
                       '* Including {number} Parallely Chained Serial Resonant Circuits\n*\n'.format(name=model_name,
                                                                                                     value=str(C),
                                                                                                     number=order)
+
                 lib += '.SUBCKT {name} PORT1 PORT2'.format(name=model_name) + '\n*\n'
 
                 Ls = out['L'].value
@@ -455,13 +456,36 @@ class IOhandler:
         #            label='Resonances')
         plt.legend(fontsize=16)
 
-
-
         plt.savefig(os.path.join(plot_folder, "Bode_plot_" + filename + ".png"))
+
         if fitterconstants.SHOW_BODE_PLOTS:
             plt.show()
         else:
             plt.close(fig)
+
+        #Diffplot
+        if fitterconstants.OUTPUT_DIFFPLOTS:
+            diff_data = abs(mdl)-abs(z21)
+            diff_data_percent = (diff_data/abs(z21))*100
+            title = filename + " (Model-Measurement)/Measurement in %"
+            fig = plt.figure(figsize=(20, 20))
+            plt.title(str(title), pad=20, fontsize=25, fontweight="bold")
+            plt.xscale('log')
+            plt.yscale('linear')
+            plt.xlim([min(freq), max(freq)])
+            plt.ylabel('Error in %', fontsize=16)
+            plt.xlabel('Frequency in Hz', fontsize=16)
+            plt.xticks(fontsize=16)
+            plt.yticks(fontsize=16)
+            plt.grid(True, which="both")
+            plt.plot(freq, diff_data_percent, 'r', linewidth=3, alpha=1)
+            plt.savefig(os.path.join(plot_folder, "Diff_plot_" + filename + ".png"))
+
+        if fitterconstants.SHOW_BODE_PLOTS:
+            plt.show()
+        else:
+            plt.close(fig)
+
         # plt.close(fig)
 
 

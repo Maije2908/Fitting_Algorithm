@@ -11,7 +11,7 @@ FREQ_UPPER_LIMIT = 1e9 #2e9 #3.9e8 #2e9 #500e6 #2e9
 
 # offset factor for the first resonance detected after the main peak (min_f = f0 * OFFSET_FACTOR)
 # if the first resonance after the main peak is not fitted, consider setting this to a lower value
-MIN_ZONE_OFFSET_FACTOR = 1.5
+MIN_ZONE_OFFSET_FACTOR = 2
 
 #multiplication factor for the parasitic element of the main resonance (C for inductor, L for capacitor)
 MAIN_RES_PARASITIC_LOWER_BOUND = 0.5
@@ -48,9 +48,8 @@ CROP_SAMPLES = 00
 PHASE_OFFSET_THRESHOLD = 60 #°
 
 
-
-
-
+#Decide wheter to full fit the higher order resonances (0= main res fit; 1= full fit)
+FULL_FIT = 1
 
 
 #parameters for the smoothing filter
@@ -82,15 +81,20 @@ class calc_method:
     SERIES = 1
     SHUNT = 2
 
+#determines whether to generate differnce plots or not
+OUTPUT_DIFFPLOTS = 1
 
 #Debug Plots
 DEBUG_BW_MODEL = 0
 DEBUG_BW_MODEL_VERBOSE = 0
-DEBUG_FIT = 0
+DEBUG_FIT = 1
 DEBUG_BW_DETECTION =0
 DEBUG_MULTIPLE_FITE_FIT = 0#1
 
+
+#determines whether to show bode plots or only save them
 SHOW_BODE_PLOTS = 0
+
 
 #logging
 LOGGING_VERBOSE = 0
