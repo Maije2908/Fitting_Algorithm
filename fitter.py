@@ -822,10 +822,6 @@ class Fitter:
             case fcnmode.ANGLE:
                 return np.angle(data)-np.angle(Z)
 
-
-
-
-
     def fit_inductor(self):
         freq = self.frequency_vector
         fit_data = self.z21_data
@@ -919,7 +915,6 @@ class Fitter:
 
         return [out_params1, out_params2]
 
-
     def fit_capacitor(self):
         freq = self.frequency_vector
         fit_data = self.z21_data
@@ -1003,12 +998,6 @@ class Fitter:
 
         return [out_params1, out_params2]
 
-
-
-
-
-
-
     def start_fit_file_1(self):
         freq = self.frequency_vector
         fit_data = self.z21_data
@@ -1060,9 +1049,6 @@ class Fitter:
             plt.loglog(freq, abs(self.model_data))
 
         return 0
-
-
-
 
     def start_fit_file_n_main_element(self, fitting_mode):
         #fix parameters in place, so the high order resonances are not affected by the fitting process of the current/
@@ -1367,19 +1353,15 @@ class Fitter:
                 self.get_resonances()
                 self.create_elements(2)
                 # write back value for L and keep it in place
-                self.parameters['L'].value = L_val
-                self.parameters['L'].vary = False
+                self.change_parameter(self.pararameters,param_name='L', value= L_val, vary=False)
         fit_main_resonance = 0
 
         # calculate ideal value for the dependent element, so we are as close as possible to the detected resonance
         match self.fit_type:
             case fitterconstants.El.INDUCTOR:
 
-                self.parameters['L'].value = L_ideal
-                self.parameters['L'].vary = True
-                self.parameters['L'].min = L_ideal * 0.8
-                self.parameters['L'].max = L_ideal * 1.25
-                self.parameters['L'].expr = ''
+                self.change_parameter(self.parameters, param_name='L', value=L_ideal, vary=True, min= L_ideal*0.8, max = L_ideal*1.25, expr='' )
+
                 #
                 bw_value = res_value / np.sqrt(2)
                 f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
@@ -1387,10 +1369,8 @@ class Fitter:
                 BW = freq[f_upper_index] - freq[f_lower_index]
                 R_Fe = abs(res_value)[0]
 
-                self.parameters['R_Fe'].vary = True
-                self.parameters['R_Fe'].value = R_Fe
-                self.parameters['R_Fe'].min = R_Fe * 0.8
-                self.parameters['R_Fe'].max = R_Fe * 1.25
+                self.change_parameter(self.parameters, param_name='R_Fe',value=R_Fe, vary=True, min= R_Fe*0.8, max=R_Fe*1.25 )
+
                 freq_for_fit = freq
                 data_for_fit = fit_data
 
@@ -1438,6 +1418,19 @@ class Fitter:
         # plt.show()
 
     ####################################V AUXILLIARY V##################################################################
+
+    def change_parameter(self, param_set, param_name, min=None, max=None, value=None, vary=None, expr=None):
+
+        if not min is None:
+            param_set[param_name].min = min
+        if not max is None:
+            param_set[param_name].max = max
+        if not value is None:
+            param_set[param_name].value = value
+        if not vary is None:
+            param_set[param_name].vary = vary
+        if not expr is None:
+            param_set[param_name].expr = expr
 
 
     def calculate_band_norm(self, model):
@@ -1822,6 +1815,7 @@ class Fitter:
 
 
         pass
+
 
 
 

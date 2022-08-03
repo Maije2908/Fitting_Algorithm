@@ -255,9 +255,6 @@ class IOhandler:
                 # define the name of the model here:
                 model_name = "C_1"  # <cap>
                 C = out['C'].value
-                # table for current dependent inductance; 'I1,L1,I2,L2,...'
-                # example: '-0.3,<C_dc/C_nom>,0,1,0.3,<Cdc/C_nom>'
-                I_L_table = saturation_table if saturation_table.count(',') else '0,' + "1.0"
 
                 # do not change the rest of this section, as it defines the structure of the model
                 lib = '* Netlist for Capacitor Model {name} (C={value}F)\n' \
@@ -267,30 +264,64 @@ class IOhandler:
 
                 lib += '.SUBCKT {name} PORT1 PORT2'.format(name=model_name) + '\n*\n'
 
-                Ls = out['L'].value
-                R_s = out['R_s'].value
-                R_iso = out['R_iso'].value
 
-                # node connections from voltage dependent capacitor model
-                lib += 'R_s PORT1 LsRs ' + str(R_s) + "\n"
-                lib += 'R_iso Vcap 0 ' + str(R_iso) + "\n"
-                lib += '* The values for the Voltage-Capacitance-Table can be edited here:' + "\n"
-                lib += 'B2 K 0 V=table(V(PORT1),{table}) '.format(table=I_L_table) + "\n"
-                lib += 'L_s LsRs Vcap ' + str(Ls) + "\n"
-                lib += 'E1 E1 0 Vcap 0 1 ' + "\n"
-                lib += 'C E1 0 ' + str(C) + "\n"
-                lib += 'B1 0 Vcap I=I(E1)*V(K) ' + "\n"
-
-                # node connection between resonant circuits
                 for circuit in range(1, order + 1):
                     Cx = out['C%s' % circuit].value
                     Lx = out['L%s' % circuit].value
                     Rx = out['R%s' % circuit].value
+                    node2 = circuit + 1 if circuit < order else 'PORT2'
 
-                    lib += 'R{no} PORT1 {node2} '.format(no=circuit, node2=circuit) + str(Rx) + "\n"
-                    lib += 'L{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=order + circuit) + str(
-                        Lx) + "\n"
-                    lib += 'C{no} {node1} 0 '.format(no=circuit, node1=order + circuit) + str(Cx) + "\n"
+                    #current dependent coil for higher order res:
+                    lib += 'BL{no} PORT1 NL{node1} '.format(no=circuit, node1=circuit) + 'V=V(VL{no})*V(K_L{no})'.format(no=circuit) + "\n"
+                    lib += 'L{no} VL{no} 0 '.format(no=circuit) + str(Lx) + "\n"
+                    lib += 'FL{no} 0 VL{no} BL{no} 1'.format(no=circuit) + "\n"
+
+                    lib += '* current dependent proportionality factor for L{no}'.format(no=circuit) + "\n"
+                    lib += 'BLK{no} K_L{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no=circuit, table=saturation_table['L%s' % circuit]) + "\n"
+                    lib += "\n"
+
+                    # current dependent cap for higher order res:
+                    lib += 'BC{no} NL{node1} NC{node1} '.format(no=circuit, node1=circuit) + 'I=-I(BCT{no})*V(K_C{no})'.format(no=circuit) + "\n"
+                    lib += 'C{no} VC{no} 0 '.format(no=circuit) + str(Cx) + "\n"
+                    lib += 'BCT{no} VC{no} 0 '.format(no=circuit) + 'V=V(NL{node1})-V(NC{node1})'.format(node1=circuit) + "\n"
+
+                    lib += '* current dependent proportionality factor for C{no}'.format(no=circuit) + "\n"
+                    lib += 'BCK{no} K_C{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no=circuit, table=saturation_table['C%s' % circuit]) + "\n"
+                    lib += "\n"
+
+                    #current dependent resistor
+                    lib += 'R_{no} NC{node1} PORT2 R = limit({lo}, {hi}, {R_x} * V(K_R{no}))'.format(no=circuit, node1=circuit, lo=Rx * 1e-8, hi=Rx * 1e8,R_x=Rx) + "\n"
+
+                    lib += '* current dependent proportionality factor for R{no}'.format(no=circuit) + "\n"
+                    lib += 'BRK{no} K_R{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no=circuit, table=saturation_table['R%s' % circuit]) + "\n"
+                    lib += "\n"
+
+
+
+
+                Ls = out['L'].value
+                C = out['C'].value
+                R_s = out['R_s'].value
+                R_iso = out['R_iso'].value
+
+                # node connections from voltage dependent capacitor model
+                # lib += 'R_s PORT1 LsRs ' + str(R_s) + "\n"
+                lib += 'L_s LsRs Vcap ' + str(Ls) + "\n"
+                lib += 'R_iso Vcap PORT2 ' + str(R_iso) + "\n"
+
+                lib += 'B1 PORT2 Vcap I=I(E1)*V(K_C) ' + "\n"
+                lib += 'E1 VC 0 Vcap PORT2 1 ' + "\n"
+                lib += 'C VC 0 ' + str(C) + "\n"
+
+                lib += 'R_p PORT1 LsRs R = limit({lo}, {hi}, {R_s} * V(K_Rs))'.format(lo=R_s * 1e-8, hi=R_s * 1e8,
+                                                                                 R_s=R_s) + "\n"
+
+                lib += '* The values for the Voltage-Capacitance-Table can be edited here:' + "\n"
+                lib += 'B2 K_C 0 V=table(abs(V(PORT1)-V(PORT2)),{table}) '.format(table=saturation_table['C']) + "\n"
+
+                lib += '* The values for the Voltage-Resistance-Table can be edited here:' + "\n"
+                lib += 'B3 K_Rs 0 V=table(abs(V(PORT1)-V(PORT2)),{table}) '.format(table=saturation_table['R_s']) + "\n"
+
 
                 lib += '.ENDS {name}'.format(name=model_name) + "\n"
 
