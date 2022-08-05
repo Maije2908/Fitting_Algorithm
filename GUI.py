@@ -345,10 +345,11 @@ class GUI:
             self.fitter.smooth_data()
 
 
-
+            #TODO: the capacitor type is hardcoded here, consider some entry box or something
+            captype = fitterconstants.captype.MLCC
 
             # parse specs to fitter
-            self.fitter.set_specification(passive_nom, res, prom, sat, fit_type)
+            self.fitter.set_specification(passive_nom, res, prom, sat, fit_type, captype)
             # invoke methods for data preprocessing
             self.fitter.get_main_resonance()
             self.fitter.get_resonances()

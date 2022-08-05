@@ -23,6 +23,9 @@ MIN_R_ISO = 1e5
 MAX_R_ISO = 1e12
 R_ISO_VALUE = 1e15
 
+#minimum Q-Factor at which to model acoustic resonance
+ACOUSTIC_RESONANCE_MIN_Q = 2
+
 #max/min values for the higher order circuits
 RMAX = 1e5 #was 1e4
 RMIN = 1e-3
@@ -81,11 +84,15 @@ class calc_method:
     SERIES = 1
     SHUNT = 2
 
+class captype:
+    GENERIC = 1
+    MLCC = 2
+
 #determines whether to generate differnce plots or not
 OUTPUT_DIFFPLOTS = 1
 
 #Debug Plots
-DEBUG_BW_MODEL = 0
+DEBUG_BW_MODEL = 1
 DEBUG_BW_MODEL_VERBOSE = 0
 DEBUG_FIT = 1
 DEBUG_BW_DETECTION =0
