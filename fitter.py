@@ -446,7 +446,7 @@ class Fitter:
         self.bad_bandwidth_flag = bad_BW_flag
         self.order = len(self.bandwidths)
 
-    def get_acoustic_resonance(self):
+    def fit_acoustic_resonance(self):
         freq = self.frequency_vector
         data = self.z21_data
         magnitude_data = self.data_mag
@@ -488,24 +488,37 @@ class Fitter:
 
         main_res_here = self.calculate_Z(self.parameters, res_fq, 2, 0, 1, fitterconstants.fcnmode.OUTPUT)
         data_here = data[freq==res_fq]
+        w_c = res_fq * 2 * np.pi
+        Q = res_fq / (bu - bl)
+
         R_new = abs(1 / (1 / data_here[0] - 1 / main_res_here))
+        C_new = 1/(R_new*w_c*Q)
 
-        Q1 = res_fq/(bu-bl)
-        Q2 = res_fq/(fu-fl)
+        C=C_new
+        params = copy.copy(self.parameters)
 
-        w_c = res_fq*2*np.pi
-        if Q < fitterconstants.ACOUSTIC_RESONANCE_MIN_Q:
-            self.parameters.add('R_A', value=R,vary=True)
-        else:
-            self.parameters.add('R_A', value=R, min=R*0.9, max=1.1, vary=True)
-        self.parameters.add('C_A', value=C, min=C * 0.9, max=C * 1.1, vary=True)
-        self.parameters.add('w_A', value =w_c, min = w_c*0.98, max=w_c*1.02, vary=True)
-        self.parameters.add('L_A', value=L, expr='1/(C_A*w_A**2)')
+        params.add('R_A', value=R_new, min=R*0.8, max=R_new*1.2, vary=True)
+        params.add('C_A', value=C, min=C * 0.8, max=C * 1.5, vary=True)
+        params.add('w_A', value =w_c, min = w_c*0.9, max=w_c*1.2, vary=True)
+        params.add('L_A', value=L, expr='1/(C_A*w_A**2)')
 
-        if DEBUG_FIT:
-            self.plot_curve_before_fit(0,0)
 
-        pass
+        #acoustic resonance modeling seems to require a fit
+        modelfreq = freq[np.logical_and(freq > bl, freq < bu)]
+        modeldata = data[np.logical_and(freq > bl, freq < bu)]
+
+        out1 = minimize(self.calculate_Z, params,
+                            args=(modelfreq, modeldata, 0, 0, fitterconstants.fcnmode.FIT,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        params = copy.copy(out1.params)
+        self.change_parameter(params,'R_A',vary=False)
+        self.change_parameter(params,'L_A',vary=False)
+        self.change_parameter(params,'C_A',vary=False)
+        self.change_parameter(params,'w_A',vary=False)
+
+
+        return params
 
 
 
@@ -906,7 +919,7 @@ class Fitter:
         mode = fitterconstants.fcnmode.FIT
 
         if fitterconstants.DEBUG_FIT: #debug plot -> main res before fit
-            self.plot_curve_before_fit(0,1)
+            self.plot_curve_before_fit(self.parameters,0,1)
 
         # frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
         fit_main_resonance = 1
@@ -954,7 +967,7 @@ class Fitter:
         self.fix_main_resonance_parameters()
 
         if fitterconstants.DEBUG_FIT:  # debug plot -> fitted main resonance
-            self.plot_curve_before_fit(0,1)
+            self.plot_curve_before_fit(self.parameters,0,1)
 
         #################### Higher Order Resonances####################################################################
 
@@ -999,7 +1012,7 @@ class Fitter:
         mode = fitterconstants.fcnmode.FIT
 
         if fitterconstants.DEBUG_FIT: #debug plot -> main res before fit
-            self.plot_curve_before_fit(0,1)
+            self.plot_curve_before_fit(self.parameters,0,1)
 
         ###################### Main resonance ##########################################################################
 
@@ -1038,7 +1051,7 @@ class Fitter:
         self.fix_main_resonance_parameters()
 
         if fitterconstants.DEBUG_FIT:  # debug plot -> fitted main resonance
-            self.plot_curve_before_fit(0,1)
+            self.plot_curve_before_fit(self.parameters,0,1)
 
         ###################### Higher order resonances #################################################################
 
@@ -1047,19 +1060,21 @@ class Fitter:
 
         #generate acoustic resonance parameters
         if self.captype == fitterconstants.captype.MLCC:
-            self.get_acoustic_resonance()
+            out1 = self.fit_acoustic_resonance()
+            self.parameters = copy.copy(out1)
+
 
             fit_data_frq_lim = fit_data[freq<self.f0]
             freq_data_frq_lim = freq[freq<self.f0]
             if fitterconstants.DEBUG_FIT:
-                self.plot_curve_before_fit(0,0)
+                self.plot_curve_before_fit(out1,0,0)
 
-            if fit_order == 0:
-                fit_main_resonance = 0
-                param_set_1 = copy.copy(self.parameters)
-                out1 = minimize(self.calculate_Z, param_set_1,
-                                args=(freq_data_frq_lim, fit_data_frq_lim, fit_order, fit_main_resonance, mode,),
-                                method='powell', options={'xtol': 1e-18, 'disp': True})
+            # if fit_order == 0:
+            #     fit_main_resonance = 0
+            #     param_set_1 = copy.copy(self.parameters)
+            #     out1 = minimize(self.calculate_Z, param_set_1,
+            #                     args=(freq_data_frq_lim, fit_data_frq_lim, fit_order, fit_main_resonance, mode,),
+            #                     method='powell', options={'xtol': 1e-18, 'disp': True})
 
 
         # Frequency limit for fit data
@@ -1092,8 +1107,8 @@ class Fitter:
             out_params1 = out1.params
             out_params2 = out2.params
         elif self.captype == fitterconstants.captype.MLCC and self.order == 0:
-            out_params1 = out1.params
-            out_params2 = out1.params
+            out_params1 = out1
+            out_params2 = out1
         else:
             out_params1 = self.parameters
             out_params2 = self.parameters
@@ -1455,7 +1470,7 @@ class Fitter:
                 self.get_resonances()
                 self.create_elements(2)#TODO: config number is hardcoded
                 if self.captype == fitterconstants.captype.MLCC:
-                    self.get_acoustic_resonance()
+                    self.fit_acoustic_resonance()
                 # write back value for L and keep it in place
                 self.change_parameter(self.parameters,param_name='L', value= L_val, vary=False)
         fit_main_resonance = 0
@@ -1553,9 +1568,9 @@ class Fitter:
         return cumnorm
 
 
-    def plot_curve_before_fit(self, order, main_res):
+    def plot_curve_before_fit(self,param_set, order, main_res):
 
-        testdata = self.calculate_Z(self.parameters, self.frequency_vector, 2, order, main_res, 2)
+        testdata = self.calculate_Z(param_set, self.frequency_vector, 2, order, main_res, 2)
         plt.figure()
         plt.loglog(self.frequency_vector, abs(self.z21_data))
         plt.loglog(self.frequency_vector, abs(testdata))
@@ -1623,6 +1638,18 @@ class Fitter:
         #crop data
         modelfreq = freqdata[lower_pit_index:upper_pit_index]
         modeldata = data[lower_pit_index:upper_pit_index]
+
+        try:
+            #TODO: testing a derivative approach here
+            ddt = np.gradient(abs(modeldata))
+            ddt2 = np.gradient(ddt)
+            signchange = np.argwhere(abs(np.diff(np.sign(ddt2))))
+            left = signchange[(signchange < peakindex)][-1] - 1
+            right = signchange[(signchange > peakindex)][0] + 1
+            modelfreq = modelfreq[left:right]
+            modeldata = modeldata[left:right]
+        except:
+            pass
 
         #space through the usual capacitance values in logarithmic steps
         C_max_exp = 3
