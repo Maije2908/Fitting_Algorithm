@@ -30,8 +30,9 @@ class Fitter:
         self.series_resistance = None
         self.prominence = None
         self.saturation = None
-        self.captype = None
+
         self.file = None
+
         self.z21_data = None
         self.data_mag = None
         self.data_ang = None
@@ -39,6 +40,7 @@ class Fitter:
 
         self.fit_type = None
         self.ser_shunt = None
+        self.captype = None
 
         self.out = None
 
@@ -55,7 +57,6 @@ class Fitter:
 
 
         self.f0 = None
-        self.max_order = fitterconstants.MAX_ORDER
         self.order = 0
 
         self.offset = 0
@@ -611,29 +612,17 @@ class Fitter:
 
         #if we got too many frequency zones -> restrict fit to max order
         #else get order from frequency zones and write found order to class
-        if self.max_order >= len(self.bandwidths):
+        if fitterconstants.MAX_ORDER >= len(self.bandwidths):
             order = len(self.bandwidths)
             self.order = len(self.bandwidths)
         else:
-            order = self.max_order
+            order = fitterconstants.MAX_ORDER
             self.order = order
             self.logger.info("Info: more resonances detected than maximum order permits, set order to {value}".format(value=order))
-            #TODO: and also throw and except please
             #TODO: some methods are not robust enough for this fit maybe?
 
-
-        #model the main res, so we have good estimates for the impedance curve
-        #NOTE: THIS DOES NOT WORK THAT EASY VVVVVVVVVVVVV
-
-        # f_c_index = np.argwhere(self.frequency_vector == self.f0)[0][0]
-        # f_l_index = 0
-        # f_u_index = np.argwhere(self.frequency_vector == self.f0)[0][0]+1000
-        # # get data for bandwidth model
-        # freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
-        # data_BW_mdl = self.data_mag[f_l_index:f_u_index] * np.exp(1j * np.radians(self.data_ang[f_l_index:f_u_index]))
-        # # now model the BW
-        # [b_l, b_u, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, self.f0)
-
+        freq = self.frequency_vector
+        data = self.z21_data
         main_res_data = self.calculate_Z(self.parameters, self.frequency_vector,2,0,1,fitterconstants.fcnmode.OUTPUT)
 
 
@@ -697,41 +686,29 @@ class Fitter:
             BW_value = (b_u - b_l)  # BW_max / 8
 
             # calculate Q-factor
-            q = b_c / BW_value
+            Q = b_c / BW_value
 
             # center frequency (omega)
             w_c = b_c * 2 * np.pi
             min_w = w_c * fitterconstants.MIN_W_FACTOR
             max_w = w_c * fitterconstants.MAX_W_FACTOR
 
-            #TODO: look into how to handle the min==max errors
-
-            # #we get an error of min==max for the parameters, if one parameter is too small-> just subtract something i guess
-            # while value_cap < fitterconstants.MINIMUM_PRECISION:
-            #     value_cap = value_cap * 2
-            #
-
-
-
-            r_max = r_value * 1.25
-            r_min = r_value * 0.5
-
-
-            min_ind = value_ind * 2
-            max_ind = value_ind *0.5
-
-            #add parameters
-
-            #this is the default configuration, i.e. the config how tristan had it
-            # self.parameters.add(BW_key, min=BW_min,     max=BW_max,     value=BW_value              , vary=True)
-            # self.parameters.add(w_key,  min=min_w,      max=max_w,      value=w_c                   , vary=True)
-            # self.parameters.add(C_key,  min=min_cap,    max=max_cap,    value=value_cap             , vary=True)
-            # self.parameters.add(L_key,  min=1e-20,      max=L,          expr=expression_string_L    , vary=False)
-            # self.parameters.add(R_key,  min=1e-3,       max=1e4,        expr=expression_string_R    , vary=False)
 
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+            #################### CAPACITORS ############################################################################
             if self.fit_type == fitterconstants.El.CAPACITOR:
                 # good values for capacitor fitting
                 max_cap = value_cap * 1e1
@@ -763,7 +740,7 @@ class Fitter:
                         if (r_value - abs(main_res_data[f_c_index])) > 0:
                             r_value = r_value - abs(main_res_data[f_c_index]) * (
                                         abs(main_res_data[f_c_index]) / r_value)
-                            value_cap = q / (w_c * r_value)
+                            value_cap = Q / (w_c * r_value)
                             max_cap = value_cap * 1e1  # 2
                             min_cap = value_cap * 1e-1  # 500e-3
 
@@ -782,7 +759,7 @@ class Fitter:
 
 
 
-
+            #################### INDUCTORS #############################################################################
             else:
 
                 max_cap = value_cap * 1e2#2
@@ -811,7 +788,7 @@ class Fitter:
                         # config D (assuming perfectly fitted main resonance)
                         if (r_value - abs(main_res_data[f_c_index])) > 0:
                             r_value = r_value - abs(main_res_data[f_c_index])*(abs(main_res_data[f_c_index])/r_value)
-                            value_cap = q/(w_c*r_value)
+                            value_cap = Q/(w_c*r_value)
                             max_cap = value_cap * 1e1  # 2
                             min_cap = value_cap * 1e-1  # 500e-3
 
