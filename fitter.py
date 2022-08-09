@@ -481,7 +481,7 @@ class Fitter:
         except IndexError:
             f_lower_index = res_index - int(fitterconstants.DEFAULT_OFFSET_PEAK/2)
 
-        freq_mdl = freq[f_lower_index-10:f_upper_index+10]
+        freq_mdl = freq_lim[f_lower_index-10:f_upper_index+10]
         data_mdl = mag_data_lim[f_lower_index-10:f_upper_index+10]
 
         [bl,bu,R,L,C] = self.model_bandwidth(freq_mdl, data_mdl, res_fq)
@@ -1638,17 +1638,26 @@ class Fitter:
         #crop data
         modelfreq = freqdata[lower_pit_index:upper_pit_index]
         modeldata = data[lower_pit_index:upper_pit_index]
+        #rewrite the peak index after cropping
+        peakindex = np.argwhere(modelfreq == peakfreq)[0][0]
 
         try:
-            #TODO: testing a derivative approach here
+            #find the infelction points before and behind the peak in order to crop the peak
+            # the derivatives need to be sav_gol filtered, otherwise they are too noisy
             ddt = np.gradient(abs(modeldata))
+            ddt = scipy.signal.savgol_filter(ddt, 31,3)
             ddt2 = np.gradient(ddt)
+            ddt2 = scipy.signal.savgol_filter(ddt2, 31, 3)
             signchange = np.argwhere(abs(np.diff(np.sign(ddt2))))
+
+            #find left and right index of inflection points and crop the data
             left = signchange[(signchange < peakindex)][-1] - 1
             right = signchange[(signchange > peakindex)][0] + 1
             modelfreq = modelfreq[left:right]
             modeldata = modeldata[left:right]
         except:
+            #if the derivative approach does not work, we just do it the way it was before (this has less accuracy overall,
+            # but should work for most cases)
             pass
 
         #space through the usual capacitance values in logarithmic steps
