@@ -623,7 +623,8 @@ class Fitter:
 
         freq = self.frequency_vector
         data = self.z21_data
-        main_res_data = self.calculate_Z(self.parameters, self.frequency_vector,2,0,1,fitterconstants.fcnmode.OUTPUT)
+        main_res_data = self.calculate_Z(self.parameters, self.frequency_vector, 2, 0, 0,
+                                      fitterconstants.fcnmode.OUTPUT)
 
 
         for key_number in range(1, order + 1):
@@ -693,7 +694,103 @@ class Fitter:
             min_w = w_c * fitterconstants.MIN_W_FACTOR
             max_w = w_c * fitterconstants.MAX_W_FACTOR
 
+            ############################# PRE-Fit ######################################################################
 
+            if self.fit_type == fitterconstants.El.CAPACITOR:
+                #TODO: testing if a fit helps the overall accuracy
+                R_new = r_value
+                L_new = value_ind
+                C_new = value_cap
+                band_stretch_factor = 1.01
+
+                #calculate the
+                curve_data = self.calculate_Z(self.parameters, self.frequency_vector, 2, key_number-1, 0,fitterconstants.fcnmode.OUTPUT)
+                data_here = data[freq == b_c]
+                main_res_here = curve_data[freq == b_c]
+
+                w_c = b_c * 2 * np.pi
+                Q = b_c / (b_u - b_l)
+
+
+                R_adjusted = abs(1 / (1 / data_here[0] - 1 / main_res_here[0]))
+                C_adjusted = 1 / (R_adjusted * w_c * Q)
+
+                C_new = C_adjusted
+                params = copy.copy(self.parameters)
+
+                #lock all previous parameters in place
+                for pname, par in params.items():
+                    par.vary = False
+
+                params.add(R_key, value=R_adjusted, min=R_new * 0.8, max=R_adjusted * 1.2, vary=True)
+                params.add(C_key, value=C_adjusted, min=C_new * 0.8, max=C_new * 1.5, vary=True)
+                params.add(w_key, value=w_c, min=w_c * 0.9, max=w_c * 1.2, vary=True)
+                params.add(L_key, value=L_new, expr='1/('+C_key+'*'+w_key+'**2)')
+                # self.plot_curve_before_fit(params, key_number, 0)
+
+
+                # crop the data around the peak
+                modelfreq = freq[np.logical_and(freq > b_l/band_stretch_factor, freq < b_u*band_stretch_factor)]
+                modeldata = data[np.logical_and(freq > b_l/band_stretch_factor, freq < b_u*band_stretch_factor)]
+
+                out1 = minimize(self.calculate_Z, params,
+                                args=(modelfreq, modeldata, key_number, 0, fitterconstants.fcnmode.FIT,),
+                                method='powell', options={'xtol': 1e-18, 'disp': True})
+
+                # self.plot_curve_before_fit(out1.params,key_number,0)
+                w_c = out1.params[w_key].value
+                r_value = out1.params[R_key].value
+                value_ind = out1.params[L_key].value
+                value_cap = out1.params[C_key].value
+
+
+
+            if self.fit_type == fitterconstants.El.INDUCTOR:
+                # TODO: testing if a fit helps the overall accuracy
+                R_new = r_value
+                L_new = value_ind
+                C_new = value_cap
+                band_stretch_factor = 1.01
+
+                # calculate the
+                curve_data = self.calculate_Z(self.parameters, self.frequency_vector, 2, key_number - 1, 0,
+                                              fitterconstants.fcnmode.OUTPUT)
+                data_here = data[freq == b_c]
+                main_res_here = curve_data[freq == b_c]
+
+                w_c = b_c * 2 * np.pi
+                Q = b_c / (b_u - b_l)
+
+                R_adjusted = abs(data_here[0]) -  abs(main_res_here[0])
+                C_adjusted = Q / (R_adjusted * w_c)
+
+                C_new = C_adjusted
+                params = copy.copy(self.parameters)
+
+                # lock all previous parameters in place
+                for pname, par in params.items():
+                    par.vary = False
+
+                params.add(R_key, value=R_adjusted, min=R_new * 0.8, max=R_adjusted * 1.2, vary=True)
+                params.add(C_key, value=C_adjusted, min=C_new * 0.8, max=C_new * 1.5, vary=True)
+                params.add(w_key, value=w_c, min=w_c * 0.9, max=w_c * 1.2, vary=True)
+                params.add(L_key, value=L_new, expr='1/(' + C_key + '*' + w_key + '**2)')
+                # self.plot_curve_before_fit(params, key_number, 0)
+
+                # crop the data around the peak
+                modelfreq = freq[np.logical_and(freq > b_l / band_stretch_factor, freq < b_u * band_stretch_factor)]
+                modeldata = data[np.logical_and(freq > b_l / band_stretch_factor, freq < b_u * band_stretch_factor)]
+
+                out1 = minimize(self.calculate_Z, params,
+                                args=(modelfreq, modeldata, key_number, 0, fitterconstants.fcnmode.FIT,),
+                                method='powell', options={'xtol': 1e-18, 'disp': True})
+
+                # self.plot_curve_before_fit(out1.params,key_number,0)
+                w_c = out1.params[w_key].value
+                r_value = out1.params[R_key].value
+                value_ind = out1.params[L_key].value
+                value_cap = out1.params[C_key].value
+                # self.plot_curve_before_fit(out1.params, key_number, 0)
 
 
 
@@ -737,12 +834,13 @@ class Fitter:
                         self.parameters.add(R_key, expr=expression_string_R, vary=False)
                     case 2:
                         # config D (assuming perfectly fitted main resonance)
-                        if (r_value - abs(main_res_data[f_c_index])) > 0:
-                            r_value = r_value - abs(main_res_data[f_c_index]) * (
-                                        abs(main_res_data[f_c_index]) / r_value)
-                            value_cap = Q / (w_c * r_value)
-                            max_cap = value_cap * 1e1  # 2
-                            min_cap = value_cap * 1e-1  # 500e-3
+                            #TODO: i commented the following section out, since we do that anyways
+                        # if (r_value - abs(main_res_data[f_c_index])) > 0:
+                        #     r_value = r_value - abs(main_res_data[f_c_index]) * (
+                        #                 abs(main_res_data[f_c_index]) / r_value)
+                        #     value_cap = Q / (w_c * r_value)
+                        #     max_cap = value_cap * 1e1  # 2
+                        #     min_cap = value_cap * 1e-1  # 500e-3
 
                         expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
                         expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(
