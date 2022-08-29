@@ -518,11 +518,9 @@ class Fitter:
         self.change_parameter(params,'C_A',vary=False)
         self.change_parameter(params,'w_A',vary=False)
 
+        self.parameters = copy.copy(params)
 
         return params
-
-
-
 
     def create_nominal_parameters(self):
         #get bandwidth
@@ -676,7 +674,7 @@ class Fitter:
             elif self.bad_bandwidth_flag[key_number - 1][1]:
                 [_,_, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, b_c)
                 b_u = b_c + (b_c - b_l)
-            #both points present
+            #both points present -> we only want estimates for the elements
             else:
                 [_,_, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, b_c)
 
@@ -724,7 +722,7 @@ class Fitter:
 
                 params.add(R_key, value=R_adjusted, min=R_new * 0.8, max=R_adjusted * 1.2, vary=True)
                 params.add(C_key, value=C_adjusted, min=C_new * 0.8, max=C_new * 1.5, vary=True)
-                params.add(w_key, value=w_c, min=w_c * 0.9, max=w_c * 1.2, vary=True)
+                params.add(w_key, value=w_c, min=w_c * 0.9, max=w_c * 1.2, vary=False)
                 params.add(L_key, value=L_new, expr='1/('+C_key+'*'+w_key+'**2)')
                 # self.plot_curve_before_fit(params, key_number, 0)
 
@@ -738,7 +736,7 @@ class Fitter:
                                 method='powell', options={'xtol': 1e-18, 'disp': True})
 
                 # self.plot_curve_before_fit(out1.params,key_number,0)
-                w_c = out1.params[w_key].value
+                # w_c = out1.params[w_key].value
                 r_value = out1.params[R_key].value
                 value_ind = out1.params[L_key].value
                 value_cap = out1.params[C_key].value
@@ -761,7 +759,10 @@ class Fitter:
                 w_c = b_c * 2 * np.pi
                 Q = b_c / (b_u - b_l)
 
-                R_adjusted = abs(data_here[0]) -  abs(main_res_here[0])
+                # adjust the value of R; since the BW model provides us with an R for the "standalone" circuit, we need
+                # to correct it to account for the main res data as well
+                R_adjusted = abs( abs(data_here[0]) -  abs(main_res_here[0]) )
+
                 C_adjusted = Q / (R_adjusted * w_c)
 
                 C_new = C_adjusted
@@ -773,7 +774,7 @@ class Fitter:
 
                 params.add(R_key, value=R_adjusted, min=R_new * 0.8, max=R_adjusted * 1.2, vary=True)
                 params.add(C_key, value=C_adjusted, min=C_new * 0.8, max=C_new * 1.5, vary=True)
-                params.add(w_key, value=w_c, min=w_c * 0.9, max=w_c * 1.2, vary=True)
+                params.add(w_key, value=w_c, min=w_c * 0.9, max=w_c * 1.2, vary=False)
                 params.add(L_key, value=L_new, expr='1/(' + C_key + '*' + w_key + '**2)')
                 # self.plot_curve_before_fit(params, key_number, 0)
 
@@ -786,21 +787,11 @@ class Fitter:
                                 method='powell', options={'xtol': 1e-18, 'disp': True})
 
                 # self.plot_curve_before_fit(out1.params,key_number,0)
-                w_c = out1.params[w_key].value
+                # w_c = out1.params[w_key].value
                 r_value = out1.params[R_key].value
                 value_ind = out1.params[L_key].value
                 value_cap = out1.params[C_key].value
                 # self.plot_curve_before_fit(out1.params, key_number, 0)
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -855,13 +846,13 @@ class Fitter:
 
 
 
-
-
             #################### INDUCTORS #############################################################################
             else:
 
-                max_cap = value_cap * 1e2#2
-                min_cap = value_cap * 1e-2#500e-3
+                max_cap = value_cap * 1e1#2
+                min_cap = value_cap * 1e-1#500e-3
+                min_w = w_c*fitterconstants.MIN_W_FACTOR
+                max_w = w_c*fitterconstants.MAX_W_FACTOR
 
 
                 self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
@@ -884,29 +875,68 @@ class Fitter:
                         self.parameters.add(R_key, expr=expression_string_R, vary=False)
                     case 2:
                         # config D (assuming perfectly fitted main resonance)
-                        if (r_value - abs(main_res_data[f_c_index])) > 0:
-                            r_value = r_value - abs(main_res_data[f_c_index])*(abs(main_res_data[f_c_index])/r_value)
-                            value_cap = Q/(w_c*r_value)
-                            max_cap = value_cap * 1e1  # 2
-                            min_cap = value_cap * 1e-1  # 500e-3
+                        # if (r_value - abs(main_res_data[f_c_index])) > 0:
+                        #     r_value = r_value - abs(main_res_data[f_c_index])*(abs(main_res_data[f_c_index])/r_value)
+                        #     value_cap = Q/(w_c*r_value)
+                        #     max_cap = value_cap * 1e1  # 2
+                        #     min_cap = value_cap * 1e-1  # 500e-3
 
                         expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
                         expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))' + '/' + R_key + ')**2'
                         expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + ')))/('+R_key+'*'+w_key+')'
                         self.parameters.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-                        self.parameters.add(R_key, value = r_value, min = r_value * 0.2, max = r_value * 5)
+                        self.parameters.add(R_key, value = r_value, min = r_value * 0.5, max = r_value * 2)
                         self.parameters.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
                         self.parameters.add(L_key, expr=expression_string_L)
                         # self.parameters.add(C_key, expr=expression_string_C)
 
-
-                # # config C
-                # expression_string_L = '((' + R_key + '**2)*' + C_key + ')/(' + str(q ** 2) + ')'
-                # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
-                # self.parameters.add(L_key, expr=expression_string_L, vary=False)
-
+        self.correct_parameters()
 
         return 0
+
+    def correct_parameters(self):
+        freq = self.frequency_vector
+        order = self.order
+        data = self.z21_data
+        params = copy.copy(self.parameters)
+        num_it = 1
+
+        curve_data = self.calculate_Z(params, freq, 2, order, 0,fitterconstants.fcnmode.OUTPUT)
+
+        for it in range(num_it):
+            for key_number in range(1, order + 1):
+                index = key_number - 1
+                if self.fit_type == fitterconstants.El.INDUCTOR:
+                    band = self.bandwidths[index]
+                    dataindex = np.argwhere(freq == band[1])[0][0]
+                    if abs(abs(data[dataindex]) - abs(curve_data[dataindex])) / abs(data[dataindex]) >= 0.1:
+
+                        R_key = 'R%s' % key_number
+                        C_key = 'C%s' % key_number
+
+                        R = params[R_key].value
+                        R_diff = abs(data[dataindex]) - abs(curve_data[dataindex])
+                        if (R + R_diff) > 0:
+                            R_adjusted = R + R_diff
+                        else:
+                            #TODO: hardcoded; NOTE: this shouldn't be invoked at any point!!!
+                            R_adjusted = 1
+                            self.logger.info('Invoked an edge case that should not be invoked: fitter.correct_parameters()')
+
+                        w_c = params['w%s' % key_number].value
+                        BW = params['BW%s' % key_number].value
+                        Q = w_c / (BW*2*np.pi)
+                        C_adjusted = Q / (R_adjusted * w_c)
+
+                        self.change_parameter(params, R_key, min = R_adjusted*0.8, max = R_adjusted *1.2, value = R_adjusted, vary = True, expr ='')
+                        self.change_parameter(params, C_key, min = C_adjusted*0.8, max = C_adjusted *1.2, value = C_adjusted, vary = True, expr ='')
+
+
+
+        self.parameters = copy.copy(params)
+
+
+
 
     def calculate_Z(self, parameters, frequency_vector, data, fit_order, fit_main_res, modeflag):
         #method to calculate the impedance curve from chained parallel resonance circuits
@@ -1136,7 +1166,6 @@ class Fitter:
         #generate acoustic resonance parameters
         if self.captype == fitterconstants.captype.MLCC:
             out1 = self.fit_acoustic_resonance()
-            self.parameters = copy.copy(out1)
 
 
             fit_data_frq_lim = fit_data[freq<self.f0]
@@ -1233,6 +1262,7 @@ class Fitter:
         ################################################################################################################
 
         self.parameters.pretty_print()
+        self.out.params = self.parameters
 
         # for testin purposes
         if fitterconstants.DEBUG_FIT:
@@ -1529,11 +1559,12 @@ class Fitter:
                 # clear and re-initiate parameters
                 self.parameters = Parameters()
                 self.create_nominal_parameters()
+                self.parameters['C'].value = C_val
+                self.parameters['C'].vary = False
                 self.get_resonances()
                 self.create_elements(2)#TODO: config number is hardcoded
                 # write back value for C and keep it in place
-                self.parameters['C'].value = C_val
-                self.parameters['C'].vary = False
+
             case fitterconstants.El.CAPACITOR:
                 C_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * self.parameters['L'].value)
                 self.nominal_value = C_ideal
@@ -1543,9 +1574,9 @@ class Fitter:
                 self.parameters = Parameters()
                 self.create_nominal_parameters()
                 self.get_resonances()
-                self.create_elements(2)#TODO: config number is hardcoded
                 if self.captype == fitterconstants.captype.MLCC:
                     self.fit_acoustic_resonance()
+                self.create_elements(2)#TODO: config number is hardcoded
                 # write back value for L and keep it in place
                 self.change_parameter(self.parameters,param_name='L', value= L_val, vary=False)
         fit_main_resonance = 0
@@ -1566,9 +1597,10 @@ class Fitter:
 
                 self.change_parameter(self.parameters, param_name='R_Fe',value=R_Fe, vary=True, min= R_Fe*0.8,
                                       max=R_Fe*1.25 )
+                self.change_parameter(self.parameters, param_name='R_s',vary=False)
 
-                freq_for_fit = freq
-                data_for_fit = fit_data
+                freq_for_fit = freq[freq<fitterconstants.FREQ_UPPER_LIMIT]
+                data_for_fit = fit_data[freq<fitterconstants.FREQ_UPPER_LIMIT]
 
             case fitterconstants.El.CAPACITOR:
 
@@ -1585,8 +1617,8 @@ class Fitter:
                 self.parameters['R_iso'].value = R_iso
                 self.parameters['R_iso'].min = R_iso * 0.8
                 self.parameters['R_iso'].max = R_iso * 1.25
-                freq_for_fit = freq
-                data_for_fit = fit_data
+                freq_for_fit = freq[freq<fitterconstants.FREQ_UPPER_LIMIT]
+                data_for_fit = fit_data[freq<fitterconstants.FREQ_UPPER_LIMIT]
 
         mode = fitterconstants.fcnmode.FIT
         # if only main res fit -> order = 0; fit_main_res = 1

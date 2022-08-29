@@ -165,7 +165,7 @@ class IOhandler:
         file.close()
 
 
-    def generate_Netlist_2_port_full_fit(self, parameters, fit_order, fit_type, saturation_table):
+    def generate_Netlist_2_port_full_fit(self, parameters, fit_order, fit_type, saturation_table, captype=None):
 
         out = parameters
         order = fit_order
@@ -295,6 +295,36 @@ class IOhandler:
                     lib += '* current dependent proportionality factor for R{no}'.format(no=circuit) + "\n"
                     lib += 'BRK{no} K_R{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no=circuit, table=saturation_table['R%s' % circuit]) + "\n"
                     lib += "\n"
+
+                #acoustic resonance
+                if captype == fitterconstants.captype.MLCC:
+                    RA = out['R_A'].value
+                    LA = out['L_A'].value
+                    CA = out['C_A'].value
+                    #current dependent coil for higher order res:
+                    lib += 'BL{no} PORT1 NL{node1} '.format(no='A', node1='A') + 'V=V(VL{no})*V(K_L{no})'.format(no='A') + "\n"
+                    lib += 'L{no} VL{no} 0 '.format(no='A') + str(LA) + "\n"
+                    lib += 'FL{no} 0 VL{no} BL{no} 1'.format(no='A') + "\n"
+
+                    lib += '* current dependent proportionality factor for L{no}'.format(no='A') + "\n"
+                    lib += 'BLK{no} K_L{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no='A', table=saturation_table['L_A']) + "\n"
+                    lib += "\n"
+
+                    # current dependent cap for higher order res:
+                    lib += 'BC{no} NL{node1} NC{node1} '.format(no='A', node1='A') + 'I=-I(BCT{no})*V(K_C{no})'.format(no='A') + "\n"
+                    lib += 'C{no} VC{no} 0 '.format(no='A') + str(CA) + "\n"
+                    lib += 'BCT{no} VC{no} 0 '.format(no='A') + 'V=V(NL{node1})-V(NC{node1})'.format(node1='A') + "\n"
+
+                    lib += '* current dependent proportionality factor for C{no}'.format(no='A') + "\n"
+                    lib += 'BCK{no} K_C{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no='A', table=saturation_table['C_A']) + "\n"
+
+                    # current dependent resistor
+                    lib += 'R_{no} NC{node1} PORT2 R = limit({lo}, {hi}, {R_x} * V(K_R{no}))'.format(no='A', node1='A',lo=RA * 1e-8,hi=RA * 1e8,R_x=RA) + "\n"
+
+                    lib += '* current dependent proportionality factor for R{no}'.format(no='A') + "\n"
+                    lib += 'BRK{no} K_R{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no='A',table=saturation_table['R_A']) + "\n"
+                    lib += "\n"
+
 
 
 
