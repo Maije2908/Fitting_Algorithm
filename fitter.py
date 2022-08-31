@@ -837,11 +837,9 @@ class Fitter:
         #invoke method to correct resistance values of the resonant circuits; invoked here because every resonant circuit
         #added has effect on all other circuits
         self.parameters = self.correct_parameters(self.parameters)
-        self.parameters = self.pre_fit_bands(self.parameters)
 
 
         return 0
-
 
     def pre_fit_bands(self, param_set):
         #method to do a fit for each detected resonance; this improves overall accuracy
@@ -876,10 +874,14 @@ class Fitter:
                                 method='powell', options={'xtol': 1e-18, 'disp': True})
 
             #write fit results to parameters and set their 'vary' to False
-            self.change_parameter(param_set, R_key, value = out.params[R_key].value, vary=False)
-            self.change_parameter(param_set, L_key, value = out.params[L_key].value, vary=False)
-            self.change_parameter(param_set, C_key, value = out.params[C_key].value, vary=False)
-            self.change_parameter(param_set, w_key, value = out.params[w_key].value, vary=False)
+            R = out.params[R_key].value
+            L = out.params[L_key].value
+            C = out.params[C_key].value
+            w = out.params[w_key].value
+            self.change_parameter(param_set, R_key, value = R, min = R*0.9, max = R*1.1, vary=False)
+            self.change_parameter(param_set, L_key, value = L, min = L*0.9, max = L*1.1,vary=False)
+            self.change_parameter(param_set, C_key, value = C, min = C*0.9, max = C*1.1,vary=False)
+            self.change_parameter(param_set, w_key, value = w, min = w*0.9, max = w*1.1,vary=False)
 
         #free parameters for further fitting
         self.free_parameters(param_set)
@@ -913,8 +915,8 @@ class Fitter:
 
             elif self.fit_type == fitterconstants.El.CAPACITOR:
                 # get Q value
-                b_l = np.flipud(np.argwhere(np.logical_and(freq < self.f0, abs(data) < abs(data[freq == self.f0][0]) * (np.sqrt(2)))))[0][0]
-                b_u = np.argwhere(np.logical_and(freq > self.f0, abs(data) < abs(data[freq == self.f0][0]) * (np.sqrt(2))))[0][0]
+                b_l = np.flipud(np.argwhere(np.logical_and(freq < self.f0, abs(data) > abs(data[freq == self.f0][0]) * (np.sqrt(2)))))[0][0]
+                b_u = np.argwhere(np.logical_and(freq > self.f0, abs(data) > abs(data[freq == self.f0][0]) * (np.sqrt(2))))[0][0]
                 w0 = (self.f0 * 2 * np.pi)
                 Q_main = self.f0 / (freq[b_u] - freq[b_l])
                 # adjust R_s by difference from the data
@@ -1106,11 +1108,17 @@ class Fitter:
         fit_order = self.order
         #check if higher order resonances exist and create elements in that case
         if fit_order:
-            #config 1
+            #create the two parameter sets
             self.create_elements(1)
             param_set_1 = copy.copy(self.parameters)
             self.create_elements(2)
             param_set_2 = copy.copy(self.parameters)
+
+            #pre fit the parameters by band i.e. fit every circuit to its assigned frequency range
+            num_it = 1
+            for _ in range(num_it):
+                param_set_1 = self.pre_fit_bands(param_set_1)
+                param_set_2 = self.pre_fit_bands(param_set_2)
 
             fit_main_resonance = 0
             out1 = minimize(self.calculate_Z, param_set_1,
@@ -1218,6 +1226,12 @@ class Fitter:
             param_set_1 = copy.copy(self.parameters)
             self.create_elements(2)
             param_set_2 = copy.copy(self.parameters)
+
+            # pre fit the parameters by band i.e. fit every circuit to its assigned frequency range
+            num_it = 1
+            for _ in range(num_it):
+                param_set_1 = self.pre_fit_bands(param_set_1)
+                param_set_2 = self.pre_fit_bands(param_set_2)
 
             fit_main_resonance = 0
             out1 = minimize(self.calculate_Z, param_set_1,
@@ -1575,30 +1589,43 @@ class Fitter:
                 self.nominal_value = L_ideal
 
                 C_val = self.parameters['C'].value
-                R_Fe_val = self.parameters['R_Fe'].value
+                R_s = self.parameters['R_s'].value
                 # clear and re-initiate parameters
                 self.parameters = Parameters()
                 self.create_nominal_parameters()
-                self.parameters['C'].value = C_val
-                self.parameters['C'].vary = False
+
+                #create higher order resonant circuits
                 self.get_resonances()
                 self.create_elements(2)#TODO: config number is hardcoded
+
                 # write back value for C and keep it in place
+                self.change_parameter(self.parameters, param_name='C', value=C_val, min=C_val * 0.8, max=C_val * 1.2,vary=False)
+                self.change_parameter(self.parameters, param_name='R_s', value=R_s, min=R_s * 0.8, max=R_s * 1.2,vary=False)
+
 
             case fitterconstants.El.CAPACITOR:
                 C_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * self.parameters['L'].value)
                 self.nominal_value = C_ideal
 
                 L_val = self.parameters['L'].value
+                R_iso = self.parameters['R_iso'].value
                 # clear and re-initiate parameters
                 self.parameters = Parameters()
                 self.create_nominal_parameters()
                 self.get_resonances()
+
+                #create higher order circuits (and acoustic resonance if need be)
                 if self.captype == fitterconstants.captype.MLCC:
                     self.fit_acoustic_resonance()
                 self.create_elements(2)#TODO: config number is hardcoded
-                # write back value for L and keep it in place
-                self.change_parameter(self.parameters,param_name='L', value= L_val, vary=False)
+
+                # write back value for L and R_iso
+                self.change_parameter(self.parameters, param_name='L', value=L_val, min=L_val * 0.8, max=L_val * 1.2,vary=False)
+                self.change_parameter(self.parameters, param_name='R_iso', value=R_iso, vary=False)
+                # get new value for R_s
+                R_s = abs(fit_data[freq == self.f0][0])
+                self.change_parameter(self.parameters, param_name='R_s', value=R_s, vary=False)
+
         fit_main_resonance = 0
 
         # calculate ideal value for the dependent element, so we are as close as possible to the detected resonance
@@ -1627,16 +1654,16 @@ class Fitter:
                 self.change_parameter(self.parameters, param_name='C', value=C_ideal, vary=True, min=C_ideal * 0.999,
                                       max = C_ideal * 1.001,expr = '')
 
-                bw_value = res_value * np.sqrt(2)
-                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
-                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
-                BW = freq[f_upper_index] - freq[f_lower_index]
-                R_iso = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
-
-                self.parameters['R_iso'].vary = False
-                self.parameters['R_iso'].value = R_iso
-                self.parameters['R_iso'].min = R_iso * 0.8
-                self.parameters['R_iso'].max = R_iso * 1.25
+                # bw_value = res_value * np.sqrt(2)
+                # f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
+                # f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
+                # BW = freq[f_upper_index] - freq[f_lower_index]
+                # R_iso = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
+                #
+                # self.parameters['R_iso'].vary = False
+                # self.parameters['R_iso'].value = R_iso
+                # self.parameters['R_iso'].min = R_iso * 0.8
+                # self.parameters['R_iso'].max = R_iso * 1.25
                 freq_for_fit = freq[freq<fitterconstants.FREQ_UPPER_LIMIT]
                 data_for_fit = fit_data[freq<fitterconstants.FREQ_UPPER_LIMIT]
 
