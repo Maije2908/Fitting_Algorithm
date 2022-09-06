@@ -324,8 +324,6 @@ class GUI:
             if ref_file is None:
                 raise Exception("Error: Please select a reference file")
 
-            # parse the reference file(0A/0V) to the fitter
-            self.fitter.set_file(ref_file)
 
             #get the values from the entries that define the currents/voltages of each file
             dc_bias = self.get_file_current_voltage_values()
@@ -334,6 +332,9 @@ class GUI:
 
 
 
+
+            # parse the reference file(0A/0V) to the fitter
+            self.fitter.set_file(ref_file)
 
             #calculate z21
             match shunt_series:
@@ -349,9 +350,9 @@ class GUI:
 
 
             #start the fit for the first file
-            self.fitter.start_fit_file_1()
+            fitted_params = self.fitter.start_fit_file_1()
             fit_1_order = self.fitter.order
-            parameter_list.append(copy.copy(self.fitter.parameters))
+            parameter_list.append(copy.copy(fitted_params))
 
             # output the plot for 0A
             path_out = self.selected_s2p_files[0]
