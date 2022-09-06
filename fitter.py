@@ -56,7 +56,7 @@ class Fitter:
         self.frequency_vector = None
 
 
-
+        self.acoustic_resonant_frequency = None
         self.f0 = None
         self.order = 0
 
@@ -526,6 +526,26 @@ class Fitter:
         self.parameters = copy.copy(params)
 
         return params
+
+    def get_acoustic_resonance(self):
+        freq = self.frequency_vector
+        magnitude_data = self.data_mag
+        f0 = self.f0
+
+        # limit the data to before the main res
+        mag_data_lim = magnitude_data[freq < f0]
+        freq_lim = freq[freq < f0]
+
+        mag_maxima = find_peaks(-20 * np.log10(mag_data_lim), height=-200, prominence=0)
+
+        index_ac_res = np.argwhere(mag_maxima[1]['prominences'] == max(mag_maxima[1]['prominences']))[0][0]
+        try:
+            res_index = mag_maxima[0][index_ac_res]
+            res_fq = freq_lim[res_index]
+        except:
+            res_fq = None
+
+        return res_fq
 
     def create_nominal_parameters(self, param_set):
         #get bandwidth

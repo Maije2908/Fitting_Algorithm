@@ -331,6 +331,33 @@ class GUI:
                 raise Exception("Error: Please specify the current/voltage values for the given files!")
 
 
+            #ACOUSTIC RESONANCE DETECTION
+            #we have to check for the acoustic resonance point prior to doing a fit because the ac res is not visible @0V DC bias
+            if captype == fitterconstants.captype.MLCC and any(other_files):
+                ac_res_fqs = []
+                for file in other_files:
+                    self.fitter.set_file(file)
+                    match shunt_series:
+                        case config.SHUNT_THROUGH:
+                            self.fitter.calc_shunt_thru(config.Z0)
+                        case config.SERIES_THROUGH:
+                            self.fitter.calc_series_thru(config.Z0)
+                    self.fitter.fit_type = fitterconstants.El.CAPACITOR
+                    self.fitter.smooth_data()
+                    self.fitter.get_main_resonance()
+                    ac_res_fqs.append(self.fitter.get_acoustic_resonance())
+                #extrapolate the res fqs for the 0V file
+                regression = np.polyfit(dc_bias[1:], ac_res_fqs, 1)
+                res_fq_0V = np.polyval(regression, 0)
+                ac_res_fqs.insert(0, res_fq_0V)
+
+            else:
+                # if there is only the 0V (or ref) file present, set captype to generic since we won't see the ac res
+                self.logger.info("MLCC captype selected, but only 0V file present. Cannot determine acoustic resonance point in this case!")
+                captype = fitterconstants.captype.GENERIC
+
+            #END ACOUSTIC RESONANCE DETECTION
+
 
 
             # parse the reference file(0A/0V) to the fitter
