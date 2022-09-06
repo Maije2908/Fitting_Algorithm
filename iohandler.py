@@ -112,7 +112,7 @@ class IOhandler:
                 C = out['C'].value
                 # table for current dependent inductance; 'I1,L1,I2,L2,...'
                 # example: '-0.3,<C_dc/C_nom>,0,1,0.3,<Cdc/C_nom>'
-                I_L_table = saturation_table if saturation_table.count(',') else '0,' + "1.0"
+                # I_L_table = saturation_table['C'] if saturation_table.count(',') else '0,' + "1.0"
 
                 # do not change the rest of this section, as it defines the structure of the model
                 lib = '* Netlist for Capacitor Model {name} (C={value}F)\n' \
@@ -126,14 +126,47 @@ class IOhandler:
                 R_iso = out['R_iso'].value
 
                 # node connections from voltage dependent capacitor model
-                lib += 'R_s PORT1 LsRs ' + str(R_s) + "\n"
+                lib += 'R_s PORT1 LsRs R = limit({lo}, {hi}, {R_s} * V(K_Rs))'.format(lo = R_s * 1e-8, hi = R_s * 1e8, R_s = R_s) + "\n"
                 lib += 'R_iso Vcap 0 ' + str(R_iso) + "\n"
+                #proportionality factor for C
                 lib += '* The values for the Voltage-Capacitance-Table can be edited here:' + "\n"
-                lib += 'B2 K 0 V=table(abs(V(PORT1)),{table}) '.format(table=I_L_table) + "\n"
+                lib += 'B2 K 0 V=table(abs(V(PORT1)),{table}) '.format(table=saturation_table['C']) + "\n"
+                # proportionality factor for R_Fe
+                lib += '* current dependent proportionality factor for R_s' + "\n"
+                lib += 'B3 K_Rs 0 V=table(abs(I(B1)),{table})'.format(table=saturation_table['R_s']) + "\n"
                 lib += 'L_s LsRs Vcap ' + str(Ls) + "\n"
                 lib += 'E1 E1 0 Vcap 0 1 ' + "\n"
                 lib += 'C E1 0 ' + str(C) + "\n"
                 lib += 'B1 0 Vcap I=I(E1)*V(K) ' + "\n"
+
+                # acoustic resonance
+                if captype == fitterconstants.captype.MLCC:
+                    RA = out['R_A'].value
+                    LA = out['L_A'].value
+                    CA = out['C_A'].value
+                    # current dependent coil for higher order res:
+                    lib += 'BL{no} PORT1 NL{node1} '.format(no='A', node1='A') + 'V=V(VL{no})*V(K_L{no})'.format(no='A') + "\n"
+                    lib += 'L{no} VL{no} 0 '.format(no='A') + str(LA) + "\n"
+                    lib += 'FL{no} 0 VL{no} BL{no} 1'.format(no='A') + "\n"
+
+                    lib += '* current dependent proportionality factor for L{no}'.format(no='A') + "\n"
+                    lib += 'BLK{no} K_L{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no='A',table=saturation_table['L_A']) + "\n"
+                    lib += "\n"
+
+                    # current dependent cap for higher order res:
+                    lib += 'BC{no} NL{node1} NC{node1} '.format(no='A', node1='A') + 'I=-I(BCT{no})*V(K_C{no})'.format(no='A') + "\n"
+                    lib += 'C{no} VC{no} 0 '.format(no='A') + str(CA) + "\n"
+                    lib += 'BCT{no} VC{no} 0 '.format(no='A') + 'V=V(NL{node1})-V(NC{node1})'.format(node1='A') + "\n"
+
+                    lib += '* current dependent proportionality factor for C{no}'.format(no='A') + "\n"
+                    lib += 'BCK{no} K_C{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no='A',table=saturation_table['C_A']) + "\n"
+
+                    # current dependent resistor
+                    lib += 'R_{no} NC{node1} PORT2 R = limit({lo}, {hi}, {R_x} * V(K_R{no}))'.format(no='A', node1='A',lo=RA * 1e-8,hi=RA * 1e8,R_x=RA) + "\n"
+
+                    lib += '* current dependent proportionality factor for R{no}'.format(no='A') + "\n"
+                    lib += 'BRK{no} K_R{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no='A',table=saturation_table['R_A']) + "\n"
+                    lib += "\n"
 
                 # node connection between resonant circuits
                 for circuit in range(1, order + 1):
@@ -372,7 +405,7 @@ class IOhandler:
         file.close()
 
 
-    def export_parameters(self, param_array, order, fit_type):
+    def export_parameters(self, param_array, order, fit_type, captype):
 
         out_dict = {}
 
@@ -411,6 +444,19 @@ class IOhandler:
                 out_dict['R_iso'] = R_Iso_list
                 out_dict['L'] = L_list
                 out_dict['C'] = C_list
+
+                if captype == fitterconstants.captype.MLCC:
+                    R_A_list = []
+                    L_A_list = []
+                    C_A_list = []
+                    for param_set in param_array:
+                        R_A_list.append(param_set['R_A'].value)
+                        L_A_list.append(param_set['L_A'].value)
+                        C_A_list.append(param_set['C_A'].value)
+                    out_dict['R_A'] = R_A_list
+                    out_dict['L_A'] = L_A_list
+                    out_dict['C_A'] = C_A_list
+
 
 
 

@@ -264,6 +264,9 @@ class GUI:
     #method to run the fitting algorithm, invoked when "run" button is pressed
     def callback_run(self):
 
+        # TODO: the capacitor type is hardcoded here, consider some entry box or something
+        captype = fitterconstants.captype.MLCC
+
 
         self.logger.info("----------Run----------\n")
 
@@ -338,26 +341,11 @@ class GUI:
                     self.fitter.calc_shunt_thru(config.Z0)
                 case config.SERIES_THROUGH:
                     self.fitter.calc_series_thru(config.Z0)
-
-            #here you can crop the data, i.e. start at index x
-            self.fitter.crop_data(fitterconstants.CROP_SAMPLES)
-
             self.fitter.smooth_data()
-
-
-            #TODO: the capacitor type is hardcoded here, consider some entry box or something
-            captype = fitterconstants.captype.MLCC
 
             # parse specs to fitter
             self.fitter.set_specification(passive_nom, res, prom, sat, fit_type, captype)
-            # invoke methods for data preprocessing
-            self.fitter.get_main_resonance()
-            self.fitter.get_resonances()
-            try:
-                self.fitter.create_nominal_parameters()
-            except Exception:
-                raise Exception("Error: Something went wrong while trying to create nominal parameters; "
-                                "check if the element type is correct")
+
 
 
             #start the fit for the first file
@@ -389,14 +377,14 @@ class GUI:
 
                 # self.fitter.get_main_resonance()
 
-                n_file_fit_type = fitterconstants.multiple_fit.MAIN_RES_FIT
+
 
 
                 #start fit for further files
                 if fitterconstants.FULL_FIT:
                     self.fitter.start_fit_file_n_full_fit()
                 else:
-                    self.fitter.start_fit_file_n_ext(n_file_fit_type)
+                    self.fitter.start_fit_file_n_ext()
 
                 parameter_list.append(copy.copy(self.fitter.out.params))
                 self.iohandler.output_plot(self.fitter.frequency_vector[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
@@ -412,7 +400,7 @@ class GUI:
 
 
 
-            self.iohandler.export_parameters(parameter_list, self.fitter.order, fit_type)
+            self.iohandler.export_parameters(parameter_list, self.fitter.order, fit_type, captype)
 
 
 

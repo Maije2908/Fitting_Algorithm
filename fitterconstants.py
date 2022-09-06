@@ -42,8 +42,6 @@ BW_MIN_FACTOR = 1/BW_MAX_FACTOR
 # factor to stretch the bandwidth of the last frequency zone (1 = no stretch)
 BANDWIDTH_STRETCH_LAST_ZONE = 1
 
-#number of samples to crop at the start of data
-CROP_SAMPLES = 00
 
 #threshold for the calculation of the offset; necessary for small coils that have a lot of zero crossings at low frequencies
 PHASE_OFFSET_THRESHOLD = 60 #°
@@ -74,7 +72,7 @@ class fcnmode:
     OUTPUT: int = 2
     ANGLE: int = 3
 
-class multiple_fit:
+class multiple_fit: #TODO: OBSOLETE I THINK
     FULL_FIT = 1
     MAIN_RES_FIT = 2
 

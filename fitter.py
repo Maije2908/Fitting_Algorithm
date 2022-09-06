@@ -3,7 +3,7 @@
 # This is likely to become a rather long task, especially for CMCs and this class is therefore likely to be long
 # I do not know yet what it will have to contain and how to best handle the data
 # Most of this class will be based on Payer's program
-#NOTE: THE CLASS IN THE FORM THAT IT IS NOW IS NOT ABLE TO MANAGE MULTIPLE FILES!!!!!
+
 import copy
 
 import matplotlib.pyplot as plt
@@ -133,7 +133,7 @@ class Fitter:
         self.z21_data = (Z0 * self.file.data.s[:, 1, 0]) / (2 * (1 - self.file.data.s[:, 1, 0]))
         self.ser_shunt = fitterconstants.calc_method.SHUNT
 
-    def crop_data(self,crop):
+    def crop_data(self,crop): #TODO:Obsolete
         self.z21_data = self.z21_data[crop:]
         self.frequency_vector = self.frequency_vector[crop:]
 
@@ -461,9 +461,13 @@ class Fitter:
         mag_maxima = find_peaks(-20 * np.log10(mag_data_lim), height = -200, prominence=0)
 
         index_ac_res = np.argwhere(mag_maxima[1]['prominences'] == max(mag_maxima[1]['prominences']))[0][0]
+        try:
+            res_index = mag_maxima[0][index_ac_res]
+            res_fq = freq_lim[res_index]
+        except:
+            res_index = freq[freq<1e6][0]
+            res_fq = freq_lim[res_index]
 
-        res_index = mag_maxima[0][index_ac_res]
-        res_fq = freq_lim[res_index]
         res_value = data[res_index]
         bw_value = abs(res_value) * np.sqrt(2)
 
@@ -884,7 +888,7 @@ class Fitter:
             self.change_parameter(param_set, w_key, value = w, min = w*0.9, max = w*1.1,vary=False)
 
         #free parameters for further fitting
-        self.free_parameters(param_set)
+        self.free_parameters_higher_order(param_set)
         return param_set
 
     def correct_parameters(self, param_set):
@@ -1154,8 +1158,13 @@ class Fitter:
         freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
         data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
         # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
-        freq_for_fit = freq_for_fit[self.offset:]
-        data_for_fit = data_for_fit[self.offset:]
+        if self.offset > 0:
+            offset = self.offset
+        else:
+            offset = 50
+
+        freq_for_fit = freq_for_fit[offset:]
+        data_for_fit = data_for_fit[offset:]
 
         self.parameters['R_s'].vary = False
         self.out = minimize(self.calculate_Z, self.parameters,
@@ -1167,7 +1176,7 @@ class Fitter:
                                     fitterconstants.fcnmode.OUTPUT)
         new_data = self.calculate_Z(self.out.params, freq_for_fit, [], 0, fit_main_resonance,
                                     fitterconstants.fcnmode.OUTPUT)
-        data_frq_lim = self.z21_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)][self.offset:]
+        data_frq_lim = data_for_fit #self.z21_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)][self.offset:]
 
         # check if the main resonance fit yields good results -> else: go with initial guess
         if abs(sum(abs(new_data) - abs(data_frq_lim))) < abs(sum(abs(old_data) - abs(data_frq_lim))):
@@ -1259,6 +1268,17 @@ class Fitter:
         fit_order = self.order
 
         fit_main_resonance = 0
+
+        # invoke methods for data preprocessing
+        self.get_main_resonance()
+        self.get_resonances()
+        try:
+            self.create_nominal_parameters()
+        except Exception:
+            raise Exception("Error: Something went wrong while trying to create nominal parameters; "
+                            "check if the element type is correct")
+
+
 
         if self.fit_type == fitterconstants.El.INDUCTOR:
             [param_set_1, param_set_2] = self.fit_inductor()
@@ -1435,7 +1455,7 @@ class Fitter:
         self.out.params.pretty_print()
         # plt.show()
 
-    def start_fit_file_n_ext(self, fitting_mode):
+    def start_fit_file_n_ext(self):
 
         self.get_main_resonance()
 
@@ -1443,43 +1463,11 @@ class Fitter:
         fit_data = self.z21_data
         res_value = self.z21_data[freq == self.f0]
 
-        #determine wether to perform a full fit (i.e. fit all parameters) or if only the main resonance should be fit
-        match fitting_mode:
-            case fitterconstants.multiple_fit.MAIN_RES_FIT:
 
-                # fix parameters in place, so the high order resonances are not affected by the fitting process of the current/
-                # voltage dependent main element
-                self.fix_parameters_except_main()
-                fit_main_resonance = 1
-
-            case fitterconstants.multiple_fit.FULL_FIT:
-                #if we want to perform a full fit, we unfortunately have to remake the parameters, without loosing the
-                #value for C though (R_s is stored as instance variable anyways)
-                match self.fit_type:
-                    case fitterconstants.El.INDUCTOR:
-                        C_val = self.parameters['C'].value
-                        R_Fe_val = self.parameters['R_Fe'].value
-                        #clear and re-initiate parameters
-                        self.parameters = Parameters()
-                        self.create_nominal_parameters()
-                        self.get_resonances()
-                        self.create_elements() #TODO: this is hardcoded
-                        #write back value for C and keep it in place
-                        self.parameters['C'].value = C_val
-                        self.parameters['C'].vary = False
-                    case fitterconstants.El.CAPACITOR:
-                        L_val = self.parameters['L'].value
-                        # clear and re-initiate parameters
-                        self.parameters = Parameters()
-                        self.create_nominal_parameters()
-                        self.get_resonances()
-                        self.create_elements()
-                        # write back value for L and keep it in place
-                        self.parameters['L'].value = L_val
-                        self.parameters['L'].vary = False
-                fit_main_resonance = 0
-
-
+        # fix parameters in place, so the high order resonances are not affected by the fitting process of the current/
+        # voltage dependent main element
+        self.fix_parameters_except_main()
+        fit_main_resonance = 1
 
         #calculate ideal value for the dependent element, so we are as close as possible to the detected resonance
         match self.fit_type:
@@ -1499,23 +1487,13 @@ class Fitter:
                 R_Fe = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
                 R_Fe = abs(res_value)[0]
 
-                match fitting_mode:
-                    case fitterconstants.multiple_fit.FULL_FIT:
-                        self.parameters['R_Fe'].vary = True
-                        self.parameters['R_Fe'].value = R_Fe
-                        self.parameters['R_Fe'].min = R_Fe * 0.8
-                        self.parameters['R_Fe'].max = R_Fe * 1.25
-                        freq_for_fit = freq
-                        data_for_fit = fit_data
+                self.parameters['R_Fe'].vary = True
+                self.parameters['R_Fe'].value = R_Fe
+                self.parameters['R_Fe'].min = R_Fe * 0.8
+                self.parameters['R_Fe'].max = R_Fe * 1.25
 
-                    case fitterconstants.multiple_fit.MAIN_RES_FIT:
-                        self.parameters['R_Fe'].vary = True
-                        self.parameters['R_Fe'].value = R_Fe
-                        self.parameters['R_Fe'].min = R_Fe * 0.8
-                        self.parameters['R_Fe'].max = R_Fe * 1.25
-
-                        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
-                        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+                freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+                data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
 
 
             case fitterconstants.El.CAPACITOR:
@@ -1533,19 +1511,9 @@ class Fitter:
                 BW = freq[f_upper_index] - freq[f_lower_index]
                 R_iso = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
 
-                match fitting_mode:
-                    case fitterconstants.multiple_fit.FULL_FIT:
-                        self.parameters['R_iso'].vary = True
-                        self.parameters['R_iso'].value = R_iso
-                        self.parameters['R_iso'].min = R_iso * 0.8
-                        self.parameters['R_iso'].max = R_iso * 1.25
-                        freq_for_fit = freq
-                        data_for_fit = fit_data
-
-                    case fitterconstants.multiple_fit.MAIN_RES_FIT:
-                        self.parameters['R_iso'].vary = False
-                        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
-                        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+                self.parameters['R_iso'].vary = False
+                freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+                data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
 
 
 
@@ -1757,7 +1725,6 @@ class Fitter:
 
     def model_bandwidth(self, freqdata, data, peakfreq):
 
-        #TODO: adapt for capacitors!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
         #get the height of the peak and the index(will be used later)
         peakindex = np.argwhere(freqdata == peakfreq)[0][0]
@@ -1949,7 +1916,7 @@ class Fitter:
             self.parameters[w_key].vary = False
             self.parameters[BW_key].vary = False
 
-    def free_parameters(self, param_set):
+    def free_parameters_higher_order(self, param_set):
         for key_number in range(1, self.order + 1):
             #create keys
             C_key   = "C%s" % key_number
