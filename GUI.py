@@ -12,6 +12,7 @@ import os
 import re
 from tkinter import scrolledtext
 from texthandler import *
+from lmfit import Parameters
 
 '''
 ***********************************************************************************************************************
@@ -265,7 +266,7 @@ class GUI:
     def callback_run(self):
 
         # TODO: the capacitor type is hardcoded here, consider some entry box or something
-        captype = fitterconstants.captype.MLCC
+        captype = fitterconstants.captype.GENERIC
 
 
         self.logger.info("----------Run----------\n")
@@ -357,6 +358,72 @@ class GUI:
                 captype = fitterconstants.captype.GENERIC
 
             #END ACOUSTIC RESONANCE DETECTION
+
+
+            #instanciate a fitter for each file
+            fitters = []
+            for it, file in enumerate(self.iohandler.files):
+                #create and instance of the fitter and pass the file
+                fitter_instance = Fitter(self.logger)
+                fitter_instance.set_file(file)
+
+                #calculate the data for the fitter
+                match shunt_series:
+                    case config.SHUNT_THROUGH:
+                        fitter_instance.calc_shunt_thru(config.Z0)
+                    case config.SERIES_THROUGH:
+                        fitter_instance.calc_series_thru(config.Z0)
+
+                #do the data smoothing and pass the specification
+                fitter_instance.smooth_data()
+                fitter_instance.set_specification(passive_nom, res, prom, sat, fit_type, captype)
+
+                #write instance to list
+                fitters.append(fitter_instance)
+
+            ################ MAIN RESONANCE FIT ########################################################################
+
+            for it, fitter in enumerate(fitters):
+
+                params = Parameters()
+                f0  = fitter.get_main_resonance()
+
+                #create the main resonance parameters (all files)
+                try:
+                    main_res_params = fitter.create_nominal_parameters(params)
+                except Exception:
+                    raise Exception("Error: Something went wrong while trying to create nominal parameters; "
+                                    "check if the element type is correct")
+
+                #TODO: look into how to handle the case of the DC biased files
+                if it != 0:
+                    main_res_params = fitter.constrain_main_res_params_file_n(main_res_params, parameter_list[0])
+                    match fit_type:
+                        case fitterconstants.El.INDUCTOR:
+                            fitted_main_res_params = fitter.fit_main_res_inductor_file_n(main_res_params)
+                        case fitterconstants.El.CAPACITOR:
+                            pass
+                            #TODO: implement VV
+                            # fitted_main_res_params = fitter.fit_main_res_capacitor_file_n(main_res_params)
+                else:
+
+                    match fit_type:
+                        case fitterconstants.El.INDUCTOR:
+                            fitted_main_res_params = fitter.fit_main_res_inductor_file_1(main_res_params)
+                        case fitterconstants.El.CAPACITOR:
+                            fitted_main_res_params = fitter.fit_main_res_capacitor(main_res_params)
+
+                parameter_list.append(fitted_main_res_params)
+
+            ################ END MAIN RESONANCE FIT ####################################################################
+
+
+
+
+
+
+
+
 
 
 

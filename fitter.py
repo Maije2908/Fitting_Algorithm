@@ -296,6 +296,8 @@ class Fitter:
         if w0 == 0:
             raise Exception('ERROR: Main resonant frequency could not be determined.')
 
+        return f0
+
     def get_resonances(self): #TODO: tidy up this whole method :/
 
         R_s = self.series_resistance
@@ -447,6 +449,8 @@ class Fitter:
         self.bandwidths = bandwidth_list
         self.bad_bandwidth_flag = bad_BW_flag
         self.order = len(self.bandwidths)
+
+        return bandwidth_list
 
     def set_acoustic_resonance_frequency(self, res_fq):
         self.acoustic_resonant_frequency = res_fq
@@ -1061,58 +1065,7 @@ class Fitter:
         fit_order = self.order
         mode = fitterconstants.fcnmode.FIT
 
-        if fitterconstants.DEBUG_FIT: #debug plot -> main res before fit
-            self.plot_curve(param_set, 0, 1)
-
-        # frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
-        fit_main_resonance = 1
-        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
-        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
-
-        # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
-        freq_for_fit = freq_for_fit[self.offset:]
-        data_for_fit = data_for_fit[self.offset:]
-
-        #################### Main Resonance ############################################################################
-
-        # start by fitting the main res with all parameters set to vary
-        out = minimize(self.calculate_Z, param_set,
-                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
-                            method='powell', options={'xtol': 1e-18, 'disp': True})
-
-        # set all parameters to not vary; let only R_s vary
-        for pname, par in out.params.items():
-            par.vary = False
-        out.params['R_s'].vary = True
-
-        # fit R_s via the phase of the data
-        out = minimize(self.calculate_Z, out.params,
-                            args=(
-                            freq_for_fit, data_for_fit, fit_order, fit_main_resonance, fitterconstants.fcnmode.ANGLE,),
-                            method='powell', options={'xtol': 1e-18, 'disp': True})
-
-        # fitting R_s again does change the main res fit, so set L an C to vary
-        out.params['R_s'].vary = False
-        out.params['C'].vary = True
-        out.params['L'].vary = True
-
-        # and fit again
-        out = minimize(self.calculate_Z, out.params,
-                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
-                            method='powell', options={'xtol': 1e-18, 'disp': True})
-
-        # write series resistance to class variable (important if other files are fit)
-        self.series_resistance = out.params['R_s'].value
-
-        #set parameters of self to fitted main resonance
-        self.parameters = out.params
-        param_set = out.params
-
-        # fix main resonance parameters in place
-        self.fix_main_resonance_parameters(param_set)
-
-        if fitterconstants.DEBUG_FIT:  # debug plot -> fitted main resonance
-            self.plot_curve(param_set, 0, 1)
+        param_set = self.fit_main_res_inductor_file_1(param_set)
 
         #################### Higher Order Resonances####################################################################
 
@@ -1162,57 +1115,9 @@ class Fitter:
         fit_order = self.order
         mode = fitterconstants.fcnmode.FIT
 
-        if fitterconstants.DEBUG_FIT: #debug plot -> main res before fit
-            self.plot_curve(param_set, 0, 1)
-
-        ###################### Main resonance ##########################################################################
-
-        # frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
-        fit_main_resonance = 1
-        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
-        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
-        # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
-        if self.offset > 0:
-            offset = self.offset
-        else:
-            offset = 50
-
-        freq_for_fit = freq_for_fit[offset:]
-        data_for_fit = data_for_fit[offset:]
-
-        param_set['R_s'].vary = False
-        out = minimize(self.calculate_Z, param_set,
-                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
-                            method='powell', options={'xtol': 1e-18, 'disp': True})
-
-        # create datasets for data before/after fit
-        old_data = self.calculate_Z(param_set, freq_for_fit, [], 0, fit_main_resonance,
-                                    fitterconstants.fcnmode.OUTPUT)
-        new_data = self.calculate_Z(out.params, freq_for_fit, [], 0, fit_main_resonance,
-                                    fitterconstants.fcnmode.OUTPUT)
-        data_frq_lim = data_for_fit #self.z21_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)][self.offset:]
-
-        # check if the main resonance fit yields good results -> else: go with initial guess
-        if abs(sum(abs(new_data) - abs(data_frq_lim))) < abs(sum(abs(old_data) - abs(data_frq_lim))):
-            param_set = out.params
-        else:
-            # redundant, but for readability
-            param_set = param_set
-
-            # this is kind of a hotfix; if there are no higher order resonances present, out.params is not overwritten
-            # so the "worse" param config is taken in the final result
-            out.params = param_set
-
-        # fix main resonance parameters in place
-        self.fix_main_resonance_parameters(param_set)
-
-        if fitterconstants.DEBUG_FIT:  # debug plot -> fitted main resonance
-            self.plot_curve(param_set, 0, 1)
+        param_set = self.fit_main_res_capacitor(param_set)
 
         ###################### Higher order resonances #################################################################
-
-
-
 
         #generate acoustic resonance parameters
         if self.captype == fitterconstants.captype.MLCC:
@@ -1275,6 +1180,159 @@ class Fitter:
             out_params2 = param_set
 
         return [out_params1, out_params2]
+
+    def fit_main_res_inductor_file_n(self, param_set):
+        freq = self.frequency_vector
+        fit_data = self.z21_data
+        fit_order = self.order
+        mode = fitterconstants.fcnmode.FIT
+
+        if fitterconstants.DEBUG_FIT:  # debug plot -> main res before fit
+            self.plot_curve(param_set, 0, 1)
+
+        # frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
+        fit_main_resonance = 1
+        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+
+        # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
+        freq_for_fit = freq_for_fit[self.offset:]
+        data_for_fit = data_for_fit[self.offset:]
+
+        #################### Main Resonance ############################################################################
+
+        # start by fitting the main res with all parameters set to vary
+        out = minimize(self.calculate_Z, param_set,
+                       args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                       method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        # set parameters of self to fitted main resonance (should be obsolete though)
+        self.parameters = out.params
+        param_set = out.params
+
+        # fix main resonance parameters in place
+        self.fix_main_resonance_parameters(param_set)
+
+        if fitterconstants.DEBUG_FIT:  # debug plot -> fitted main resonance
+            self.plot_curve(param_set, 0, 1)
+
+        return param_set
+
+    def fit_main_res_inductor_file_1(self, param_set):
+        freq = self.frequency_vector
+        fit_data = self.z21_data
+        fit_order = self.order
+        mode = fitterconstants.fcnmode.FIT
+
+        if fitterconstants.DEBUG_FIT: #debug plot -> main res before fit
+            self.plot_curve(param_set, 0, 1)
+
+        # frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
+        fit_main_resonance = 1
+        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+
+        # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
+        freq_for_fit = freq_for_fit[self.offset:]
+        data_for_fit = data_for_fit[self.offset:]
+
+        #################### Main Resonance ############################################################################
+
+        # start by fitting the main res with all parameters set to vary
+        out = minimize(self.calculate_Z, param_set,
+                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        # set all parameters to not vary; let only R_s vary
+        for pname, par in out.params.items():
+            par.vary = False
+        out.params['R_s'].vary = True
+
+        # fit R_s via the phase of the data
+        out = minimize(self.calculate_Z, out.params,
+                            args=(
+                            freq_for_fit, data_for_fit, fit_order, fit_main_resonance, fitterconstants.fcnmode.ANGLE,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        # fitting R_s again does change the main res fit, so set L an C to vary
+        out.params['R_s'].vary = False
+        out.params['C'].vary = True
+        out.params['L'].vary = True
+
+        # and fit again
+        out = minimize(self.calculate_Z, out.params,
+                            args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        # write series resistance to class variable (important if other files are fit)
+        self.series_resistance = out.params['R_s'].value
+
+        #set parameters of self to fitted main resonance
+        self.parameters = out.params
+        param_set = out.params
+
+        # fix main resonance parameters in place
+        self.fix_main_resonance_parameters(param_set)
+
+        if fitterconstants.DEBUG_FIT:  # debug plot -> fitted main resonance
+            self.plot_curve(param_set, 0, 1)
+
+        return param_set
+
+    def fit_main_res_capacitor(self, param_set):
+        freq = self.frequency_vector
+        fit_data = self.z21_data
+        fit_order = self.order
+        mode = fitterconstants.fcnmode.FIT
+
+        if fitterconstants.DEBUG_FIT:  # debug plot -> main res before fit
+            self.plot_curve(param_set, 0, 1)
+
+        ###################### Main resonance ##########################################################################
+
+        # frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
+        fit_main_resonance = 1
+        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+        # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
+        if self.offset > 0:
+            offset = self.offset
+        else:
+            offset = 50
+
+        freq_for_fit = freq_for_fit[offset:]
+        data_for_fit = data_for_fit[offset:]
+
+        param_set['R_s'].vary = False
+        out = minimize(self.calculate_Z, param_set,
+                       args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                       method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        # create datasets for data before/after fit
+        old_data = self.calculate_Z(param_set, freq_for_fit, [], 0, fit_main_resonance,
+                                    fitterconstants.fcnmode.OUTPUT)
+        new_data = self.calculate_Z(out.params, freq_for_fit, [], 0, fit_main_resonance,
+                                    fitterconstants.fcnmode.OUTPUT)
+        data_frq_lim = data_for_fit  # self.z21_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)][self.offset:]
+
+        # check if the main resonance fit yields good results -> else: go with initial guess
+        if abs(sum(abs(new_data) - abs(data_frq_lim))) < abs(sum(abs(old_data) - abs(data_frq_lim))):
+            param_set = out.params
+        else:
+            # redundant, but for readability
+            param_set = param_set
+
+            # this is kind of a hotfix; if there are no higher order resonances present, out.params is not overwritten
+            # so the "worse" param config is taken in the final result
+            out.params = param_set
+
+        # fix main resonance parameters in place
+        self.fix_main_resonance_parameters(param_set)
+
+        if fitterconstants.DEBUG_FIT:  # debug plot -> fitted main resonance
+            self.plot_curve(param_set, 0, 1)
+
+        return param_set
 
     def start_fit_file_1(self):
         freq = self.frequency_vector
@@ -1563,6 +1621,41 @@ class Fitter:
             # manager.full_screen_toggle()
         self.out.params.pretty_print()
         # plt.show()
+
+    def constrain_main_res_params_file_n(self, param_set, param_set0):
+        fit_data = self.z21_data
+        freq = self.frequency_vector
+
+        match self.fit_type:
+            case fitterconstants.El.INDUCTOR:
+                L_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * param_set0['C'].value)
+                self.nominal_value = L_ideal
+                C_val = param_set0['C'].value
+                R_s   = param_set0['R_s'].value
+                self.change_parameter(param_set, param_name='C', value=C_val, min=C_val * 0.8, max=C_val * 1.2,
+                                      vary=False)
+                self.change_parameter(param_set, param_name='R_s', value=R_s, min=R_s * 0.8, max=R_s * 1.2,
+                                      vary=False)
+                self.change_parameter(param_set, param_name='L', value=L_ideal, vary=True, min=L_ideal * 0.8,
+                                      max=L_ideal * 1.25, expr='')
+
+            case fitterconstants.El.CAPACITOR:
+                C_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * param_set0['L'].value)
+                self.nominal_value = C_ideal
+                L_val = param_set0['L'].value
+                R_iso = param_set0['R_iso'].value
+                # write back value for L and R_iso
+                self.change_parameter(param_set, param_name='L', value=L_val, min=L_val * 0.8, max=L_val * 1.2,
+                                      vary=False)
+                self.change_parameter(param_set, param_name='R_iso', value=R_iso, vary=False)
+                # get new value for R_s
+                R_s = abs(fit_data[freq == self.f0][0])
+                self.change_parameter(param_set, param_name='R_s', value=R_s, vary=False)
+                self.change_parameter(param_set, param_name='C', value=C_ideal, vary=True, min=C_ideal * 0.999,
+                                      max=C_ideal * 1.001, expr='')
+        self.parameters = param_set
+        return param_set
+
 
     def start_fit_file_n_full_fit(self):
 
