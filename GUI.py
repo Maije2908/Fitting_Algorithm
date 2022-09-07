@@ -350,7 +350,7 @@ class GUI:
                 regression = np.polyfit(dc_bias[1:], ac_res_fqs, 1)
                 res_fq_0V = np.polyval(regression, 0)
                 ac_res_fqs.insert(0, res_fq_0V)
-
+                self.fitter.set_acoustic_resonance_frequency(res_fq_0V)
             else:
                 # if there is only the 0V (or ref) file present, set captype to generic since we won't see the ac res
                 self.logger.info("MLCC captype selected, but only 0V file present. Cannot determine acoustic resonance point in this case!")
@@ -392,7 +392,7 @@ class GUI:
                                        ref_file.name)
 
             #fit for all other files
-            for file in other_files:
+            for it, file in enumerate(other_files):
                 #do the file fit/calc/smooth thingy
                 self.fitter.file = None
                 self.fitter.set_file(file)
@@ -402,6 +402,9 @@ class GUI:
                     case config.SERIES_THROUGH:
                         self.fitter.calc_series_thru(config.Z0)
                 self.fitter.smooth_data()
+
+                if captype == fitterconstants.captype.MLCC:
+                    self.fitter.set_acoustic_resonance_frequency(ac_res_fqs[it+1])
 
                 # self.fitter.get_main_resonance()
 

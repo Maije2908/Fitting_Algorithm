@@ -448,6 +448,10 @@ class Fitter:
         self.bad_bandwidth_flag = bad_BW_flag
         self.order = len(self.bandwidths)
 
+    def set_acoustic_resonance_frequency(self, res_fq):
+        self.acoustic_resonant_frequency = res_fq
+        return 0
+
     def fit_acoustic_resonance(self, param_set):
         freq = self.frequency_vector
         data = self.z21_data
@@ -458,15 +462,9 @@ class Fitter:
         mag_data_lim = magnitude_data[freq<f0]
         freq_lim = freq[freq<f0]
 
-        mag_maxima = find_peaks(-20 * np.log10(mag_data_lim), height = -200, prominence=0)
 
-        index_ac_res = np.argwhere(mag_maxima[1]['prominences'] == max(mag_maxima[1]['prominences']))[0][0]
-        try:
-            res_index = mag_maxima[0][index_ac_res]
-            res_fq = freq_lim[res_index]
-        except:
-            res_index = freq[freq<1e6][0]
-            res_fq = freq_lim[res_index]
+        res_fq = self.acoustic_resonant_frequency
+        res_index = np.argwhere(freq > res_fq)[0][0]
 
         res_value = data[res_index]
         bw_value = abs(res_value) * np.sqrt(2)
@@ -1753,7 +1751,7 @@ class Fitter:
 
 
         #get the height of the peak and the index(will be used later)
-        peakindex = np.argwhere(freqdata == peakfreq)[0][0]
+        peakindex = np.argwhere(freqdata >= peakfreq)[0][0]
         peakheight = abs(data[peakindex])
         r_val = abs(peakheight)
 
@@ -1786,7 +1784,7 @@ class Fitter:
         modelfreq = freqdata[lower_pit_index:upper_pit_index]
         modeldata = data[lower_pit_index:upper_pit_index]
         #rewrite the peak index after cropping
-        peakindex = np.argwhere(modelfreq == peakfreq)[0][0]
+        peakindex = np.argwhere(modelfreq >= peakfreq)[0][0]
 
         try:
             #find the infelction points before and behind the peak in order to crop the peak
