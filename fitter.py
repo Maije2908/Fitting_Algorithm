@@ -771,6 +771,7 @@ class Fitter:
 
                 expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
                 expression_string_R = '(1/(' + w_key + '/(' + BW_key + '*' + str(2 * np.pi) + ')))*sqrt(' + L_key + '/' + C_key + ')'
+                expression_string_C = '1/(' + '('+w_key+'/(' + BW_key + '*' + str(2*np.pi)+'))*' + R_key +'*'+ w_key+')'
 
                 param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
                 param_set.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
@@ -786,7 +787,8 @@ class Fitter:
                         expression_string_R = '((' + BW_key + '*' + str(2 * np.pi) + ')/(' + w_key  + '))*sqrt(' + L_key + '/' + C_key + ')'
                         param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
                         param_set.add(L_key, expr=expression_string_L, vary=False)
-                        param_set.add(R_key, expr=expression_string_R, vary=False)
+                        param_set.add(R_key, value = r_value, max = r_max, min = r_min, vary = True)
+                        param_set.add(C_key, expr=expression_string_C, vary=False)
                     case 2:
                         # config D (assuming perfectly fitted main resonance)
                             #TODO: i commented the following section out, since we do that anyways
@@ -831,12 +833,16 @@ class Fitter:
 
                 match config_number:
                     case 1:
+                        r_min= r_value*0.9
+                        r_max= r_value*1.1
                         #config B -> default config; this goes via the Q factor
                         expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
                         expression_string_R = '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))*sqrt(' +  L_key + '/' + C_key + ')'
+                        expression_string_C = '(' + w_key + '/(' + BW_key + '*' + str(2 * np.pi) + '))/('+w_key+'*'+R_key+')'
                         param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+                        param_set.add(R_key, value=r_value, min = r_min, max=r_max, vary=True)
                         param_set.add(L_key, expr=expression_string_L, vary=False)
-                        param_set.add(R_key, expr=expression_string_R, vary=False)
+                        param_set.add(C_key, expr=expression_string_C, vary=False)
                     case 2:
                         # config D (assuming perfectly fitted main resonance)
                         # if (r_value - abs(main_res_data[f_c_index])) > 0:
@@ -856,7 +862,7 @@ class Fitter:
 
         #invoke method to correct resistance values of the resonant circuits; invoked here because every resonant circuit
         #added has effect on all other circuits
-        param_set = self.correct_parameters(param_set)
+        # param_set = self.correct_parameters(param_set)
 
 
         return param_set
@@ -907,7 +913,7 @@ class Fitter:
         self.free_parameters_higher_order(param_set)
         return param_set
 
-    def correct_parameters(self, param_set):
+    def correct_parameters(self, param_set, change_main, num_it):
         freq = self.frequency_vector
         order = self.order
         data = self.z21_data
@@ -919,7 +925,7 @@ class Fitter:
         for it in range(num_it):
             #at the start of each iteration correct main resonance
             curve_data = self.calculate_Z(params, freq, 2, order, 0, fitterconstants.fcnmode.OUTPUT)
-            if self.fit_type == fitterconstants.El.INDUCTOR:
+            if self.fit_type == fitterconstants.El.INDUCTOR and change_main:
                 # get Q value
                 b_l = np.flipud(np.argwhere(np.logical_and(freq < self.f0, abs(data) < abs(data[freq == self.f0][0])/(np.sqrt(2)))))[0][0]
                 b_u = np.argwhere(np.logical_and(freq > self.f0, abs(data) < abs(data[freq == self.f0][0])/(np.sqrt(2)) ))[0][0]
@@ -933,7 +939,7 @@ class Fitter:
                 self.change_parameter(params, 'R_Fe', min = R_new *0.8, max = R_new*1.2, value = R_new, vary = False)
                 self.change_parameter(params, 'C', min = C_new*0.8, max = C_new*1.2, value= C_new, vary = False)
 
-            elif self.fit_type == fitterconstants.El.CAPACITOR:
+            elif self.fit_type == fitterconstants.El.CAPACITOR and change_main:
                 # get Q value
                 b_l = np.flipud(np.argwhere(np.logical_and(freq < self.f0, abs(data) > abs(data[freq == self.f0][0]) * (np.sqrt(2)))))[0][0]
                 b_u = np.argwhere(np.logical_and(freq > self.f0, abs(data) > abs(data[freq == self.f0][0]) * (np.sqrt(2))))[0][0]
@@ -974,7 +980,7 @@ class Fitter:
                         C_adjusted = Q / (R_adjusted * w_c)
 
                         self.change_parameter(params, R_key, min = R_adjusted*0.2, max = R_adjusted *5, value = R_adjusted, vary = True, expr ='')
-                        self.change_parameter(params, C_key, min = C_adjusted*1e-1, max = C_adjusted *1e1, value = C_adjusted, vary = True, expr ='')
+                        self.change_parameter(params, C_key, min = C_adjusted*1e-1, max = C_adjusted *1e1, value = C_adjusted, vary = True)
 
 
 
@@ -1058,6 +1064,31 @@ class Fitter:
                 return Z
             case fcnmode.ANGLE:
                 return np.angle(data)-np.angle(Z)
+
+    def fit_curve_higher_order(self, param_set):
+        freq = self.frequency_vector
+        fit_data = self.z21_data
+        fit_order = self.order
+        mode = fitterconstants.fcnmode.FIT
+
+        # Frequency limit data for fit
+        fit_data_frq_lim = fit_data[np.logical_and(freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR,
+                                                   freq < fitterconstants.FREQ_UPPER_LIMIT)]
+        freq_data_frq_lim = freq[np.logical_and(freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR,
+                                                freq < fitterconstants.FREQ_UPPER_LIMIT)]
+        # fit the parameter set
+        fit_main_resonance = 0
+        out1 = minimize(self.calculate_Z, param_set,
+                        args=(freq_data_frq_lim, fit_data_frq_lim, fit_order, fit_main_resonance, mode,),
+                        method='powell', options={'xtol': 1e-18, 'disp': True})
+        return out1.params
+
+    def write_model_data(self, param_set):
+        freq = self.frequency_vector
+        mode = fitterconstants.fcnmode.OUTPUT
+        order = self.order
+        fit_main_resonance = 0
+        self.model_data = self.calculate_Z(param_set, freq, [], order, fit_main_resonance, mode)
 
     def fit_inductor(self, param_set):
         freq = self.frequency_vector
@@ -1181,14 +1212,14 @@ class Fitter:
 
         return [out_params1, out_params2]
 
-    def fit_main_res_inductor_file_n(self, param_set):
+    def fit_main_res_inductor_file_n(self, param_set, debug_plots = False):
         freq = self.frequency_vector
         fit_data = self.z21_data
         fit_order = self.order
         mode = fitterconstants.fcnmode.FIT
 
-        if fitterconstants.DEBUG_FIT:  # debug plot -> main res before fit
-            self.plot_curve(param_set, 0, 1)
+        if debug_plots:  # debug plot -> main res before fit
+            self.plot_curve(param_set, 0, 1, str(self.file.name) + 'MR before fit')
 
         # frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
         fit_main_resonance = 1
@@ -1213,8 +1244,8 @@ class Fitter:
         # fix main resonance parameters in place
         self.fix_main_resonance_parameters(param_set)
 
-        if fitterconstants.DEBUG_FIT:  # debug plot -> fitted main resonance
-            self.plot_curve(param_set, 0, 1)
+        if debug_plots:  # debug plot -> fitted main resonance
+            self.plot_curve(param_set, 0, 1, str(self.file.name) + 'MR before fit')
 
         return param_set
 
@@ -1333,6 +1364,22 @@ class Fitter:
             self.plot_curve(param_set, 0, 1)
 
         return param_set
+
+    def select_param_set(self, params: list):
+        freq = self.frequency_vector
+        fit_data = self.z21_data
+        fit_main_resonance = False
+        order = self.order
+        mode = fitterconstants.fcnmode.OUTPUT
+
+        model_data = []
+        norm = []
+        for it, param_set in enumerate(params):
+            model_data.append(self.calculate_Z(param_set, freq, [], order, fit_main_resonance, mode))
+            norm.append(self.calculate_band_norm(model_data[it]))
+
+        least_norm_mdl_index = np.argwhere(norm == min(norm))[0][0]
+        return params[least_norm_mdl_index]
 
     def start_fit_file_1(self):
         freq = self.frequency_vector
@@ -1656,7 +1703,6 @@ class Fitter:
         self.parameters = param_set
         return param_set
 
-
     def start_fit_file_n_full_fit(self):
 
         self.get_main_resonance()
@@ -1789,7 +1835,6 @@ class Fitter:
         if not expr is None:
             param_set[param_name].expr = expr
 
-
     def calculate_band_norm(self, model):
         #function to compare the two fit results
         freq = self.frequency_vector
@@ -1806,14 +1851,14 @@ class Fitter:
 
         return cumnorm
 
-
-    def plot_curve(self, param_set, order, main_res):
+    def plot_curve(self, param_set, order, main_res, title = None):
 
         testdata = self.calculate_Z(param_set, self.frequency_vector, 2, order, main_res, 2)
         plt.figure()
         plt.loglog(self.frequency_vector, abs(self.z21_data))
         plt.loglog(self.frequency_vector, abs(testdata))
-
+        if title is not None:
+            plt.title(title)
 
     def calc_Z_simple_RLC(self,parameters,freq,data,ser_par,mode):
         w = np.pi*2*freq
@@ -1838,7 +1883,6 @@ class Fitter:
                 return (diff)
             case fitterconstants.fcnmode.OUTPUT:
                 return Z
-
 
     def model_bandwidth(self, freqdata, data, peakfreq):
 
@@ -1996,7 +2040,6 @@ class Fitter:
 
                 return [b_l, b_u, out.params['R'].value, out.params['L'].value, out.params['C'].value]
 
-
     def fix_main_resonance_parameters(self, param_set):
         param_set['R_s'].vary = False
         param_set['L'].vary = False
@@ -2006,7 +2049,6 @@ class Fitter:
                 param_set['R_Fe'].vary = False
             case fitterconstants.El.CAPACITOR:
                 param_set['R_iso'].vary = False
-
 
     def fix_parameters_except_main(self):
         #method to fix the parameters in place, except the nominal value, which varies with different current/voltage
@@ -2065,8 +2107,6 @@ class Fitter:
             param_set[R_key].vary = False
             param_set[w_key].vary = False
 
-
-
     def overwrite_main_resonance_parameters(self):
         # method to overwrite the nominal parameters with the parameters obtained by modeling the main resonance circuit
 
@@ -2095,7 +2135,6 @@ class Fitter:
         return 0
 
     #################################### V OBSOLETE V###################################################################
-
 
     def fit_end_zone(self):
         #method to fit the slope at the end of data and fix it... this is just a test, so it might not work as intended
@@ -2134,7 +2173,6 @@ class Fitter:
         plt.loglog(self.frequency_vector, abs(self.z21_data))
         plt.show()
 
-
     def test_fit_main_res(self):
         #function for testing purposes NOT IN USE
 
@@ -2152,7 +2190,6 @@ class Fitter:
         plt.loglog(Z_main)
         plt.loglog(self.data_mag)
 
-
     def fit_iteration_callback(self, out_model):
         #method to set the parameters of the output to the parameters used for the fit TODO:rewrite this comment
         #TODO: delete -> UNUSED METHOD
@@ -2160,7 +2197,6 @@ class Fitter:
             self.parameters[key].value = out_model.params[key].value
             self.parameters[key].min = self.parameters[key] * 0.8
             self.parameters[key].max = self.parameters[key] * 1.2
-
 
     def calculate_transfer_function_data_diff(self,params,freq,data):
 
@@ -2182,7 +2218,6 @@ class Fitter:
 
         diff = (np.real(data) - np.real(TF_data)) + (np.imag(data) - np.imag(TF_data))
         return diff
-
 
     def fit_transfer_function(self):
 

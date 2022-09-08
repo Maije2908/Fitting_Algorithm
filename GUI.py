@@ -332,34 +332,34 @@ class GUI:
                 raise Exception("Error: Please specify the current/voltage values for the given files!")
 
 
-            #ACOUSTIC RESONANCE DETECTION
-            #we have to check for the acoustic resonance point prior to doing a fit because the ac res is not visible @0V DC bias
-            if captype == fitterconstants.captype.MLCC and any(other_files):
-                ac_res_fqs = []
-                for file in other_files:
-                    self.fitter.set_file(file)
-                    match shunt_series:
-                        case config.SHUNT_THROUGH:
-                            self.fitter.calc_shunt_thru(config.Z0)
-                        case config.SERIES_THROUGH:
-                            self.fitter.calc_series_thru(config.Z0)
-                    self.fitter.fit_type = fitterconstants.El.CAPACITOR
-                    self.fitter.smooth_data()
-                    self.fitter.get_main_resonance()
-                    ac_res_fqs.append(self.fitter.get_acoustic_resonance())
-                #extrapolate the res fqs for the 0V file
-                regression = np.polyfit(dc_bias[1:], ac_res_fqs, 1)
-                res_fq_0V = np.polyval(regression, 0)
-                ac_res_fqs.insert(0, res_fq_0V)
-                self.fitter.set_acoustic_resonance_frequency(res_fq_0V)
-            else:
-                # if there is only the 0V (or ref) file present, set captype to generic since we won't see the ac res
-                self.logger.info("MLCC captype selected, but only 0V file present. Cannot determine acoustic resonance point in this case!")
-                captype = fitterconstants.captype.GENERIC
+            # #ACOUSTIC RESONANCE DETECTION
+            # #we have to check for the acoustic resonance point prior to doing a fit because the ac res is not visible @0V DC bias
+            # if captype == fitterconstants.captype.MLCC and any(other_files):
+            #     ac_res_fqs = []
+            #     for file in other_files:
+            #         self.fitter.set_file(file)
+            #         match shunt_series:
+            #             case config.SHUNT_THROUGH:
+            #                 self.fitter.calc_shunt_thru(config.Z0)
+            #             case config.SERIES_THROUGH:
+            #                 self.fitter.calc_series_thru(config.Z0)
+            #         self.fitter.fit_type = fitterconstants.El.CAPACITOR
+            #         self.fitter.smooth_data()
+            #         self.fitter.get_main_resonance()
+            #         ac_res_fqs.append(self.fitter.get_acoustic_resonance())
+            #     #extrapolate the res fqs for the 0V file
+            #     regression = np.polyfit(dc_bias[1:], ac_res_fqs, 1)
+            #     res_fq_0V = np.polyval(regression, 0)
+            #     ac_res_fqs.insert(0, res_fq_0V)
+            #     self.fitter.set_acoustic_resonance_frequency(res_fq_0V)
+            # else:
+            #     # if there is only the 0V (or ref) file present, set captype to generic since we won't see the ac res
+            #     self.logger.info("MLCC captype selected, but only 0V file present. Cannot determine acoustic resonance point in this case!")
+            #     captype = fitterconstants.captype.GENERIC
+            #
+            # #END ACOUSTIC RESONANCE DETECTION
 
-            #END ACOUSTIC RESONANCE DETECTION
-
-
+            ################ PARSING AND PRE-PROCESSING ################################################################
             #instanciate a fitter for each file
             fitters = []
             for it, file in enumerate(self.iohandler.files):
@@ -380,6 +380,8 @@ class GUI:
 
                 #write instance to list
                 fitters.append(fitter_instance)
+
+            ################ END PARSING AND PRE-PROCESSING ############################################################
 
             ################ MAIN RESONANCE FIT ########################################################################
 
@@ -417,117 +419,69 @@ class GUI:
 
             ################ END MAIN RESONANCE FIT ####################################################################
 
+            #TODO: squeeze acoustic resonance detection here
+
+            ################ HIGHER ORDER RESONANCES ###################################################################
+
+            for it, fitter in enumerate(fitters):
+
+                fitter.get_resonances()
+
+                if fitter.order:
+                    #generate parameter sets in two configurations 1=Q constrained; 2=free R and C
+                    params1 = copy.copy(fitter.create_higher_order_parameters(1, parameter_list[it]))
+                    params2 = copy.copy(fitter.create_higher_order_parameters(2, parameter_list[it]))
+
+                    #correct obtained parameters and do the band pre-fit
+                    correct_main_res = False
+                    num_iterations = 4
+                    params1 = fitter.correct_parameters(params1, correct_main_res, num_iterations)
+                    params2 = fitter.correct_parameters(params2, correct_main_res, num_iterations)
+                    params1 = fitter.pre_fit_bands(params1)
+                    params2 = fitter.pre_fit_bands(params2)
+
+                    #fit the whole curve
+                    fit_params1 = fitter.fit_curve_higher_order(params1)
+                    fit_params2 = fitter.fit_curve_higher_order(params2)
+
+                    #check wich model fits best
+                    out_params = fitter.select_param_set([fit_params1, fit_params2])
+                    parameter_list[it] = out_params
+
+                    #write the model data to the fitter instance
+                    fitter.write_model_data(out_params)
+
+                    if DEBUG_FIT:
+                        fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
 
 
+            ################ END HIGHER ORDER RESONANCES ###############################################################
 
+            ################ SATURATION TABLE(S) #######################################################################
 
-
-
-
-
-
-
-            # parse the reference file(0A/0V) to the fitter
-            self.fitter.set_file(ref_file)
-
-            #calculate z21
-            match shunt_series:
-                case config.SHUNT_THROUGH:
-                    self.fitter.calc_shunt_thru(config.Z0)
-                case config.SERIES_THROUGH:
-                    self.fitter.calc_series_thru(config.Z0)
-            self.fitter.smooth_data()
-
-            # parse specs to fitter
-            self.fitter.set_specification(passive_nom, res, prom, sat, fit_type, captype)
-
-
-
-            #start the fit for the first file
-            fitted_params = self.fitter.start_fit_file_1()
-            fit_1_order = self.fitter.order
-            parameter_list.append(copy.copy(fitted_params))
-
-            # output the plot for 0A
-            path_out = self.selected_s2p_files[0]
-            self.iohandler.set_out_path(path_out)
-            self.iohandler.output_plot(self.fitter.frequency_vector[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
-                                       self.fitter.z21_data[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
-                                       self.fitter.data_mag[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
-                                       self.fitter.data_ang[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
-                                       self.fitter.model_data[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
-                                       ref_file.name)
-
-            #fit for all other files
-            for it, file in enumerate(other_files):
-                #do the file fit/calc/smooth thingy
-                self.fitter.file = None
-                self.fitter.set_file(file)
-                match shunt_series:
-                    case config.SHUNT_THROUGH:
-                        self.fitter.calc_shunt_thru(config.Z0)
-                    case config.SERIES_THROUGH:
-                        self.fitter.calc_series_thru(config.Z0)
-                self.fitter.smooth_data()
-
-                if captype == fitterconstants.captype.MLCC:
-                    self.fitter.set_acoustic_resonance_frequency(ac_res_fqs[it+1])
-
-                # self.fitter.get_main_resonance()
-
-
-
-
-                #start fit for further files
-                if fitterconstants.FULL_FIT:
-                    self.fitter.start_fit_file_n_full_fit()
-                else:
-                    self.fitter.start_fit_file_n_ext()
-
-                parameter_list.append(copy.copy(self.fitter.out.params))
-                self.iohandler.output_plot(self.fitter.frequency_vector[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
-                                           self.fitter.z21_data[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
-                                           self.fitter.data_mag[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
-                                           self.fitter.data_ang[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
-                                           self.fitter.model_data[self.fitter.frequency_vector < fitterconstants.FREQ_UPPER_LIMIT],
-                                           file.name)
-
-
-
-            #generate output
-
-
-
-            self.iohandler.export_parameters(parameter_list, self.fitter.order, fit_type, captype)
-
-
-
-            ############################################################################################################
-            # SATURATION TABLE(S)
-
-            #saturation table for nominal value
+            min_order = min([fitter.order for fitter in fitters])
+            # saturation table for nominal value
             # create saturation table and get nominal value
             saturation_table = {}
             match fit_type:
                 case fitterconstants.El.INDUCTOR:
                     saturation_table['L'] = self.generate_saturation_table(parameter_list, 'L', dc_bias)
-                    saturation_table['R_Fe'] = self.generate_saturation_table(parameter_list, 'R_Fe',dc_bias)
+                    saturation_table['R_Fe'] = self.generate_saturation_table(parameter_list, 'R_Fe',
+                                                                              dc_bias)
                 case fitterconstants.El.CAPACITOR:
                     saturation_table['C'] = self.generate_saturation_table(parameter_list, 'C', dc_bias)
                     saturation_table['R_s'] = self.generate_saturation_table(parameter_list, 'R_s', dc_bias)
 
-            #write saturation table for acoustic resonance
-            if fit_type==fitterconstants.El.CAPACITOR and captype == fitterconstants.captype.MLCC:
+            # write saturation table for acoustic resonance
+            if fit_type == fitterconstants.El.CAPACITOR and captype == fitterconstants.captype.MLCC:
                 saturation_table['R_A'] = self.generate_saturation_table(parameter_list, 'R_A', dc_bias)
                 saturation_table['L_A'] = self.generate_saturation_table(parameter_list, 'L_A', dc_bias)
                 saturation_table['C_A'] = self.generate_saturation_table(parameter_list, 'C_A', dc_bias)
 
-
             if fitterconstants.FULL_FIT:
 
                 # create saturation tables for all parameters
-                for key_number in range(1, fit_1_order + 1):
-
+                for key_number in range(1, min_order + 1):
                     # create keys
                     C_key = "C%s" % key_number
                     L_key = "L%s" % key_number
@@ -537,14 +491,34 @@ class GUI:
                     saturation_table[L_key] = self.generate_saturation_table(parameter_list, L_key, dc_bias)
                     saturation_table[R_key] = self.generate_saturation_table(parameter_list, R_key, dc_bias)
 
+            ################ END SATURATION TABLE(S) ###################################################################
 
+            ################ OUTPUT ####################################################################################
+
+            #set path for IO handler
+            path_out = self.selected_s2p_files[0]
+            self.iohandler.set_out_path(path_out)
+
+            #export parameters
+            self.iohandler.export_parameters(parameter_list, min_order, fit_type, captype)
+
+            for it, fitter in enumerate(fitters):
+                upper_frq_lim = fitterconstants.FREQ_UPPER_LIMIT
+
+                self.iohandler.output_plot(
+                    fitter.frequency_vector[fitter.frequency_vector < upper_frq_lim],
+                    fitter.z21_data[fitter.frequency_vector < upper_frq_lim],
+                    fitter.data_mag[fitter.frequency_vector < upper_frq_lim],
+                    fitter.data_ang[fitter.frequency_vector < upper_frq_lim],
+                    fitter.model_data[fitter.frequency_vector < upper_frq_lim],
+                    fitter.file.name)
 
             if fitterconstants.FULL_FIT:
-                self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],fit_1_order, fit_type, saturation_table, captype=captype)
+                self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],min_order, fit_type, saturation_table, captype=captype)
             else:
-                self.iohandler.generate_Netlist_2_port(parameter_list[0],fit_1_order, fit_type, saturation_table)
+                self.iohandler.generate_Netlist_2_port(parameter_list[0],min_order, fit_type, saturation_table)
 
-
+            ################ END OUTPUT ################################################################################
 
         except Exception as e:
             self.logger.error("ERROR: An Exception occurred during execution:")

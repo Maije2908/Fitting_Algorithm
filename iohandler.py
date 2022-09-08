@@ -2,6 +2,7 @@
 # The IOhandler class shall be in charge of file handling. It will be instanced in the main function and shall be given
 # to the GUI as an instance. It shall hold pointers to instances of the S2pFile class and shall be able to manage them
 # in order to get the option to delete loaded files from the list and to load new files to the list
+import matplotlib.pyplot as plt
 
 from sNpfile import *
 import skrf as rf
@@ -491,7 +492,7 @@ class IOhandler:
 
         #write parameters to a pandas dataframe and transpose
         data_out = pd.DataFrame(out_dict)
-        data_out.transpose()
+        # data_out.transpose()
 
         out_path = os.path.split(self.outpath)[0]
         dir_name = os.path.normpath(self.outpath).split(os.sep)[-2]
@@ -563,6 +564,8 @@ class IOhandler:
         #            label='Resonances')
         plt.legend(fontsize=16)
 
+        #may be obsolete
+        plt.gcf()
         plt.savefig(os.path.join(plot_folder, "Bode_plot_" + filename + ".png"))
 
         if fitterconstants.SHOW_BODE_PLOTS:
@@ -576,7 +579,7 @@ class IOhandler:
             diff_data_percent = (diff_data/abs(z21))*100
             title = filename + " (Model-Measurement)/Measurement in %"
             fig = plt.figure(figsize=(20, 20))
-            plt.title(str(title), pad=20, fontsize=25, fontweight="bold")
+            plt.title((title), pad=20, fontsize=25, fontweight="bold")
             plt.xscale('log')
             plt.yscale('linear')
             plt.xlim([min(freq), max(freq)])

@@ -96,7 +96,7 @@ DEBUG_MULTIPLE_FITE_FIT = 0#1
 
 
 #determines whether to show bode plots or only save them
-SHOW_BODE_PLOTS = 0
+SHOW_BODE_PLOTS = False
 
 
 #logging
