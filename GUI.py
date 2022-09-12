@@ -502,6 +502,11 @@ class GUI:
             #export parameters
             self.iohandler.export_parameters(parameter_list, min_order, fit_type, captype)
 
+            if fitterconstants.FULL_FIT:
+                self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],min_order, fit_type, saturation_table, captype=captype)
+            else:
+                self.iohandler.generate_Netlist_2_port(parameter_list[0],min_order, fit_type, saturation_table)
+
             for it, fitter in enumerate(fitters):
                 upper_frq_lim = fitterconstants.FREQ_UPPER_LIMIT
 
@@ -513,10 +518,7 @@ class GUI:
                     fitter.model_data[fitter.frequency_vector < upper_frq_lim],
                     fitter.file.name)
 
-            if fitterconstants.FULL_FIT:
-                self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],min_order, fit_type, saturation_table, captype=captype)
-            else:
-                self.iohandler.generate_Netlist_2_port(parameter_list[0],min_order, fit_type, saturation_table)
+
 
             ################ END OUTPUT ################################################################################
 

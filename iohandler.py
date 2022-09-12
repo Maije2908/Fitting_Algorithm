@@ -11,6 +11,9 @@ import os
 import skidl
 from fitter import *
 import fitterconstants
+import matplotlib
+from matplotlib import pyplot as plt
+# matplotlib.use('Agg')
 
 class IOhandler:
 
@@ -526,47 +529,45 @@ class IOhandler:
 
 
         title = filename
-        fig = plt.figure(figsize=(20, 20))
+        # fig = plt.figure(figsize=(20, 20))
+        fig, ax = plt.subplots(nrows=2,ncols=1)
         #file_title = get_file_path.results + '/03_Parameter-Fitting_' + file_name + "_" + mode
-        plt.subplot(211)
-        plt.title(str(title), pad=20, fontsize=25, fontweight="bold")
-        plt.xscale('log')
-        plt.yscale('log')
-        plt.xlim([min(freq), max(freq)])
-        plt.ylabel('Magnitude in \u03A9', fontsize=16)
-        plt.xlabel('Frequency in Hz', fontsize=16)
-        plt.grid(True, which="both")
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
-        plt.plot(freq, abs(z21), 'r', linewidth=3, alpha=0.33, label='Measured Data')
-        plt.plot(freq, mag, 'r', linewidth=3, alpha=1, label='Filtered Data')
+        # plt.subplot(211)
+        fig = plt.gcf()
+        fig.suptitle(str(title), fontsize=25, fontweight="bold")
+        ax[0].set_xscale('log')
+        ax[0].set_yscale('log')
+        ax[0].set_xlim([min(freq), max(freq)])
+        ax[0].set_ylabel('Magnitude in \u03A9', fontsize=16)
+        ax[0].set_xlabel('Frequency in Hz', fontsize=16)
+        ax[0].grid(True, which="both")
+        ax[0].tick_params(labelsize=16)
+        ax[0].tick_params(labelsize=16)
+        ax[0].plot(freq, abs(z21), 'r', linewidth=3, alpha=0.33, label='Measured Data')
+        ax[0].plot(freq, mag, 'r', linewidth=3, alpha=1, label='Filtered Data')
         # Plot magnitude of model in blue
-        plt.plot(freq, abs(mdl), 'b--', linewidth=3, label='Model')
-        plt.legend(fontsize=16)
-
+        ax[0].plot(freq, abs(mdl), 'b--', linewidth=3, label='Model')
+        ax[0].legend(fontsize=16)
         #Phase
         curve = np.angle(z21, deg=True)
-
-        plt.subplot(212)
-        plt.xscale('log')
-        plt.xlim([min(freq), max(freq)])
-        plt.ylabel('Phase in °', fontsize=16)
-        plt.xlabel('Frequency in Hz', fontsize=16)
-        plt.grid(True, which="both")
-        plt.yticks(np.arange(45 * (round(min(curve) / 45)), 45 * (round(max(curve) / 45)) + 1, 45.0))
-        plt.xticks(fontsize=16)
-        plt.yticks(fontsize=16)
-        plt.plot(freq, np.angle(z21, deg=True), 'r', linewidth=3, zorder=-2, alpha=0.33, label='Measured Data')
-        plt.plot(freq, ang, 'r', linewidth=3, zorder=-2, alpha=1, label='Filtered Data')
+        ax[1].set_xscale('log')
+        ax[1].set_xlim([min(freq), max(freq)])
+        ax[1].set_ylabel('Phase in °', fontsize=16)
+        ax[1].set_xlabel('Frequency in Hz', fontsize=16)
+        ax[1].grid(True, which="both")
+        ax[1].set_yticks(np.arange(45 * (round(min(curve) / 45)), 45 * (round(max(curve) / 45)) + 1, 45.0))
+        ax[1].tick_params(labelsize=16)
+        ax[1].tick_params(labelsize=16)
+        ax[1].plot(freq, np.angle(z21, deg=True), 'r', linewidth=3, zorder=-2, alpha=0.33, label='Measured Data')
+        ax[1].plot(freq, ang, 'r', linewidth=3, zorder=-2, alpha=1, label='Filtered Data')
         #   Plot Phase of model in magenta
-        plt.plot(freq, np.angle(mdl, deg=True), 'b--', linewidth=3, label='Model', zorder=-1)
+        ax[1].plot(freq, np.angle(mdl, deg=True), 'b--', linewidth=3, label='Model', zorder=-1)
         #plt.scatter(resonances_pos, np.zeros_like(resonances_pos) - 90, linewidth=3, color='green', s=200, marker="2",
         #            label='Resonances')
-        plt.legend(fontsize=16)
+        ax[1].legend(fontsize=16)
 
         #may be obsolete
-        plt.gcf()
-        plt.savefig(os.path.join(plot_folder, "Bode_plot_" + filename + ".png"))
+        plt.savefig(os.path.join(plot_folder, "Bode_plot_" + filename + ".png"), dpi = 300)
 
         if fitterconstants.SHOW_BODE_PLOTS:
             plt.show()
@@ -578,8 +579,9 @@ class IOhandler:
             diff_data = abs(mdl)-abs(z21)
             diff_data_percent = (diff_data/abs(z21))*100
             title = filename + " (Model-Measurement)/Measurement in %"
-            fig = plt.figure(figsize=(20, 20))
-            plt.title((title), pad=20, fontsize=25, fontweight="bold")
+            plt.figure(figsize=(20, 20))
+            plt.plot(freq, diff_data_percent, 'r', linewidth=3, alpha=1)
+            plt.title((title), fontsize=25, fontweight="bold")
             plt.xscale('log')
             plt.yscale('linear')
             plt.xlim([min(freq), max(freq)])
@@ -588,7 +590,7 @@ class IOhandler:
             plt.xticks(fontsize=16)
             plt.yticks(fontsize=16)
             plt.grid(True, which="both")
-            plt.plot(freq, diff_data_percent, 'r', linewidth=3, alpha=1)
+            # plt.plot(freq, diff_data_percent, 'r', linewidth=3, alpha=1)
             plt.savefig(os.path.join(plot_folder, "Diff_plot_" + filename + ".png"))
 
         if fitterconstants.SHOW_BODE_PLOTS:
