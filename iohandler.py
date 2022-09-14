@@ -531,6 +531,8 @@ class IOhandler:
         title = filename
         # fig = plt.figure(figsize=(20, 20))
         fig, ax = plt.subplots(nrows=2,ncols=1)
+        fig.set_figheight(20)
+        fig.set_figwidth(20)
         #file_title = get_file_path.results + '/03_Parameter-Fitting_' + file_name + "_" + mode
         # plt.subplot(211)
         fig = plt.gcf()
@@ -579,7 +581,7 @@ class IOhandler:
             diff_data = abs(mdl)-abs(z21)
             diff_data_percent = (diff_data/abs(z21))*100
             title = filename + " (Model-Measurement)/Measurement in %"
-            plt.figure(figsize=(20, 20))
+            fig = plt.figure(figsize=(20, 20))
             plt.plot(freq, diff_data_percent, 'r', linewidth=3, alpha=1)
             plt.title((title), fontsize=25, fontweight="bold")
             plt.xscale('log')

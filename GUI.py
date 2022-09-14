@@ -457,6 +457,11 @@ class GUI:
 
             ################ END HIGHER ORDER RESONANCES ###############################################################
 
+            ############### MATCH PARAMETERS ###########################################################################
+            self.match_parameters(parameter_list, fitters)
+
+            ############### END MATCH PARAMETERS #######################################################################
+
             ################ SATURATION TABLE(S) #######################################################################
 
             min_order = min([fitter.order for fitter in fitters])
@@ -534,6 +539,108 @@ class GUI:
 
     ####################################################################################################################
     # auxilliary functions
+
+    def match_parameters(self, parameter_list, fitters):
+
+        ref_set = parameter_list[0]
+
+        orders = [fitter.order for fitter in fitters]
+
+
+        w_array = np.full(( len(parameter_list), max(orders)), None)
+
+
+        for num_set, parameter_set in enumerate(parameter_list[:]):
+            for key_number in range(1, orders[num_set] + 1):
+                w_key = "w%s" % key_number
+                w_array[num_set, key_number-1] = parameter_set[w_key].value
+
+        ref_array = w_array[0][:]
+        assignment_matrix = np.full(( len(parameter_list), max(orders)), None)
+
+        for set_number in range(1, np.shape(w_array)[0]):
+            ref_array = list(filter(lambda x: x is not None, w_array[set_number - 1]))
+            for param_number in range(np.shape(w_array)[1]):
+                if not w_array[set_number][param_number] is None:
+                    diff = abs(ref_array - w_array[set_number][param_number])
+                    best_match = np.argwhere(diff == min(diff))[0][0]
+                    assignment_matrix[set_number, param_number] = best_match
+
+        match fitters[0].fit_type: #TODO: this could use some better way of determining the fit type
+            case fitterconstants.El.INDUCTOR:
+                r_default = 1e-6
+            case fitterconstants.El.CAPACITOR:
+                r_default = 1e15
+
+        #switch key numbers
+        for set_number in range(1, np.shape(w_array)[0]):
+            parameter_set = parameter_list[set_number]
+            previous_set  = parameter_list[set_number - 1]
+
+            for param_number in range(np.shape(w_array)[1]):
+                old_key_nr = param_number + 1
+                if assignment_matrix[set_number][param_number] is not None:
+                    new_key_nr = assignment_matrix[set_number][param_number] + 1
+
+                if assignment_matrix[set_number][param_number] is not None:
+                    parameter_set = self.switch_key(parameter_set, old_key_nr, new_key_nr)
+
+                # if new_key_nr != old_key_nr or new_key_nr is None:
+                #     parameter_set = self.fill_key(parameter_set, previous_set, old_key_nr, r_default)
+
+            parameter_list[set_number] = parameter_set
+
+        pass
+
+
+
+
+    def fill_key(self, parameter_set, previous_param_set, key_to_fill, r_value):
+        w_key  = "w%s"  % key_to_fill
+        BW_key = "BW%s" % key_to_fill
+        R_key  = "R%s"  % key_to_fill
+        L_key  = "L%s"  % key_to_fill
+        C_key  = "C%s"  % key_to_fill
+
+        previous_param_set[R_key].expr = ''
+        previous_param_set[L_key].expr = ''
+        previous_param_set[C_key].expr = ''
+
+        parameter_set[w_key]  = previous_param_set[w_key]
+        parameter_set[BW_key] = previous_param_set[BW_key]
+        parameter_set[R_key]  = previous_param_set[R_key]
+        parameter_set[L_key]  = previous_param_set[L_key]
+        parameter_set[C_key]  = previous_param_set[C_key]
+        parameter_set[R_key].min = r_value * 1e-1
+        parameter_set[R_key].max = r_value * 1e1
+        parameter_set[R_key].value = r_value
+
+        return parameter_set
+
+
+
+    def switch_key(self, parameter_set, old_key_number, new_key_number):
+        old_w_key  = "w%s"  % old_key_number
+        old_BW_key = "BW%s" % old_key_number
+        old_R_key  = "R%s"  % old_key_number
+        old_L_key  = "L%s"  % old_key_number
+        old_C_key  = "C%s"  % old_key_number
+
+        new_w_key  = "w%s"  % new_key_number
+        new_BW_key = "BW%s" % new_key_number
+        new_R_key  = "R%s"  % new_key_number
+        new_L_key  = "L%s"  % new_key_number
+        new_C_key  = "C%s"  % new_key_number
+
+        parameter_set[new_w_key]  = parameter_set[old_w_key]
+        parameter_set[new_BW_key] = parameter_set[old_BW_key]
+        parameter_set[new_R_key]  = parameter_set[old_R_key]
+        parameter_set[new_L_key]  = parameter_set[old_L_key]
+        parameter_set[new_C_key]  = parameter_set[old_C_key]
+
+        return parameter_set
+
+
 
 
     def generate_saturation_table(self, parameter_list, key, dc_bias_values):
