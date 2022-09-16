@@ -458,13 +458,13 @@ class GUI:
             ################ END HIGHER ORDER RESONANCES ###############################################################
 
             ############### MATCH PARAMETERS ###########################################################################
-            self.match_parameters(parameter_list, fitters)
+            parameter_list = self.match_parameters(parameter_list, fitters)
 
             ############### END MATCH PARAMETERS #######################################################################
 
             ################ SATURATION TABLE(S) #######################################################################
 
-            min_order = min([fitter.order for fitter in fitters])
+            order = max([fitter.order for fitter in fitters])
             # saturation table for nominal value
             # create saturation table and get nominal value
             saturation_table = {}
@@ -486,7 +486,7 @@ class GUI:
             if fitterconstants.FULL_FIT:
 
                 # create saturation tables for all parameters
-                for key_number in range(1, min_order + 1):
+                for key_number in range(1, order + 1):
                     # create keys
                     C_key = "C%s" % key_number
                     L_key = "L%s" % key_number
@@ -505,12 +505,12 @@ class GUI:
             self.iohandler.set_out_path(path_out)
 
             #export parameters
-            self.iohandler.export_parameters(parameter_list, min_order, fit_type, captype)
+            self.iohandler.export_parameters(parameter_list, order, fit_type, captype)
 
             if fitterconstants.FULL_FIT:
-                self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],min_order, fit_type, saturation_table, captype=captype)
+                self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],order, fit_type, saturation_table, captype=captype)
             else:
-                self.iohandler.generate_Netlist_2_port(parameter_list[0],min_order, fit_type, saturation_table)
+                self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table)
 
             for it, fitter in enumerate(fitters):
                 upper_frq_lim = fitterconstants.FREQ_UPPER_LIMIT
@@ -566,6 +566,38 @@ class GUI:
                     best_match = np.argwhere(diff == min(diff))[0][0]
                     assignment_matrix[set_number, param_number] = best_match
 
+        #rebuild the matrix to have absolute keys rather than relative ones
+
+        asg_mat_new = np.tile(np.arange(np.shape(w_array)[1]), ((np.shape(w_array)[0]), 1))
+        asg_mat_new = np.full(( len(parameter_list), max(orders)), None)
+
+        #
+        # for param_number in range(np.shape(w_array)[1]):
+        #
+        #     key_value = param_number
+        #
+        #     for set_number in range(1, np.shape(w_array)[0]):
+        #         if not assignment_matrix[set_number-1][param_number] is None and not assignment_matrix[set_number][param_number] is None:
+        #             if assignment_matrix[set_number][param_number] > assignment_matrix[set_number-1][param_number]:
+        #                 diff = assignment_matrix[set_number][param_number] - assignment_matrix[set_number-1][param_number]
+        #                 key_value = key_value + diff
+        #                 # print("key_change at set " + str(set_number) +" and param " + str(param_number))
+        #                 # print("key is now: " + str(key_value))
+        #         if not assignment_matrix[set_number][param_number] is None:
+        #             asg_mat_new[set_number][param_number] = key_value
+
+        for set_number in reversed(range(1, np.shape(w_array)[0])):
+            for param_number in range(np.shape(w_array)[1]):
+                if not assignment_matrix[set_number][param_number] is None:
+                    rel_key = assignment_matrix[set_number][param_number]
+                    for backwards_set_number in reversed(range(1, set_number)):
+                        rel_key = assignment_matrix[backwards_set_number][rel_key]
+                    abs_key = rel_key
+                    asg_mat_new[set_number][param_number] = abs_key
+
+
+        assignment_matrix = asg_mat_new
+
         match fitters[0].fit_type: #TODO: this could use some better way of determining the fit type
             case fitterconstants.El.INDUCTOR:
                 r_default = 1e-6
@@ -577,23 +609,40 @@ class GUI:
             parameter_set = parameter_list[set_number]
             previous_set  = parameter_list[set_number - 1]
 
+            output_set = Parameters()
+            output_set = self.copy_nominals(output_set, parameter_set, fitters[0].fit_type)
+
             for param_number in range(np.shape(w_array)[1]):
                 old_key_nr = param_number + 1
                 if assignment_matrix[set_number][param_number] is not None:
                     new_key_nr = assignment_matrix[set_number][param_number] + 1
 
                 if assignment_matrix[set_number][param_number] is not None:
-                    parameter_set = self.switch_key(parameter_set, old_key_nr, new_key_nr)
+                    output_set = self.switch_key(output_set, parameter_set, old_key_nr, new_key_nr)
 
-                # if new_key_nr != old_key_nr or new_key_nr is None:
-                #     parameter_set = self.fill_key(parameter_set, previous_set, old_key_nr, r_default)
+            #fill remaining keys
+            for check_key in range(1, np.shape(w_array)[1] + 1):
+                w_key = "w%s" % check_key
+                if not w_key in output_set:
+                    output_set = self.fill_key(output_set, previous_set, check_key, r_default)
 
-            parameter_list[set_number] = parameter_set
+            parameter_list[set_number] = copy.copy(output_set)
 
-        pass
+        return parameter_list
 
-
-
+    def copy_nominals(self,out_set, parameter_set, fit_type):
+        match fit_type:
+            case fitterconstants.El.INDUCTOR:
+                out_set.add('R_s', value = parameter_set['R_s'].value)
+                out_set.add('R_Fe', value =parameter_set['R_Fe'].value)
+                out_set.add('L', value =parameter_set['L'].value)
+                out_set.add('C', value =parameter_set['C'].value)
+            case fitterconstants.El.CAPACITOR:
+                out_set.add('R_s', value =parameter_set['R_s'].value)
+                out_set.add('R_iso', value =parameter_set['R_iso'].value)
+                out_set.add('L', value =parameter_set['L'].value)
+                out_set.add('C', value =parameter_set['C'].value)
+        return out_set
 
     def fill_key(self, parameter_set, previous_param_set, key_to_fill, r_value):
         w_key  = "w%s"  % key_to_fill
@@ -606,20 +655,15 @@ class GUI:
         previous_param_set[L_key].expr = ''
         previous_param_set[C_key].expr = ''
 
-        parameter_set[w_key]  = previous_param_set[w_key]
-        parameter_set[BW_key] = previous_param_set[BW_key]
-        parameter_set[R_key]  = previous_param_set[R_key]
-        parameter_set[L_key]  = previous_param_set[L_key]
-        parameter_set[C_key]  = previous_param_set[C_key]
-        parameter_set[R_key].min = r_value * 1e-1
-        parameter_set[R_key].max = r_value * 1e1
-        parameter_set[R_key].value = r_value
+        parameter_set.add(w_key, value=previous_param_set[w_key].value)
+        parameter_set.add(BW_key,value=previous_param_set[BW_key].value)
+        parameter_set.add(R_key, value=r_value)
+        parameter_set.add(L_key, value=previous_param_set[L_key].value)
+        parameter_set.add(C_key, value=previous_param_set[C_key].value)
 
         return parameter_set
 
-
-
-    def switch_key(self, parameter_set, old_key_number, new_key_number):
+    def switch_key(self, parameter_set_out, parameter_set_in, old_key_number, new_key_number):
         old_w_key  = "w%s"  % old_key_number
         old_BW_key = "BW%s" % old_key_number
         old_R_key  = "R%s"  % old_key_number
@@ -632,16 +676,17 @@ class GUI:
         new_L_key  = "L%s"  % new_key_number
         new_C_key  = "C%s"  % new_key_number
 
-        parameter_set[new_w_key]  = parameter_set[old_w_key]
-        parameter_set[new_BW_key] = parameter_set[old_BW_key]
-        parameter_set[new_R_key]  = parameter_set[old_R_key]
-        parameter_set[new_L_key]  = parameter_set[old_L_key]
-        parameter_set[new_C_key]  = parameter_set[old_C_key]
+        parameter_set_in[old_R_key].expr = ''
+        parameter_set_in[old_L_key].expr = ''
+        parameter_set_in[old_C_key].expr = ''
 
-        return parameter_set
+        parameter_set_out.add(new_w_key, value = parameter_set_in[old_w_key].value)
+        parameter_set_out.add(new_BW_key, value = parameter_set_in[old_BW_key].value)
+        parameter_set_out.add(new_R_key, value = parameter_set_in[old_R_key].value)
+        parameter_set_out.add(new_L_key, value = parameter_set_in[old_L_key].value)
+        parameter_set_out.add(new_C_key, value = parameter_set_in[old_C_key].value)
 
-
-
+        return parameter_set_out
 
     def generate_saturation_table(self, parameter_list, key, dc_bias_values):
         #aux function to create saturation tables; since we need a lot of those, especially when doing full fit, it

@@ -8,7 +8,7 @@ from sNpfile import *
 import skrf as rf
 import pandas as pd
 import os
-import skidl
+# import skidl
 from fitter import *
 import fitterconstants
 import matplotlib
