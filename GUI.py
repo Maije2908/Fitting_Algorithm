@@ -271,7 +271,7 @@ class GUI:
 
         self.logger.info("----------Run----------\n")
 
-        parameter_list = []
+
 
         #get values from the entry boxes
         passive_nom = self.entry_to_float(self.entry_nominal_value.get())
@@ -333,21 +333,24 @@ class GUI:
 
 
             ################ PARSING AND PRE-PROCESSING ################################################################
-            #instanciate a fitter for each file
+
+            #create an array for the fitter instances and one for the parameters
             fitters = []
+            parameter_list = []
+
             for it, file in enumerate(self.iohandler.files):
-                #create and instance of the fitter and pass the file
+                #instanciate a fitter and pass it the file and the logger instance
                 fitter_instance = Fitter(self.logger)
                 fitter_instance.set_file(file)
 
-                #calculate the data for the fitter
+                #calculate the impedance data for the fitter
                 match shunt_series:
                     case config.SHUNT_THROUGH:
                         fitter_instance.calc_shunt_thru(config.Z0)
                     case config.SERIES_THROUGH:
                         fitter_instance.calc_series_thru(config.Z0)
 
-                #do the data smoothing and pass the specification
+                #smooth the impedance data and pass the specification
                 fitter_instance.smooth_data()
                 fitter_instance.set_specification(passive_nom, res, prom, sat, fit_type, captype)
 
@@ -363,34 +366,69 @@ class GUI:
                 params = Parameters()
                 f0  = fitter.get_main_resonance()
 
-                #create the main resonance parameters (all files)
+                #create the main resonance parameters
                 try:
                     main_res_params = fitter.create_nominal_parameters(params)
                 except Exception:
                     raise Exception("Error: Something went wrong while trying to create nominal parameters; "
                                     "check if the element type is correct")
 
-                #TODO: look into how to handle the case of the DC biased files
-                if it != 0:
-                    main_res_params = fitter.constrain_main_res_params_file_n(main_res_params, parameter_list[0])
+
+                if it == 0:
+                    #fit the main resonance for the first file
+                    match fit_type:
+                        case fitterconstants.El.INDUCTOR:
+                            fitted_main_res_params = fitter.fit_main_res_inductor_file_1(main_res_params)
+                        case fitterconstants.El.CAPACITOR:
+                            fitted_main_res_params = fitter.fit_main_res_capacitor_file_1(main_res_params)
+                else:
+                    #fit the main resonance for every other file (we have to overwrite some parameters here, since the
+                    # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
+                    main_res_params = fitter.overwrite_main_res_params_file_n(main_res_params, parameter_list[0])
                     match fit_type:
                         case fitterconstants.El.INDUCTOR:
                             fitted_main_res_params = fitter.fit_main_res_inductor_file_n(main_res_params)
                         case fitterconstants.El.CAPACITOR:
                             fitted_main_res_params = fitter.fit_main_res_capacitor_file_n(main_res_params)
-                else:
-
-                    match fit_type:
-                        case fitterconstants.El.INDUCTOR:
-                            fitted_main_res_params = fitter.fit_main_res_inductor_file_1(main_res_params)
-                        case fitterconstants.El.CAPACITOR:
-                            fitted_main_res_params = fitter.fit_main_res_capacitor(main_res_params)
-
+                #finally write the fitted main resonance parameters to the list
                 parameter_list.append(fitted_main_res_params)
 
             ################ END MAIN RESONANCE FIT ####################################################################
 
+            ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
 
+            # get acoustic resonance frequency for all files, if not found write "None" to list
+            if captype == fitterconstants.captype.MLCC:
+                acoustic_res_frqs = []
+                for fitter in fitters:
+                    try:
+                        acoustic_res_frqs.append(fitter.get_acoustic_resonance())
+                    except:
+                        acoustic_res_frqs.append(None)
+
+            # iterate through the fitters in reversed order and fit the acoustic resonance
+            if len(fitters) > 1:
+                for it, fitter in reversed(list(enumerate(fitters))):
+                    if acoustic_res_frqs[it] is not None:
+                        fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
+                        parameter_list[it] = fitter.fit_acoustic_resonance(parameter_list[it])
+                    else:
+                        # if there is no frequency for the actual resonance take the previous frequency
+                        # (NOTE): this might even be obsolete
+                        acoustic_res_frqs[it] = acoustic_res_frqs[it - 1]
+                        fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
+                        # manually write the parameters of the previous fit to the dataset
+                        hi_R = parameter_list[it - 1]['R_A'].value * 1e4
+                        parameter_list[it].add('L_A', value=parameter_list[it - 1]['L_A'].value)
+                        parameter_list[it].add('C_A', value=parameter_list[it - 1]['C_A'].value)
+                        parameter_list[it].add('R_A', value=hi_R)
+            else:
+                self.logger.info("WARNING: MLCCs captype selected, but only one file is present. Switching to generic captype")
+                captype = fitterconstants.captype.GENERIC
+                for fitter in fitters:
+                    fitter.set_captype(captype)
+
+            ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
 
             ################ HIGHER ORDER RESONANCES ###################################################################
 
@@ -427,35 +465,6 @@ class GUI:
 
 
             ################ END HIGHER ORDER RESONANCES ###############################################################
-
-            ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
-
-            # get acoustic resonance frequency for all files, if not found write "None" to list
-            if captype == fitterconstants.captype.MLCC:
-                acoustic_res_frqs = []
-                for fitter in fitters:
-                    try:
-                        acoustic_res_frqs.append(fitter.get_acoustic_resonance())
-                    except:
-                        acoustic_res_frqs.append(None)
-
-            # iterate through the fitters in reversed order and fit the acoustic resonance
-            for it, fitter in reversed(list(enumerate(fitters))):
-                if acoustic_res_frqs[it] is not None:
-                    fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
-                    parameter_list[it] = fitter.fit_acoustic_resonance(parameter_list[it])
-                else:
-                    # if there is no frequency for the actual resonance take the previous frequency
-                    # (NOTE): this might even be obsolete
-                    acoustic_res_frqs[it] = acoustic_res_frqs[it - 1]
-                    fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
-                    # manually write the parameters of the previous fit to the dataset
-                    hi_R = parameter_list[it-1]['R_A'].value * 1e4
-                    parameter_list[it].add('L_A', value=parameter_list[it - 1]['L_A'].value)
-                    parameter_list[it].add('C_A', value=parameter_list[it - 1]['C_A'].value)
-                    parameter_list[it].add('R_A', value=hi_R)
-
-            ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
 
             ############### MATCH PARAMETERS ###########################################################################
 
