@@ -266,7 +266,7 @@ class GUI:
     def callback_run(self):
 
         # TODO: the capacitor type is hardcoded here, consider some entry box or something
-        captype = fitterconstants.captype.GENERIC
+        captype = fitterconstants.captype.MLCC
 
 
         self.logger.info("----------Run----------\n")
@@ -332,33 +332,6 @@ class GUI:
                 raise Exception("Error: Please specify the current/voltage values for the given files!")
 
 
-            # #ACOUSTIC RESONANCE DETECTION
-            # #we have to check for the acoustic resonance point prior to doing a fit because the ac res is not visible @0V DC bias
-            # if captype == fitterconstants.captype.MLCC and any(other_files):
-            #     ac_res_fqs = []
-            #     for file in other_files:
-            #         self.fitter.set_file(file)
-            #         match shunt_series:
-            #             case config.SHUNT_THROUGH:
-            #                 self.fitter.calc_shunt_thru(config.Z0)
-            #             case config.SERIES_THROUGH:
-            #                 self.fitter.calc_series_thru(config.Z0)
-            #         self.fitter.fit_type = fitterconstants.El.CAPACITOR
-            #         self.fitter.smooth_data()
-            #         self.fitter.get_main_resonance()
-            #         ac_res_fqs.append(self.fitter.get_acoustic_resonance())
-            #     #extrapolate the res fqs for the 0V file
-            #     regression = np.polyfit(dc_bias[1:], ac_res_fqs, 1)
-            #     res_fq_0V = np.polyval(regression, 0)
-            #     ac_res_fqs.insert(0, res_fq_0V)
-            #     self.fitter.set_acoustic_resonance_frequency(res_fq_0V)
-            # else:
-            #     # if there is only the 0V (or ref) file present, set captype to generic since we won't see the ac res
-            #     self.logger.info("MLCC captype selected, but only 0V file present. Cannot determine acoustic resonance point in this case!")
-            #     captype = fitterconstants.captype.GENERIC
-            #
-            # #END ACOUSTIC RESONANCE DETECTION
-
             ################ PARSING AND PRE-PROCESSING ################################################################
             #instanciate a fitter for each file
             fitters = []
@@ -404,9 +377,7 @@ class GUI:
                         case fitterconstants.El.INDUCTOR:
                             fitted_main_res_params = fitter.fit_main_res_inductor_file_n(main_res_params)
                         case fitterconstants.El.CAPACITOR:
-                            pass
-                            #TODO: implement VV
-                            # fitted_main_res_params = fitter.fit_main_res_capacitor_file_n(main_res_params)
+                            fitted_main_res_params = fitter.fit_main_res_capacitor_file_n(main_res_params)
                 else:
 
                     match fit_type:
@@ -419,7 +390,7 @@ class GUI:
 
             ################ END MAIN RESONANCE FIT ####################################################################
 
-            #TODO: squeeze acoustic resonance detection here
+
 
             ################ HIGHER ORDER RESONANCES ###################################################################
 
@@ -457,8 +428,38 @@ class GUI:
 
             ################ END HIGHER ORDER RESONANCES ###############################################################
 
+            ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
+
+            # get acoustic resonance frequency for all files, if not found write "None" to list
+            if captype == fitterconstants.captype.MLCC:
+                acoustic_res_frqs = []
+                for fitter in fitters:
+                    try:
+                        acoustic_res_frqs.append(fitter.get_acoustic_resonance())
+                    except:
+                        acoustic_res_frqs.append(None)
+
+            # iterate through the fitters in reversed order and fit the acoustic resonance
+            for it, fitter in reversed(list(enumerate(fitters))):
+                if acoustic_res_frqs[it] is not None:
+                    fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
+                    parameter_list[it] = fitter.fit_acoustic_resonance(parameter_list[it])
+                else:
+                    # if there is no frequency for the actual resonance take the previous frequency
+                    # (NOTE): this might even be obsolete
+                    acoustic_res_frqs[it] = acoustic_res_frqs[it - 1]
+                    fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
+                    # manually write the parameters of the previous fit to the dataset
+                    hi_R = parameter_list[it-1]['R_A'].value * 1e4
+                    parameter_list[it].add('L_A', value=parameter_list[it - 1]['L_A'].value)
+                    parameter_list[it].add('C_A', value=parameter_list[it - 1]['C_A'].value)
+                    parameter_list[it].add('R_A', value=hi_R)
+
+            ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
+
             ############### MATCH PARAMETERS ###########################################################################
-            parameter_list = self.match_parameters(parameter_list, fitters)
+
+            parameter_list = self.match_parameters(parameter_list, fitters, captype)
 
             ############### END MATCH PARAMETERS #######################################################################
 
@@ -515,6 +516,8 @@ class GUI:
             for it, fitter in enumerate(fitters):
                 upper_frq_lim = fitterconstants.FREQ_UPPER_LIMIT
 
+                fitter.write_model_data(parameter_list[it])
+
                 self.iohandler.output_plot(
                     fitter.frequency_vector[fitter.frequency_vector < upper_frq_lim],
                     fitter.z21_data[fitter.frequency_vector < upper_frq_lim],
@@ -540,22 +543,19 @@ class GUI:
     ####################################################################################################################
     # auxilliary functions
 
-    def match_parameters(self, parameter_list, fitters):
-
-        ref_set = parameter_list[0]
+    def match_parameters(self, parameter_list, fitters, captype = None):
 
         orders = [fitter.order for fitter in fitters]
 
-
         w_array = np.full(( len(parameter_list), max(orders)), None)
-
 
         for num_set, parameter_set in enumerate(parameter_list[:]):
             for key_number in range(1, orders[num_set] + 1):
                 w_key = "w%s" % key_number
                 w_array[num_set, key_number-1] = parameter_set[w_key].value
 
-        ref_array = w_array[0][:]
+
+        #create an assignment matrix, looking for the resonance in the next dataset (relative keys)
         assignment_matrix = np.full(( len(parameter_list), max(orders)), None)
 
         for set_number in range(1, np.shape(w_array)[0]):
@@ -568,23 +568,7 @@ class GUI:
 
         #rebuild the matrix to have absolute keys rather than relative ones
 
-        asg_mat_new = np.tile(np.arange(np.shape(w_array)[1]), ((np.shape(w_array)[0]), 1))
         asg_mat_new = np.full(( len(parameter_list), max(orders)), None)
-
-        #
-        # for param_number in range(np.shape(w_array)[1]):
-        #
-        #     key_value = param_number
-        #
-        #     for set_number in range(1, np.shape(w_array)[0]):
-        #         if not assignment_matrix[set_number-1][param_number] is None and not assignment_matrix[set_number][param_number] is None:
-        #             if assignment_matrix[set_number][param_number] > assignment_matrix[set_number-1][param_number]:
-        #                 diff = assignment_matrix[set_number][param_number] - assignment_matrix[set_number-1][param_number]
-        #                 key_value = key_value + diff
-        #                 # print("key_change at set " + str(set_number) +" and param " + str(param_number))
-        #                 # print("key is now: " + str(key_value))
-        #         if not assignment_matrix[set_number][param_number] is None:
-        #             asg_mat_new[set_number][param_number] = key_value
 
         for set_number in reversed(range(1, np.shape(w_array)[0])):
             for param_number in range(np.shape(w_array)[1]):
@@ -610,7 +594,7 @@ class GUI:
             previous_set  = parameter_list[set_number - 1]
 
             output_set = Parameters()
-            output_set = self.copy_nominals(output_set, parameter_set, fitters[0].fit_type)
+            output_set = self.copy_nominals(output_set, parameter_set, fitters[0].fit_type, captype)
 
             for param_number in range(np.shape(w_array)[1]):
                 old_key_nr = param_number + 1
@@ -630,7 +614,7 @@ class GUI:
 
         return parameter_list
 
-    def copy_nominals(self,out_set, parameter_set, fit_type):
+    def copy_nominals(self,out_set, parameter_set, fit_type, captype = None):
         match fit_type:
             case fitterconstants.El.INDUCTOR:
                 out_set.add('R_s', value = parameter_set['R_s'].value)
@@ -642,6 +626,11 @@ class GUI:
                 out_set.add('R_iso', value =parameter_set['R_iso'].value)
                 out_set.add('L', value =parameter_set['L'].value)
                 out_set.add('C', value =parameter_set['C'].value)
+                if captype == fitterconstants.captype.MLCC:
+                    out_set.add('R_A', value=parameter_set['R_A'].value)
+                    out_set.add('L_A', value=parameter_set['L_A'].value)
+                    out_set.add('C_A', value=parameter_set['C_A'].value)
+
         return out_set
 
     def fill_key(self, parameter_set, previous_param_set, key_to_fill, r_value):

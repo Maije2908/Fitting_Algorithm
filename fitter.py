@@ -511,7 +511,7 @@ class Fitter:
         params.add('L_A', value=L, expr='1/(C_A*w_A**2)')
 
 
-        #acoustic resonance modeling seems to require a fit
+        #acoustic resonance modeling requires a fit
         modelfreq = freq[np.logical_and(freq > bl, freq < bu)]
         modeldata = data[np.logical_and(freq > bl, freq < bu)]
 
@@ -1364,6 +1364,44 @@ class Fitter:
             self.plot_curve(param_set, 0, 1)
 
         return param_set
+
+    def fit_main_res_capacitor_file_n(self, param_set, debug_plots = False):
+        freq = self.frequency_vector
+        fit_data = self.z21_data
+        fit_order = self.order
+        mode = fitterconstants.fcnmode.FIT
+
+        if debug_plots:  # debug plot -> main res before fit
+            self.plot_curve(param_set, 0, 1, str(self.file.name) + 'MR before fit')
+
+        # frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
+        fit_main_resonance = 1
+        freq_for_fit = freq[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+        data_for_fit = fit_data[(freq < self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR)]
+
+        # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
+        freq_for_fit = freq_for_fit[self.offset:]
+        data_for_fit = data_for_fit[self.offset:]
+
+        #################### Main Resonance ############################################################################
+
+        # start by fitting the main res with all parameters set to vary
+        out = minimize(self.calculate_Z, param_set,
+                       args=(freq_for_fit, data_for_fit, fit_order, fit_main_resonance, mode,),
+                       method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        # set parameters of self to fitted main resonance (should be obsolete though)
+        self.parameters = out.params
+        param_set = out.params
+
+        # fix main resonance parameters in place
+        self.fix_main_resonance_parameters(param_set)
+
+        if debug_plots:  # debug plot -> fitted main resonance
+            self.plot_curve(param_set, 0, 1, str(self.file.name) + 'MR before fit')
+
+        return param_set
+
 
     def select_param_set(self, params: list):
         freq = self.frequency_vector
