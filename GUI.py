@@ -13,6 +13,7 @@ import re
 from tkinter import scrolledtext
 from texthandler import *
 from lmfit import Parameters
+import multiprocessing as mp
 
 '''
 ***********************************************************************************************************************
@@ -398,7 +399,7 @@ class GUI:
             ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
 
             # get acoustic resonance frequency for all files, if not found write "None" to list
-            if captype == fitterconstants.captype.MLCC:
+            if captype == fitterconstants.captype.MLCC and fit_type == fitterconstants.El.CAPACITOR:
                 acoustic_res_frqs = []
                 for fitter in fitters:
                     try:
@@ -406,27 +407,27 @@ class GUI:
                     except:
                         acoustic_res_frqs.append(None)
 
-            # iterate through the fitters in reversed order and fit the acoustic resonance
-            if len(fitters) > 1:
-                for it, fitter in reversed(list(enumerate(fitters))):
-                    if acoustic_res_frqs[it] is not None:
-                        fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
-                        parameter_list[it] = fitter.fit_acoustic_resonance(parameter_list[it])
-                    else:
-                        # if there is no frequency for the actual resonance take the previous frequency
-                        # (NOTE): this might even be obsolete
-                        acoustic_res_frqs[it] = acoustic_res_frqs[it - 1]
-                        fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
-                        # manually write the parameters of the previous fit to the dataset
-                        hi_R = parameter_list[it - 1]['R_A'].value * 1e4
-                        parameter_list[it].add('L_A', value=parameter_list[it - 1]['L_A'].value)
-                        parameter_list[it].add('C_A', value=parameter_list[it - 1]['C_A'].value)
-                        parameter_list[it].add('R_A', value=hi_R)
-            else:
-                self.logger.info("WARNING: MLCCs captype selected, but only one file is present. Switching to generic captype")
-                captype = fitterconstants.captype.GENERIC
-                for fitter in fitters:
-                    fitter.set_captype(captype)
+                # iterate through the fitters in reversed order and fit the acoustic resonance
+                if len(fitters) > 1:
+                    for it, fitter in reversed(list(enumerate(fitters))):
+                        if acoustic_res_frqs[it] is not None:
+                            fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
+                            parameter_list[it] = fitter.fit_acoustic_resonance(parameter_list[it])
+                        else:
+                            # if there is no frequency for the actual resonance take the previous frequency
+                            # (NOTE): this might even be obsolete
+                            acoustic_res_frqs[it] = acoustic_res_frqs[it - 1]
+                            fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
+                            # manually write the parameters of the previous fit to the dataset
+                            hi_R = parameter_list[it - 1]['R_A'].value * 1e4
+                            parameter_list[it].add('L_A', value=parameter_list[it - 1]['L_A'].value)
+                            parameter_list[it].add('C_A', value=parameter_list[it - 1]['C_A'].value)
+                            parameter_list[it].add('R_A', value=hi_R)
+                else:
+                    self.logger.info("WARNING: MLCCs captype selected, but only one file is present. Switching to generic captype")
+                    captype = fitterconstants.captype.GENERIC
+                    for fitter in fitters:
+                        fitter.set_captype(captype)
 
             ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
 
@@ -458,7 +459,7 @@ class GUI:
                     parameter_list[it] = out_params
 
                     #write the model data to the fitter instance
-                    fitter.write_model_data(out_params)
+                    # fitter.write_model_data(out_params)
 
                     if DEBUG_FIT:
                         fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
@@ -525,7 +526,7 @@ class GUI:
             for it, fitter in enumerate(fitters):
                 upper_frq_lim = fitterconstants.FREQ_UPPER_LIMIT
 
-                fitter.write_model_data(parameter_list[it])
+                fitter.write_model_data(parameter_list[it], order)
 
                 self.iohandler.output_plot(
                     fitter.frequency_vector[fitter.frequency_vector < upper_frq_lim],

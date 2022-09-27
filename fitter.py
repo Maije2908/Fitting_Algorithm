@@ -58,6 +58,7 @@ class Fitter:
 
         self.acoustic_resonant_frequency = None
         self.f0 = None
+
         self.order = 0
 
         self.offset = 0
@@ -75,7 +76,7 @@ class Fitter:
 
         if fit_type == fitterconstants.El.CAPACITOR and not captype is None:
             self.captype = captype
-        else:
+        elif fit_type == fitterconstants.El.CAPACITOR:
             self.captype = fitterconstants.captype.GENERIC
 
 
@@ -1085,10 +1086,10 @@ class Fitter:
                         method='powell', options={'xtol': 1e-18, 'disp': True})
         return out1.params
 
-    def write_model_data(self, param_set):
+    def write_model_data(self, param_set, model_order):
         freq = self.frequency_vector
         mode = fitterconstants.fcnmode.OUTPUT
-        order = self.order
+        order = model_order
         fit_main_resonance = 0
         self.model_data = self.calculate_Z(param_set, freq, [], order, fit_main_resonance, mode)
 
