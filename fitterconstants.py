@@ -64,13 +64,14 @@ MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the
 
 DEFAULT_OFFSET_PEAK = 40 #samples; this specifies the default offset for a resonance peak if the 3dB point can't be found
 
-MAIN_RES_FIT_OFFSET_SAMPLES = 100 #samples; this is because at the start of the curve the slope might be off
 
 #mode flags
 class fcnmode:
-    FIT: int = 1
-    OUTPUT: int = 2
-    ANGLE: int = 3
+    FIT:        int = 1
+    OUTPUT:     int = 2
+    ANGLE:      int = 3
+    FIT_REAL:   int = 4
+    FIT_IMAG:   int = 5
 
 class multiple_fit: #TODO: OBSOLETE I THINK
     FULL_FIT = 1
@@ -90,7 +91,7 @@ OUTPUT_DIFFPLOTS = 1
 #Debug Plots
 DEBUG_BW_MODEL = 0
 DEBUG_BW_MODEL_VERBOSE = 0
-DEBUG_FIT = 1
+DEBUG_FIT = 0
 DEBUG_BW_DETECTION =0
 DEBUG_MULTIPLE_FITE_FIT = 0#1
 
@@ -102,6 +103,3 @@ SHOW_BODE_PLOTS = False
 #logging
 LOGGING_VERBOSE = 0
 
-#parameter configurations
-#OBSOLETE!!!!
-COIL_CONFIG = 2 #1=config B, 2=config D

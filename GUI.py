@@ -594,9 +594,9 @@ class GUI:
 
         match fitters[0].fit_type: #TODO: this could use some better way of determining the fit type
             case fitterconstants.El.INDUCTOR:
-                r_default = 1e-6
+                r_default = 1e-1
             case fitterconstants.El.CAPACITOR:
-                r_default = 1e15
+                r_default = 1e9
 
         #switch key numbers
         for set_number in range(1, np.shape(w_array)[0]):

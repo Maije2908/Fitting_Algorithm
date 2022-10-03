@@ -241,7 +241,7 @@ class IOhandler:
                     lib += 'BL{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=node2) + 'V=V(VL{no})*V(K_L{no})'.format(no=circuit) + "\n"
                     lib += 'L{no} VL{no} 0 '.format(no=circuit) + str(Lx) + "\n"
                     lib += 'FL{no} 0 VL{no} BL{no} 1'.format(no=circuit) + "\n"
-
+                    #"test" inductor
                     lib += '* current dependent proportionality factor for L{no}'.format(no=circuit) + "\n"
                     lib += 'BLK{no} K_L{no} 0 V=table(abs(I(BL)),{table})'.format(no=circuit, table=saturation_table['L%s' % circuit]) + "\n"
                     lib += "\n"
@@ -250,13 +250,13 @@ class IOhandler:
                     lib += 'BC{no} {node1} {node2} '.format(no=circuit, node1=circuit,node2=node2) + 'I=-I(BCT{no})*V(K_C{no})'.format(no=circuit) + "\n"
                     lib += 'C{no} VC{no} 0 '.format(no=circuit) + str(Cx) + "\n"
                     lib += 'BCT{no} VC{no} 0 '.format(no=circuit) + 'V=V({node1})-V({node2})'.format(node1=circuit, node2=node2) + "\n"
-
+                    #"test" cap
                     lib += '* current dependent proportionality factor for C{no}'.format(no=circuit) + "\n"
                     lib += 'BCK{no} K_C{no} 0 V=table(abs(I(BL)),{table})'.format(no=circuit, table=saturation_table['C%s' % circuit]) + "\n"
                     lib += "\n"
 
                     #current dependent resistor
-                    lib += 'R_{no} {node1} {node2} R = limit({lo}, {hi}, {R_x} * V(K_R{no}))'.format(no=circuit, node1=circuit,node2=node2, lo=Rx * 1e-8, hi=Rx * 1e8,R_x=Rx) + "\n"
+                    lib += 'R_{no} {node1} {node2} R = limit({lo}, {hi}, {R_x} * V(K_R{no}))'.format(no=circuit, node1=circuit,node2=node2, lo=Rx * 1e-12, hi=Rx * 1e8,R_x=Rx) + "\n"
 
                     lib += '* current dependent proportionality factor for R{no}'.format(no=circuit) + "\n"
                     lib += 'BRK{no} K_R{no} 0 V=table(abs(I(BL)),{table})'.format(no=circuit, table=saturation_table['R%s' % circuit]) + "\n"

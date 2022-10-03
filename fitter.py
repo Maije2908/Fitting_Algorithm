@@ -58,6 +58,7 @@ class Fitter:
 
         self.acoustic_resonant_frequency = None
         self.f0 = None
+        self.f0_index = None
 
         self.order = 0
 
@@ -135,10 +136,6 @@ class Fitter:
     def calc_shunt_thru(self, Z0):
         self.z21_data = (Z0 * self.file.data.s[:, 1, 0]) / (2 * (1 - self.file.data.s[:, 1, 0]))
         self.ser_shunt = fitterconstants.calc_method.SHUNT
-
-    def crop_data(self,crop): #TODO:Obsolete
-        self.z21_data = self.z21_data[crop:]
-        self.frequency_vector = self.frequency_vector[crop:]
 
     def smooth_data(self):
         # Use Savitzky-Golay filter for smoothing the input data, because in the region of the global minimum there is
@@ -288,6 +285,7 @@ class Fitter:
             f0 = freq[index_ang_zero_crossing]
             w0 = f0 * 2 * np.pi
             self.f0 = f0
+            self.f0_index = index_ang_zero_crossing
             #log and print
             output_dec = decimal.Decimal("{value:.3E}".format(value=f0))
             self.logger.info("Detected f0: "+ output_dec.to_eng_string())
@@ -556,7 +554,7 @@ class Fitter:
         #get bandwidth
 
         freq = self.frequency_vector
-        res_value = self.z21_data[freq == self.f0]
+        res_value = self.z21_data[self.f0_index]
         w0 = self.f0 * 2 * np.pi
         param_set.add('w0',value=w0,vary=False)
 
@@ -567,7 +565,7 @@ class Fitter:
                 f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
                 BW = freq[f_upper_index] - freq[f_lower_index]
                 R_Fe = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
-                R_Fe = abs(self.z21_data[freq == self.f0])[0]
+                R_Fe = abs(self.z21_data[self.f0_index])
             case fitterconstants.El.CAPACITOR:
                 bw_value = res_value * np.sqrt(2)
                 f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag > bw_value)))[0][0]
@@ -916,12 +914,11 @@ class Fitter:
         self.free_parameters_higher_order(param_set)
         return param_set
 
-    def correct_parameters(self, param_set, change_main, num_it):
+    def correct_parameters(self, param_set, change_main, num_it = 2):
         freq = self.frequency_vector
         order = self.order
         data = self.z21_data
         params = copy.copy(param_set)
-        num_it = 2
 
 
 
@@ -963,27 +960,40 @@ class Fitter:
                     curve_data = self.calculate_Z(params, freq, 2, order, 0, fitterconstants.fcnmode.OUTPUT)
                     band = self.bandwidths[index]
                     dataindex = np.argwhere(freq == band[1])[0][0]
+                    #check if parameter needs to be corrected -> 5% relative errror is the metric
                     if abs(abs(data[dataindex]) - abs(curve_data[dataindex])) / abs(data[dataindex]) >= 0.05:
 
                         R_key = 'R%s' % key_number
                         C_key = 'C%s' % key_number
 
+                        #to get a better estimate for the resistive value, look at the real part and find the peak
+                        try:
+                            data_lim = self.z21_data[np.logical_and(freq < band[2], freq > band[0])]
+                            peak = find_peaks(np.real(data_lim), height = 0)
+                            match self.fit_type:
+                                case fitterconstants.El.INDUCTOR:
+                                    r_peak_index = np.argwhere(peak[1]['peak_heights'] == max(peak[1]['peak_heights']))[0][0]
+                                    r_peak = peak[1]['peak_heights'][r_peak_index]
+                                case fitterconstants.El.CAPACITOR:
+                                    r_peak_index = np.argwhere(peak[1]['peak_heights'] == min(peak[1]['peak_heights']))[0][0]
+                                    r_peak = peak[1]['peak_heights'][r_peak_index]
+                        except:
+                            r_peak = np.real(data[dataindex])
+
                         R = params[R_key].value
-                        R_diff = abs(data[dataindex]) - abs(curve_data[dataindex])
+                        R_diff = r_peak - np.real(curve_data[dataindex])
                         if (R + R_diff) > 0:
                             R_adjusted = R + R_diff
+                            w_c = params['w%s' % key_number].value
+                            BW = params['BW%s' % key_number].value
+                            Q = w_c / (BW*2*np.pi)
+                            C_adjusted = Q / (R_adjusted * w_c)
+
+                            self.change_parameter(params, R_key, min = R_adjusted*0.2, max = R_adjusted *5, value = R_adjusted, vary = True, expr ='')
+                            self.change_parameter(params, C_key, min = C_adjusted*1e-1, max = C_adjusted *1e1, value = C_adjusted, vary = True)
                         else:
-                            #TODO: hardcoded; NOTE: this shouldn't be invoked at any point!!!
-                            R_adjusted = 1
-                            self.logger.info('Invoked an edge case that should not be invoked: fitter.correct_parameters()')
-
-                        w_c = params['w%s' % key_number].value
-                        BW = params['BW%s' % key_number].value
-                        Q = w_c / (BW*2*np.pi)
-                        C_adjusted = Q / (R_adjusted * w_c)
-
-                        self.change_parameter(params, R_key, min = R_adjusted*0.2, max = R_adjusted *5, value = R_adjusted, vary = True, expr ='')
-                        self.change_parameter(params, C_key, min = C_adjusted*1e-1, max = C_adjusted *1e1, value = C_adjusted, vary = True)
+                            #if we can't find a valid correction, leave it be
+                            self.logger.info('Parameter not corrected: ' + R_key + ' ;run: ' + self.file.name)
 
 
 
@@ -1067,6 +1077,10 @@ class Fitter:
                 return Z
             case fcnmode.ANGLE:
                 return np.angle(data)-np.angle(Z)
+            case fcnmode.FIT_REAL:
+                return np.real(data)-np.real(Z)
+            case fcnmode.FIT_IMAG:
+                return np.imag(data)-np.imag(Z)
 
     def fit_curve_higher_order(self, param_set):
         freq = self.frequency_vector
@@ -1079,12 +1093,16 @@ class Fitter:
                                                    freq < fitterconstants.FREQ_UPPER_LIMIT)]
         freq_data_frq_lim = freq[np.logical_and(freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR,
                                                 freq < fitterconstants.FREQ_UPPER_LIMIT)]
+
         # fit the parameter set
         fit_main_resonance = 0
-        out1 = minimize(self.calculate_Z, param_set,
+        out = minimize(self.calculate_Z, param_set,
                         args=(freq_data_frq_lim, fit_data_frq_lim, fit_order, fit_main_resonance, mode,),
                         method='powell', options={'xtol': 1e-18, 'disp': True})
-        return out1.params
+
+
+
+        return out.params
 
     def write_model_data(self, param_set, model_order):
         freq = self.frequency_vector
@@ -1242,7 +1260,7 @@ class Fitter:
         self.fix_main_resonance_parameters(param_set)
 
         if debug_plots:  # debug plot -> fitted main resonance
-            self.plot_curve(param_set, 0, 1, str(self.file.name) + 'MR before fit')
+            self.plot_curve(param_set, 0, 1, str(self.file.name) + 'MR after fit')
 
         return param_set
 
@@ -1576,7 +1594,9 @@ class Fitter:
             param_set[R_key].vary = True
             param_set[w_key].vary = True
 
-    def fix_parameters(self, param_set):
+    def fix_parameters(self, param_set, R = True, L=True, C=True, w=True):
+        #Method to fix the parameters in place, giving this function a "True", locks the corresponding parameters in place
+
         param_set['R_s'].vary = False
         param_set['C'].vary = False
         param_set['L'].vary = False
@@ -1591,10 +1611,10 @@ class Fitter:
             L_key   = "L%s" % key_number
             R_key   = "R%s" % key_number
             w_key   = "w%s" % key_number
-            param_set[C_key].vary = False
-            param_set[L_key].vary = False
-            param_set[R_key].vary = False
-            param_set[w_key].vary = False
+            param_set[C_key].vary = not C
+            param_set[L_key].vary = not L
+            param_set[R_key].vary = not R
+            param_set[w_key].vary = not w
 
 
 
