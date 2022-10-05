@@ -21,6 +21,8 @@ import pandas as pd
 # import constants
 import fitterconstants
 from fitterconstants import *
+# constants for this class
+FIT_BY = fitterconstants.fcnmode.FIT
 
 
 class Fitter:
@@ -306,6 +308,7 @@ class Fitter:
         #create one figure for the resonance plots
         if fitterconstants.DEBUG_BW_DETECTION:
             plt.figure()
+            plt.title(self.file.name)
 
 
         magnitude_data = self.data_mag
@@ -897,7 +900,7 @@ class Fitter:
 
             #do the fit
             out = minimize(self.calculate_Z, param_set,
-                                args=(fit_freq, fit_data, self.order, 0, fitterconstants.fcnmode.FIT,),
+                                args=(fit_freq, fit_data, self.order, 0, FIT_BY,),
                                 method='powell', options={'xtol': 1e-18, 'disp': True})
 
             #write fit results to parameters and set their 'vary' to False
@@ -1086,7 +1089,6 @@ class Fitter:
         freq = self.frequency_vector
         fit_data = self.z21_data
         fit_order = self.order
-        mode = fitterconstants.fcnmode.FIT
 
         # Frequency limit data for fit
         fit_data_frq_lim = fit_data[np.logical_and(freq > self.f0 * fitterconstants.MIN_ZONE_OFFSET_FACTOR,
@@ -1097,7 +1099,7 @@ class Fitter:
         # fit the parameter set
         fit_main_resonance = 0
         out = minimize(self.calculate_Z, param_set,
-                        args=(freq_data_frq_lim, fit_data_frq_lim, fit_order, fit_main_resonance, mode,),
+                        args=(freq_data_frq_lim, fit_data_frq_lim, fit_order, fit_main_resonance, FIT_BY,),
                         method='powell', options={'xtol': 1e-18, 'disp': True})
 
 
@@ -1301,7 +1303,7 @@ class Fitter:
 
         return param_set
 
-    def select_param_set(self, params: list):
+    def select_param_set(self, params: list, debug = False):
         freq = self.frequency_vector
         fit_data = self.z21_data
         fit_main_resonance = False
@@ -1315,6 +1317,11 @@ class Fitter:
             norm.append(self.calculate_band_norm(model_data[it]))
 
         least_norm_mdl_index = np.argwhere(norm == min(norm))[0][0]
+
+        if debug:
+            self.logger.info(self.file.name + ": selected parameter set " + str(least_norm_mdl_index + 1))
+
+
         return params[least_norm_mdl_index]
 
     def overwrite_main_res_params_file_n(self, param_set, param_set0):
@@ -1456,7 +1463,7 @@ class Fitter:
         peakindex = np.argwhere(modelfreq >= peakfreq)[0][0]
 
         try:
-            #find the infelction points before and behind the peak in order to crop the peak
+            #find the inflection points before and behind the peak in order to crop the peak
             # the derivatives need to be sav_gol filtered, otherwise they are too noisy
             ddt = np.gradient(abs(modeldata))
             ddt = scipy.signal.savgol_filter(ddt, 31,3)
@@ -1464,9 +1471,9 @@ class Fitter:
             ddt2 = scipy.signal.savgol_filter(ddt2, 31, 3)
             signchange = np.argwhere(abs(np.diff(np.sign(ddt2))))
 
-            #find left and right index of inflection points and crop the data
-            left = signchange[(signchange < peakindex)][-1] - 1
-            right = signchange[(signchange > peakindex)][0] + 1
+            #find left and right index of inflection points and crop the data (also constrain the data between 0 and max)
+            left = np.clip((signchange[(signchange < peakindex)][-1] - 1), a_min = 0)
+            right = np.clip((signchange[(signchange > peakindex)][0] + 1), a_max = len(modelfreq))
             modelfreq = modelfreq[left:right]
             modeldata = modeldata[left:right]
         except:

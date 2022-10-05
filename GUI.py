@@ -13,7 +13,9 @@ import re
 from tkinter import scrolledtext
 from texthandler import *
 from lmfit import Parameters
+
 import multiprocessing as mp
+
 
 '''
 ***********************************************************************************************************************
@@ -50,6 +52,8 @@ class GUI:
         self.filename_entry = []
         self.filename_ref_button = []
         self.ref_file_select =None
+
+        self.mp_pool = mp.Pool(mp.cpu_count())
 
         # Window config
         self.root: tk.Tk = tk.Tk()
@@ -430,9 +434,10 @@ class GUI:
                         fitter.set_captype(captype)
 
             ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
+            '''
+            ################ HIGHER ORDER RESONANCES - SINGLE PROCESS ##################################################
 
-            ################ HIGHER ORDER RESONANCES ###################################################################
-
+            test_pre_fit = []
             for it, fitter in enumerate(fitters):
 
                 fitter.get_resonances()
@@ -442,20 +447,26 @@ class GUI:
                     params1 = copy.copy(fitter.create_higher_order_parameters(1, parameter_list[it]))
                     params2 = copy.copy(fitter.create_higher_order_parameters(2, parameter_list[it]))
 
-                    #correct obtained parameters and do the band pre-fit
+                    #correct obtained parameters
                     correct_main_res = False
                     num_iterations = 4
+
                     params1 = fitter.correct_parameters(params1, correct_main_res, num_iterations)
                     params2 = fitter.correct_parameters(params2, correct_main_res, num_iterations)
+
+
                     params1 = fitter.pre_fit_bands(params1)
                     params2 = fitter.pre_fit_bands(params2)
+
+                    #TODO: delme
+                    test_pre_fit.append(params1)
 
                     #fit the whole curve
                     fit_params1 = fitter.fit_curve_higher_order(params1)
                     fit_params2 = fitter.fit_curve_higher_order(params2)
 
                     #check wich model fits best
-                    out_params = fitter.select_param_set([fit_params1, fit_params2])
+                    out_params = fitter.select_param_set([fit_params1, fit_params2], debug=True)
                     parameter_list[it] = out_params
 
                     #write the model data to the fitter instance
@@ -465,7 +476,54 @@ class GUI:
                         fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
 
 
-            ################ END HIGHER ORDER RESONANCES ###############################################################
+            ################ END HIGHER ORDER RESONANCES - SINGLE PROCESS ##############################################
+            '''
+
+            ################ HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ############################################
+            for it, fitter in enumerate(fitters):
+                fitter.get_resonances()
+
+            correct_main_res = False
+            num_iterations = 4
+            temp_param_list = []
+            for it, fitter in enumerate(fitters):
+                params1 = copy.copy(fitter.create_higher_order_parameters(2, parameter_list[it]))
+                temp_param_list.append(fitter.correct_parameters(params1, correct_main_res, num_iterations))
+
+            #apply pre-fitting tasks to the multiprocessing pool
+            pre_fit_results = []
+            for it, fitter in enumerate(fitters):
+                pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands, args = (temp_param_list[it],)))
+
+            #wait for all pre-fits to finish
+            [result.wait() for result in pre_fit_results]
+
+            #write back to parameter list
+            for it, pre_fit_result in enumerate(pre_fit_results):
+                temp_param_list[it] = copy.copy(pre_fit_result.get())
+
+            #CURVE FIT
+            #create array for fit results
+            fit_results = []
+            for it, fitter in enumerate(fitters):
+                fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order, args = (temp_param_list[it],)))
+
+            # wait for all pre-fits to finish
+            [result.wait() for result in fit_results]
+
+            # write back to parameter list
+            for it, result in enumerate(fit_results):
+                parameter_list[it] = copy.copy(result.get())
+
+            for it, fitter in enumerate(fitters):
+                if DEBUG_FIT:
+                    fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
+
+            #fit done
+            self.mp_pool.close()
+
+            ################ END HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ########################################
+
 
             ############### MATCH PARAMETERS ###########################################################################
 
