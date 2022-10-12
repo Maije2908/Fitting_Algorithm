@@ -169,7 +169,7 @@ class Fitter:
                 index_ang_zero_crossing = index_angle_smaller_zero[0][0] + offset
                 f0 = freq[index_ang_zero_crossing]
 
-                if max(self.data_ang[offset:index_ang_zero_crossing]) < 85:
+                if max(self.data_ang[offset:index_ang_zero_crossing]) < fitterconstants.PERMITTED_MIN_PHASE:
                     #if we can't detect the nominal value raise exception
                     raise Exception("Error: Inductive range not detected (max phase = {value}°).\n"
                                     "Please specify nominal inductance.".format(value=np.round(max(self.data_ang), 1)))
@@ -206,7 +206,7 @@ class Fitter:
                 index_ang_zero_crossing = index_angle_larger_zero[0][0] + offset
                 f0 = freq[index_ang_zero_crossing]
 
-                if min(self.data_ang[offset:index_ang_zero_crossing]) > -85:
+                if min(self.data_ang[offset:index_ang_zero_crossing]) > -fitterconstants.PERMITTED_MIN_PHASE:
                     raise Exception("Error: Capacitive range not detected (min phase = {value}°).\n"
                                     "Please specify nominal capacitance.".format(value=np.round(min(self.data_ang), 1)))
 

@@ -45,6 +45,8 @@ BANDWIDTH_STRETCH_LAST_ZONE = 1
 
 #threshold for the calculation of the offset; necessary for small coils that have a lot of zero crossings at low frequencies
 PHASE_OFFSET_THRESHOLD = 60 #°
+#value for detection of the inductive/capacitive range; if phase is below this value, inductive/capacitive range will not be detected
+PERMITTED_MIN_PHASE = 75
 
 
 #Decide wheter to full fit the higher order resonances (0= main res fit; 1= full fit)
