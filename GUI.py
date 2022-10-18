@@ -357,7 +357,7 @@ class GUI:
 
                 #smooth the impedance data and pass the specification
                 fitter_instance.smooth_data()
-                fitter_instance.set_specification(passive_nom, res, prom, sat, fit_type, captype)
+                fitter_instance.set_specification(passive_nom, res, prom, fit_type, captype)
 
                 #write instance to list
                 fitters.append(fitter_instance)

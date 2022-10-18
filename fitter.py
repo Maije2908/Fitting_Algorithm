@@ -1,10 +1,7 @@
 
-# The fitter class shall take the task of fitting the data, as well as smoothing it and performing manipulations
-# This is likely to become a rather long task, especially for CMCs and this class is therefore likely to be long
-# I do not know yet what it will have to contain and how to best handle the data
-# Most of this class will be based on Payer's program
 
-import copy
+
+
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -72,8 +69,23 @@ class Fitter:
     # Parsing Methods
     ####################################################################################################################
 
-    #method to set the entry values of the specification
-    def set_specification(self, pass_val, para_r, prom, sat, fit_type, captype = None):
+    def set_specification(self, pass_val, para_r, prom, fit_type, captype = None):
+
+        """
+
+        Function to pass specification of the DUT to the fitter.
+
+        Specification can be given in the GUI but default values are chosen if some of the parameters are not given;
+        if the nominal value of the DUT is not given, it will be calculated.
+
+        :param pass_val:    value of inductance/capacitance of the DUT in Henry/Farad
+        :param para_r:      parasitive resistance of the DUT in Ohms
+        :param prom:        prominence for peak detection in dB
+        :param fit_type:    type of the DUT; can be Inductor or Capacitor
+        :param captype:     type of the Capacitor (if fit_type == Capacitor); can be MLCC or generic
+        :return:            stores the given values in corresponding instance variables
+
+        """
 
         self.fit_type = fit_type
 
@@ -106,17 +118,26 @@ class Fitter:
         else:
             self.prominence = prom
 
-        if sat is None:
-            self.saturation = None
-        else:
-            self.saturation = sat
 
     def set_captype(self, captype):
-        self.captype = captype
-        return 0
+        """
+        Auxilliary method to set the Capacitor type.
+        This is used in cases where a MLCC can't be calculated and the captype has to be reset to "Generic"
 
-    #method to parse the files from the iohandler
+        :param captype:     Type of capacitor
+        :return:            None (stores captype in corresponding instance variable)
+        """
+        self.captype = captype
+
     def set_file(self, file):
+        """
+        Method to set the file to the fitter
+
+        :param file:        The File to be set (.s2p file in form of skrf.SNpFile())
+        :return:            None (stores File in instance variable; also obtains frequency vector from the file)
+        :raises Exception:  will raise an Exception ("No file provided") if frequency vector can't be obtained
+        """
+
         self.file = file
         try:
             self.frequency_vector = self.file.data.f
@@ -132,27 +153,59 @@ class Fitter:
     ####################################################################################################################
 
     def calc_series_thru(self, Z0):
+        """
+        Function to calculate the series-through impedance of the DUT
+
+        :param Z0: nominal impedance of the measurement system
+        :return: None (stores calculated impedance in instance variable)
+        """
+
         self.z21_data = 2 * Z0 * ((1 - self.file.data.s[:, 1, 0]) / self.file.data.s[:, 1, 0])
         self.ser_shunt = fitterconstants.calc_method.SERIES
 
     def calc_shunt_thru(self, Z0):
+        """
+        Function to calculate the shunt-through impedance of the DUT
+
+        :param Z0: nominal impedance of the measurement system
+        :return: None (stores impedance data in instance variable)
+        """
+
         self.z21_data = (Z0 * self.file.data.s[:, 1, 0]) / (2 * (1 - self.file.data.s[:, 1, 0]))
         self.ser_shunt = fitterconstants.calc_method.SHUNT
 
     def smooth_data(self):
-        # Use Savitzky-Golay filter for smoothing the input data, because in the region of the global minimum there is
-        # oscillation. After filtering a global minimum can be found easier.
+        """
+        Function to smooth the impedance data
+
+        A Savitzky-Golay filter is used to smooth the impedance data. The smoothed data will be stored in instance
+        variables **data_mag** and **data_ang** for magnitude and phase respectively
+
+        :return: None (stores smoothed data in instance variables data_mag and data_ang)
+        """
+
         sav_gol_mode = 'interp'
         self.data_mag = scipy.signal.savgol_filter(abs(self.z21_data), fitterconstants.SAVGOL_WIN_LENGTH,
                                                    fitterconstants.SAVGOL_POL_ORDER, mode=sav_gol_mode)
         self.data_ang = scipy.signal.savgol_filter(np.angle(self.z21_data, deg=True), fitterconstants.SAVGOL_WIN_LENGTH,
                                                    fitterconstants.SAVGOL_POL_ORDER, mode=sav_gol_mode)
-        #limit the data to +/- 90°
+        #limit the phase data to +/- 90°
         self.data_ang = np.clip(self.data_ang, -90, 90)
 
-        return 0
 
     def calculate_nominal_value(self):
+        """
+        Function to calculate the nominal value of the DUT, if it was not provided.
+
+        This works by looking for the linear range of the passive element, i.e. the range where the DUT behaves like a
+        linear coil/cap. The value is then calculated by using the mean of all obtained values of the linear range
+
+        :return:            Nominal value of the DUT in Henry/Farad (the value is also written to an instance variable)
+        :raises Excaption:  If the phase of the dataset is too low (i.e. inductive/capacitive linear range can not be
+        detected); there is a constant that can be modified in the config to allow lower phase, however this might make
+        the calculation less precise
+        """
+
         offset = 0
         nominal_value = 0
         freq = self.frequency_vector
@@ -160,44 +213,52 @@ class Fitter:
         match self.fit_type:
             case El.INDUCTOR:
 
-                #calculate the offset, i.e. the sample at which the phase does not have zero crossings anymore
+                # calculate the offset; the data can be noisy at lower frequencies, leading to a lot of zero crossings
+                # in the phase, which lead to misdetection of the main resonant frequency; hence we use a constant for
+                # the minimum phase, everything lower than that will not be used for detection
                 offset = np.argwhere(self.data_ang > fitterconstants.PHASE_OFFSET_THRESHOLD)[0][0]
 
                 # find first point where the phase crosses 0 using numpy.argwhere --> f0
                 index_angle_smaller_zero = np.argwhere(self.data_ang[offset:] < 0)
-                #we need to add the offset here again
+
+                # get the index of the zero crossing and the detected resonant frequency; offset has to be added here
                 index_ang_zero_crossing = index_angle_smaller_zero[0][0] + offset
                 f0 = freq[index_ang_zero_crossing]
 
+                # check if the phase of the dataset has a valid range; if the phase is not around 90° we cannot assume
+                # inductive range
                 if max(self.data_ang[offset:index_ang_zero_crossing]) < fitterconstants.PERMITTED_MIN_PHASE:
                     #if we can't detect the nominal value raise exception
                     raise Exception("Error: Inductive range not detected (max phase = {value}°).\n"
                                     "Please specify nominal inductance.".format(value=np.round(max(self.data_ang), 1)))
 
-                #crop data to [offset:f0] in order to find the linear range for the calculation of nominal value
+                # crop data to [offset:f0] in order to obtain the linear range for the calculation of nominal value
                 curve_data = self.z21_data[freq < f0][offset:]
                 w_data = (freq[freq < f0][offset:])*2*np.pi
 
-                #create an array filled with possible values for L; calculation is L = imag(Z)/w
+                # create an array filled with possible values for L; calculation is L = imag(Z)/omega
                 L_vals = []
                 for it, curve_sample in enumerate(zip(curve_data, w_data)):
-                    #if bool_select[it]:
                     L_vals.append(np.imag(curve_sample[0])/curve_sample[1])
 
+
+
+                # calculate the slope of the magnitude and get the 50% quantile of it; after that find the max slope
+                slope_quantile_50 = np.quantile(np.gradient(self.data_mag)[freq<f0],0.5)
+                max_slope = slope_quantile_50 * fitterconstants.QUANTILE_MULTIPLICATION_FACTOR
+                
+                #boolean index the data that has lower than max slope and calculate the mean of it
+                L_vals_mean = np.array(L_vals)[np.gradient(self.data_mag)[freq<f0][offset:] < max_slope]
+                
+                # finally write the obtained nominal value to the instance variable; also write back the offset
+                self.nominal_value = np.mean(L_vals_mean)
                 self.offset = offset
-
-                #find the 50% quantile of the slope data and define the max slope allowed
-                quantile_50 = np.quantile(np.gradient(self.data_mag)[freq<f0],0.5)
-                max_slope = quantile_50 * fitterconstants.QUANTILE_MULTIPLICATION_FACTOR
-                #boolean index the data that has lower than max slope and calculate the mean
-                L_vals_eff = np.array(L_vals)[np.gradient(self.data_mag)[freq<f0][offset:] < max_slope]
-                self.nominal_value = np.mean(L_vals_eff)
-
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value)) #TODO: this has to be normalized output to 1e-3/-6/-9 etc
                 self.logger.info("Nominal Inductance not provided, calculated: " + output_dec.to_eng_string())
 
 
             case El.CAPACITOR:
+                # calculation of the capacitance works analogue to the inductance
 
                 offset = np.argwhere(self.data_ang < -fitterconstants.PHASE_OFFSET_THRESHOLD)[0][0]
 
@@ -221,37 +282,43 @@ class Fitter:
                     # if bool_select[it]:
                     C_vals.append(-1/(np.imag(curve_sample[0])*curve_sample[1]))
 
-
-                #write calculted offset to instance variable
-                self.offset = offset
-
-
                 # find the 50% quantile of the slope data and define the max slope allowed
-                quantile_50 = np.quantile(np.gradient(self.data_mag)[freq < f0], 0.5)
-                max_slope = quantile_50 * fitterconstants.QUANTILE_MULTIPLICATION_FACTOR
+                slope_quantile_50 = np.quantile(np.gradient(self.data_mag)[freq < f0], 0.5)
+                max_slope = slope_quantile_50 * fitterconstants.QUANTILE_MULTIPLICATION_FACTOR
                 # boolean index the data that has lower than max slope and calculate the mean
                 C_vals_eff = np.array(C_vals)[np.gradient(self.data_mag)[freq < f0][offset:] < max_slope]
                 self.nominal_value = np.mean(C_vals_eff)
-
+                self.offset = offset
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value))
                 self.logger.info("Nominal Capacitance not provided, calculated: " + output_dec.to_eng_string())
-
-            case 3:
-                self.nominal_value = 0
-
-
 
         return self.nominal_value
 
     def calculate_nominal_Rs(self):
+        """
+        Function to calculate the series resistance of the DUT if it was not provided.
+
+        Here the minimum of the impedance data is taken; this is **very** imprecise for inductors but works very well
+        for capacitors
+        :return: obtained series resistance (also writes the value to an instance variable)
+        """
+
         R_s_input = min(abs(self.z21_data))
         self.series_resistance = R_s_input
-        #log
         output_dec = decimal.Decimal("{value:.3E}".format(value=R_s_input))
         self.logger.info("Nominal Resistance not provided, calculated: " + output_dec.to_eng_string())
 
+        return self.series_resistance
+
     def get_main_resonance(self):
-        #TODO: this method goes by the phase, it could use some more 'robustness'
+        """
+        Method to calculate the main resonant frequency of the DUT.
+
+        This works by looking for the zero crossing of the phase.
+
+        :return: resonant frequency f0 in Hz (also writes the value and the index of the zero crossing to instance variables)
+        :raises Exception: if the resonant frequency could not be determined
+        """
 
         freq = self.frequency_vector
 
@@ -272,16 +339,9 @@ class Fitter:
                 index_ang_zero_crossing = offset + index_angle_larger_zero[0][0]
                 continuity_check = index_angle_larger_zero[10][0]
 
-            case 3: #CMC
-                sign = 1
-
-
         #write the calculated offset to the instance variable
         self.offset = offset
 
-        # TODO: there could be some problems here: a) the resonant frequency could be at the start of the data and
-        #   b) the resonant frequency could be at the end of data... those are cases in which the phase data is faulty.
-        #   an exception should be raised already in this case, but only if the calculate nominal value method was run
 
         if continuity_check:
             f0 = freq[index_ang_zero_crossing]
