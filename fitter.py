@@ -192,7 +192,6 @@ class Fitter:
         #limit the phase data to +/- 90°
         self.data_ang = np.clip(self.data_ang, -90, 90)
 
-
     def calculate_nominal_value(self):
         """
         Function to calculate the nominal value of the DUT, if it was not provided.
@@ -201,9 +200,9 @@ class Fitter:
         linear coil/cap. The value is then calculated by using the mean of all obtained values of the linear range
 
         :return:            Nominal value of the DUT in Henry/Farad (the value is also written to an instance variable)
-        :raises Excaption:  If the phase of the dataset is too low (i.e. inductive/capacitive linear range can not be
-        detected); there is a constant that can be modified in the config to allow lower phase, however this might make
-        the calculation less precise
+        :raises Exception:  If the phase of the dataset is too low (i.e. inductive/capacitive linear range can not be
+            detected); there is a constant that can be modified in the config to allow lower phase, however this might make
+            the calculation less precise
         """
 
         offset = 0
@@ -361,29 +360,40 @@ class Fitter:
 
         return f0
 
-    def get_resonances(self): #TODO: tidy up this whole method :/
+    def get_resonances(self):
+        """
+        Method to get the higher order resonances.
 
-        R_s = self.series_resistance
-        freq = self.frequency_vector
-        #create one figure for the resonance plots
+        Using scipy.find_peaks on the magnitude data, resonant peaks are obtained. Also the bandwidth will be detected
+        and a flag will be set if the bandwidth could not be found (due to missing -3dB points)
+
+        :return:    bandwidth list-list of the detected resonances containing lower, center and upper frequencies
+            (upper and lower frequency are at the -3dB points); also stores the obtained bands, the peak heights, the order
+            (i.e. total number of peaks) and a flag if the -3dB points are not present in instance variables
+        :raises Exception: if no resonances have been found
+        """
+
+
+        # create one figure for debug plots
         if fitterconstants.DEBUG_BW_DETECTION:
             plt.figure()
             plt.title(self.file.name)
 
-
+        freq = self.frequency_vector
         magnitude_data = self.data_mag
         phase_data = self.data_ang
 
-        #frequency limit the data
+        # frequency limit the data
         magnitude_data = magnitude_data[freq < fitterconstants.FREQ_UPPER_LIMIT]
         phase_data = phase_data[freq < fitterconstants.FREQ_UPPER_LIMIT]
         freq = freq[freq < fitterconstants.FREQ_UPPER_LIMIT]
 
-
+        # get prominence
         prominence_mag = self.prominence
         prominence_phase = self.prominence
 
-        #find peaks of Magnitude Impedance curve (using scipy.signal.find_peaks)
+        # find peaks of Magnitude Impedance curve (using scipy.signal.find_peaks)
+        # using dB here in order to match the prominence values
         match self.ser_shunt:
             case fitterconstants.calc_method.SERIES:
                 mag_maxima = find_peaks(20*np.log10(magnitude_data), prominence=prominence_mag)
@@ -391,17 +401,7 @@ class Fitter:
                 mag_maxima = find_peaks(-20 * np.log10(magnitude_data), prominence=prominence_mag)
 
 
-        mag_minima = find_peaks(magnitude_data * -1, prominence=prominence_mag)
-        #find peaks of Phase curve
-        phase_maxima = find_peaks(phase_data, prominence=prominence_phase)
-        phase_minima = find_peaks(phase_data * -1, prominence=prominence_phase)
-
-        ######FOR MANUAL TESTING!!!VVV
-        # test_prom = find_peaks(magnitude_data, height=peak_min_height, prominence=prominence_mag)
-        # plt.loglog(magnitude_data)
-        # plt.plot(test_prom[0], test_prom[1]['peak_heights'], marker='D', linestyle='')
-
-        #map to frequency;
+        # get frequency of acquired magnitude maxima
         f_mag_maxima = freq[mag_maxima[0]]
 
         #ignore all peaks that lie "before" the main resonance and that are to close to the main resonance
@@ -411,25 +411,18 @@ class Fitter:
         mag_maxima_index = mag_maxima[0][f_mag_maxima > min_zone_start]
 
 
-
-        # plot commands to check peak values TODO: this is for testing
-        # markerson = mag_maxima[0]
-        # plt.loglog(self.data_mag,'-bD', markevery=markerson)
-        # plt.show()
-        # plt.figure()
-
         number_zones = len(mag_maxima_pos)
         bandwidth_list = []
         peak_heights = []
         bad_BW_flag = np.zeros((number_zones,2))
+
         for num_maximum in range(0, number_zones):
-            #resonance frequency, corresponding height and index
+            # get index, frequency and value of impedance at that point
             res_fq = mag_maxima_pos[num_maximum]
             res_index = mag_maxima_index[num_maximum]
             res_value = magnitude_data[res_index]
 
             #get 3dB value
-            # if we work with an inductor the curve is mirrored, so we have to account for that
             match self.fit_type:
                 case fitterconstants.El.INDUCTOR:
                     bw_value = res_value / np.sqrt(2)
@@ -479,13 +472,6 @@ class Fitter:
                         f_upper_index = len(freq) - 1
                         bad_BW_flag[num_maximum][1] = 1
 
-            # this checks if the value of the upper/lower bound is greater than the value of the resonance peak
-            # that is the case if we chose the default offset #TODO: look into how to handle this case
-
-            # if ((magnitude_data[res_index]) < (magnitude_data[f_upper_index])) or ((magnitude_data[res_index]) < (magnitude_data[f_lower_index])):
-            #     # at the moment we are just skipping the peak in that case
-            #     pass
-            # else:
             f_tuple = [freq[f_lower_index], res_fq, freq[f_upper_index]]
             bandwidth_list.append(f_tuple)
             peak_heights.append(abs(res_value))
@@ -495,17 +481,12 @@ class Fitter:
                 plt.loglog(self.data_mag, '-bD', markevery=markerson)
 
         try:
-            #spread BW of last circuit; TODO: maybe center the band?
+            # here the last resonance can be "streched"; can be useful to "fill" the end zone of the curve
+            # NOTE: the stretch factor is set to 1 most of the time, so there is no stretching happening
             stretch_factor = fitterconstants.BANDWIDTH_STRETCH_LAST_ZONE
-            # bandwidth_list[-1][0] = max(freq) * (1/strech_factor)
-
-            # bandwidth_list[-1][2]= max(freq)*5
-
-            #
             bandwidth_list[-1][2] = bandwidth_list[-1][2] * stretch_factor
             bandwidth_list[-1][0] = bandwidth_list[-1][0] * stretch_factor
 
-            #peak_heights[-1] = abs(max(self.z21_data)) * 2
         except IndexError:
             self.logger.info("INFO: No resonances found except the main resonance, consider a lower value for the prominence")
 
@@ -517,19 +498,33 @@ class Fitter:
         return bandwidth_list
 
     def set_acoustic_resonance_frequency(self, res_fq):
+        """
+        Auxilliary method to set the acoustic resonance frequency for MLCCs
+
+        :param res_fq: resonant frequency
+        :return: None
+        """
         self.acoustic_resonant_frequency = res_fq
-        return 0
 
     def fit_acoustic_resonance(self, param_set):
+        """
+        Method to fit the acoustic resonance of MLCCs
+
+
+        :param param_set: a Parameters() object; should contain the parameters for the main resonance but not for higher order circuits
+
+        :returns: a Parameters() object that is a copy of the Parameters() object passed to the function but containing
+            the fitted circuit elements for the acoustic resonance (this Parameters() object is also stored in an instance variable)
+
+        """
         freq = self.frequency_vector
         data = self.z21_data
         magnitude_data = self.data_mag
         f0 = self.f0
 
-        #limit the data to before the main res
+        # frequency limit the data to frequencies lower than the main resonance
         mag_data_lim = magnitude_data[freq<f0]
         freq_lim = freq[freq<f0]
-
 
         res_fq = self.acoustic_resonant_frequency
         res_index = np.argwhere(freq > res_fq)[0][0]
@@ -537,6 +532,7 @@ class Fitter:
         res_value = data[res_index]
         bw_value = abs(res_value) * np.sqrt(2)
 
+        # find upper 3dB point
         try:
             f_upper_index = np.argwhere(np.logical_and(freq > res_fq, (magnitude_data) > (bw_value)))[0][0]
             fu=freq[f_upper_index]
@@ -547,6 +543,7 @@ class Fitter:
             else:
                 f_upper_index = len(freq_lim) - 1
 
+        # find lower 3dB point
         try:
             f_lower_index = np.flipud(np.argwhere((np.logical_and(freq < res_fq, (magnitude_data) > (bw_value)))))[0][0]
             fl = freq[f_lower_index]
@@ -556,8 +553,10 @@ class Fitter:
         freq_mdl = freq_lim[f_lower_index-10:f_upper_index+10]
         data_mdl = mag_data_lim[f_lower_index-10:f_upper_index+10]
 
+        # use the bandwidth model to get estimates for the RLC circuit
         [bl,bu,R,L,C] = self.model_bandwidth(freq_mdl, data_mdl, res_fq)
 
+        # correct the effect the main resonance has on the peak height
         main_res_here = self.calculate_Z(param_set, res_fq, 2, 0, 1, fitterconstants.fcnmode.OUTPUT)
         data_here = data[freq==res_fq]
         w_c = res_fq * 2 * np.pi
@@ -569,13 +568,14 @@ class Fitter:
         C=C_new
         params = copy.copy(param_set)
 
+        #create the parameters for the acoustic resonance
         params.add('R_A', value=R_new, min=R*0.8, max=R_new*1.2, vary=True)
         params.add('C_A', value=C, min=C * 0.8, max=C * 1.5, vary=True)
         params.add('w_A', value =w_c, min = w_c*0.9, max=w_c*1.2, vary=True)
         params.add('L_A', value=L, expr='1/(C_A*w_A**2)')
 
 
-        #acoustic resonance modeling requires a fit
+        #frequency limit the data to the bandwidth of the circuit and do a fit using the limited data
         modelfreq = freq[np.logical_and(freq > bl, freq < bu)]
         modeldata = data[np.logical_and(freq > bl, freq < bu)]
 
@@ -583,17 +583,26 @@ class Fitter:
                             args=(modelfreq, modeldata, 0, 0, fitterconstants.fcnmode.FIT,),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
 
+        # copy the parameters of the fit result
         params = copy.copy(out1.params)
+
+        # finally set the parameters to not vary anymore
         self.change_parameter(params,'R_A',vary=False)
         self.change_parameter(params,'L_A',vary=False)
         self.change_parameter(params,'C_A',vary=False)
         self.change_parameter(params,'w_A',vary=False)
 
+        # write to instance variable and return obtained parameters
         self.parameters = copy.copy(params)
-
         return params
 
     def get_acoustic_resonance(self):
+        """
+        Method to detect an acoustic resonance.
+        Finds a peak in the data that is in front of (has lower frequency than) the main resonance.
+
+        :return: obtained resonant frequency in Hz
+        """
         freq = self.frequency_vector
         magnitude_data = self.data_mag
         f0 = self.f0
@@ -614,7 +623,14 @@ class Fitter:
         return res_fq
 
     def create_nominal_parameters(self, param_set):
-        #get bandwidth
+        """
+        Function to create parameters for the elements of the main resonance.
+
+        That is L, C, R_Fe and R_s for inductors and C, L, R_iso and R_s for capacitors
+
+        :param param_set: A Parameters() object that the parameters will be written to
+        :return: A Parameters() object containing the main resonance parameters
+        """
 
         freq = self.frequency_vector
         res_value = self.z21_data[self.f0_index]
@@ -634,15 +650,11 @@ class Fitter:
                 f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag > bw_value)))[0][0]
                 f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag > bw_value)))[0][0]
                 BW = freq[f_upper_index] - freq[f_lower_index]
-                R_Iso = fitterconstants.R_ISO_VALUE#BW/(self.f0 * (self.f0 * 2 * np.pi)*self.nominal_value)
-
-
-
-
+                R_Iso = fitterconstants.R_ISO_VALUE
 
         match self.fit_type:
             case fitterconstants.El.INDUCTOR:
-                #calculate "perfect" capacitor for this resonance
+                #calculate ideal capacitor for this resonance
                 cap_ideal = 1 / (self.nominal_value * ((self.f0*2*np.pi) ** 2))
                 #add to parameters
 
@@ -651,47 +663,42 @@ class Fitter:
                 param_set.add('R_Fe', value=R_Fe, min=fitterconstants.MIN_R_FE, max=fitterconstants.MAX_R_FE, vary=True)
                 param_set.add('R_s', value=self.series_resistance, min=self.series_resistance * 0.01,
                                     max=self.series_resistance * 1.111, vary=True)
-
-                # #config A
-                # #main element
-                # self.parameters.add('L', value=self.nominal_value, min=self.nominal_value * 0.9, max=self.nominal_value * 1.1, vary=False)
-                # # expression_string_C = '1/( w0 **2* L)'
-                # self.parameters.add('C', value=cap_ideal,
-                #                     min=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
-                #                     max=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary=True)
-
-                #Config B
                 param_set.add('C', value=cap_ideal,
                                     min=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
                                     max=cap_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary=True)
                 param_set.add('L', expr = expression_string_L, vary=False)
 
 
-                #alternative -> varies the main element and keeps the parasitic element constrained via expression
-                # self.parameters.add('L', value=self.nominal_value, min=self.nominal_value * 0.9,max=self.nominal_value * 1.1, vary=True)
-                # self.parameters.add('C',expr=expression_string_C, vary=False)
-
-
             case fitterconstants.El.CAPACITOR:
-                # calculate "perfect" inductor for this resonance
+                # calculate ideal inductor for this resonance
                 ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
+
+                expression_string_C = '1/(' + str(self.f0 * 2 * np.pi) + '**2*' + 'L)'
 
                 param_set.add('R_iso', value=R_Iso, min=fitterconstants.MIN_R_ISO, max=fitterconstants.MAX_R_ISO, vary=True)
                 param_set.add('R_s', value=self.series_resistance, min=self.series_resistance * 0.01,
                                     max=self.series_resistance * 1.111, vary=False)
-
-                #main element
-                expression_string_C = '1/(' + str(self.f0*2*np.pi) + '**2*' + 'L)'
                 param_set.add('L', value=ind_ideal,
                                     min=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_LOWER_BOUND,
                                     max=ind_ideal * fitterconstants.MAIN_RES_PARASITIC_UPPER_BOUND, vary=True)
-
                 param_set.add('C', expr = expression_string_C, vary = False)
 
-                # self.parameters.add('L',expr=expression_string_L,vary=False)
         return param_set
 
     def create_higher_order_parameters(self, config_number, param_set):
+        """
+        Method to create the circuit elements for the higher order resonances.
+        Can create parameters in two configurations.
+
+        Config 1 constrains one of the energy storing elements by the Q-factor and the other is bound by the resonant
+        frequency, leaving only the center frequency and the resistor adjustable.
+        Config 2 only constrains one energy storing element to the other by resonant frequency. This is the configuration
+        known to perform better if the main resonance fit is fairly accurate.
+
+        :param config_number: selecting the configuration of the resulting parameters. Can be either 1 or 2.
+        :param param_set: A Parameters() object that the circuit elements will be written to
+        :return: A Parameters() object containing the higher order circuit elements
+        """
 
         #if we got too many frequency zones -> restrict fit to max order
         #else get order from frequency zones and write found order to class
@@ -846,7 +853,6 @@ class Fitter:
 
                 match config_number:
                     case 1:
-                        # config B -> default config; this goes via the Q factor
                         expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
                         expression_string_R = '((' + BW_key + '*' + str(2 * np.pi) + ')/(' + w_key  + '))*sqrt(' + L_key + '/' + C_key + ')'
                         param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
@@ -854,14 +860,6 @@ class Fitter:
                         param_set.add(R_key, value = r_value, max = r_max, min = r_min, vary = True)
                         param_set.add(C_key, expr=expression_string_C, vary=False)
                     case 2:
-                        # config D (assuming perfectly fitted main resonance)
-                            #TODO: i commented the following section out, since we do that anyways
-                        # if (r_value - abs(main_res_data[f_c_index])) > 0:
-                        #     r_value = r_value - abs(main_res_data[f_c_index]) * (
-                        #                 abs(main_res_data[f_c_index]) / r_value)
-                        #     value_cap = Q / (w_c * r_value)
-                        #     max_cap = value_cap * 1e1  # 2
-                        #     min_cap = value_cap * 1e-1  # 500e-3
 
                         expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
                         expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(
@@ -908,12 +906,7 @@ class Fitter:
                         param_set.add(L_key, expr=expression_string_L, vary=False)
                         param_set.add(C_key, expr=expression_string_C, vary=False)
                     case 2:
-                        # config D (assuming perfectly fitted main resonance)
-                        # if (r_value - abs(main_res_data[f_c_index])) > 0:
-                        #     r_value = r_value - abs(main_res_data[f_c_index])*(abs(main_res_data[f_c_index])/r_value)
-                        #     value_cap = Q/(w_c*r_value)
-                        #     max_cap = value_cap * 1e1  # 2
-                        #     min_cap = value_cap * 1e-1  # 500e-3
+
 
                         expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
                         expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))' + '/' + R_key + ')**2'
@@ -922,17 +915,22 @@ class Fitter:
                         param_set.add(R_key, value = r_value, min = r_value * 0.5, max = r_value * 2)
                         param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
                         param_set.add(L_key, expr=expression_string_L)
-                        # self.parameters.add(C_key, expr=expression_string_C)
-
-        #invoke method to correct resistance values of the resonant circuits; invoked here because every resonant circuit
-        #added has effect on all other circuits
-        # param_set = self.correct_parameters(param_set)
 
 
         return param_set
 
     def pre_fit_bands(self, param_set):
-        #method to do a fit for each detected resonance; this improves overall accuracy
+        """
+        Method to fit the resonant circuits one-by-one to the impedance data
+
+        The resonant circuits are stepped through. The resonant circuit selected is freed, letting its parameters vary
+        while the other parameters are fixed in place. After the fit has completed, the circuits parameters are constrained
+        again to not vary and the next circuit will be fit.
+        This improves the overall accuracy of the model.
+
+        :param param_set: A Parameters() object containing the resonant circuits
+        :return: A Parameters() object containing the fitted bands
+        """
 
         #first fix all parameters in place
         self.fix_parameters(param_set)
@@ -978,6 +976,24 @@ class Fitter:
         return param_set
 
     def correct_parameters(self, param_set, change_main, num_it = 2):
+        """
+        Method to correct the parameters of the set. Corrects higher order resonances, but can also correct the main
+        resonance parameters if needed.
+
+        When the circuit elements are created, their resistance value is roughly the magnitude at resonance minus the
+        magnitude of the main resonance at that point. However as new elements are introduced into the model, the peak
+        values of the resonances slightly change, since every circuit influences all other circuits. This method aims to
+        correct the resistance values and (inherently to keep the same Q-factor for the circuit) the capacitor.
+
+        Note: does not work for the acoustic resonance of MLCCs
+
+        :param param_set: A Parameters() object containing the higher order circuits and main resonance
+        :param change_main: Boolean. Selects whether to correct the main resonance parameters
+        :param num_it: Number of iterations of the correction (is 2 by default)
+        :return: A Parameters() object containing the corrected parameters
+
+        """
+
         freq = self.frequency_vector
         order = self.order
         data = self.z21_data
@@ -1063,8 +1079,31 @@ class Fitter:
         return params
 
     def calculate_Z(self, parameters, frequency_vector, data, fit_order, fit_main_res, modeflag):
-        #method to calculate the impedance curve from chained parallel resonance circuits
-        #this method is needed for the fitter
+        """
+        Objective function that is invoked by the optimizer. Calculates the impedance for the model.
+
+        This calculates the impedance for the main resonance and then steps through all the higher order resonances in
+        order to calculate the impedance for the whole model.
+
+        Has different output modes:
+
+        - Impedance (OUTPUT)
+        - Difference in magnitude for the given data (FIT)
+        - Difference in phase for the given data (ANGLE)
+        - Difference in real part for the given data (FIT_REAL)
+        - Difference in imag part for the given data (FIT_IMAG)
+
+        Note: this **does** account for the acoustic resonance of MLCCs.
+
+        :param parameters: A Parameters() object containing the parameters of the model
+        :param frequency_vector: The frequency vector over which the impedance is requested.
+        :param data: The data to be used for all kinds of FIT output
+        :param fit_order: The order of the model (i.e. the number of resonant circuits)
+        :param fit_main_res: Boolean. Decides if only the main resonance shall be fit (TRUE) or if higher order
+                resonances shall be calculated too (FALSE)
+        :param modeflag: Decides which output the function shall give. Can be FIT, OUTPUT, ANGLE, FIT_REAL or FIT_IMAG
+        :return: Either the impedance of the model or a difference, depends on modeflag
+        """
 
         #if we only want to fit the main resonant circuit, set order to zero to avoid "for" loops
         if fit_main_res:
@@ -1098,9 +1137,6 @@ class Fitter:
             case El.CAPACITOR: #CAPACITOR
                 Z_main = (1 / ((1 / R_iso) + (1 / XC))) + XL + R_s
 
-                #trying a different model here
-                # Z_main = 1 / ( (1 / R_iso) + (1 / (XC + R_s + XL)) )
-
         Z = Z_main
 
         #if MLCC
@@ -1127,14 +1163,9 @@ class Fitter:
                 case fitterconstants.El.CAPACITOR:
                     Z = 1 / ( 1/Z + 1/(Z_R + Z_L + Z_C))
 
-        # diff = (np.real(data) - np.real(Z)) + 1j * (np.imag(data) - np.imag(Z))
-        # return abs(diff)
-
         match modeflag:
             case fcnmode.FIT:
-                diff = abs(data)-abs(Z)#(np.real(data) - np.real(Z)) + (np.imag(data) - np.imag(Z))
-                # diff = (np.real(data) - np.real(Z))**2 + (np.imag(data) - np.imag(Z))**2
-                # diff = np.linalg.norm(data-Z)
+                diff = abs(data)-abs(Z)
                 return (diff)
             case fcnmode.OUTPUT:
                 return Z
@@ -1146,6 +1177,12 @@ class Fitter:
                 return np.imag(data)-np.imag(Z)
 
     def fit_curve_higher_order(self, param_set):
+        """
+        Method to fit all higher order resonances.
+
+        :param param_set: A Parameters() object containing the circuits of the model
+        :return: A Parameters() object containing the fitted circuits
+        """
         freq = self.frequency_vector
         fit_data = self.z21_data
         fit_order = self.order
@@ -1166,14 +1203,14 @@ class Fitter:
 
         return out.params
 
-    def write_model_data(self, param_set, model_order):
-        freq = self.frequency_vector
-        mode = fitterconstants.fcnmode.OUTPUT
-        order = model_order
-        fit_main_resonance = 0
-        self.model_data = self.calculate_Z(param_set, freq, [], order, fit_main_resonance, mode)
-
     def fit_main_res_inductor_file_1(self, param_set):
+        """
+        Method to fit the main resonance circuit for an inductor for the first file (i.e. the reference file)
+
+        :param param_set: A Parameters() object containing the parameters for the main resonance circuit
+        :return: A Parameters() object containing the fitted parameters of the main resonance
+        """
+
         freq = self.frequency_vector
         fit_data = self.z21_data
         fit_order = self.order
@@ -1235,6 +1272,13 @@ class Fitter:
         return param_set
 
     def fit_main_res_capacitor_file_1(self, param_set):
+        """
+        Method to fit the main resonance circuit for a capacitor for the first file (i.e. the reference file)
+
+        :param param_set: A Parameters() object containing the parameters for the main resonance circuit
+        :return: A Parameters() object containing the fitted parameters of the main resonance
+        """
+
         freq = self.frequency_vector
         fit_data = self.z21_data
         fit_order = self.order
@@ -1290,6 +1334,13 @@ class Fitter:
         return param_set
 
     def fit_main_res_inductor_file_n(self, param_set, debug_plots=False):
+        """
+        Method to fit the main resonance circuit for an inductor for a file that is not the reference file
+
+        :param param_set: A Parameters() object containing the parameters for the main resonance circuit
+        :return: A Parameters() object containing the fitted parameters of the main resonance
+        """
+
         freq = self.frequency_vector
         fit_data = self.z21_data
         fit_order = self.order
@@ -1327,6 +1378,13 @@ class Fitter:
         return param_set
 
     def fit_main_res_capacitor_file_n(self, param_set, debug_plots=False):
+        """
+        Method to fit the main resonance circuit for a capacitor for a file that is not the reference file
+
+        :param param_set: A Parameters() object containing the parameters for the main resonance circuit
+        :return: A Parameters() object containing the fitted parameters of the main resonance
+        """
+
         freq = self.frequency_vector
         fit_data = self.z21_data
         fit_order = self.order
@@ -1364,6 +1422,18 @@ class Fitter:
         return param_set
 
     def select_param_set(self, params: list, debug = False):
+        """
+        A method to select the parameter set that fits "better" if multiple parameter sets have been created (that is the
+        case if there are multiple configurations)
+
+        This function calls the calculate_band_norm() function which returns a metric of how well a certain parameter set
+        fits the bands. That means the parameter sets are tested on how well they fit the corresponding resonances in the
+        data.
+
+        :param params: A list of Parameters() objects for the different models to test
+        :param debug: Boolean. If True the function logs which set it took
+        :return: The selected Parameters() object
+        """
         freq = self.frequency_vector
         fit_data = self.z21_data
         fit_main_resonance = False
@@ -1385,6 +1455,13 @@ class Fitter:
         return params[least_norm_mdl_index]
 
     def overwrite_main_res_params_file_n(self, param_set, param_set0):
+        """
+        Function to overwrite and recalculate the main resonance parameters for a file that is not the reference file.
+
+        :param param_set: A Parameters() object containing the main resonance parameters for the given file
+        :param param_set0: A Parameters() object containing the main resonance parameters for the reference file
+        :return: A Parameters() object containing the updated main resonance paramters
+        """
         fit_data = self.z21_data
         freq = self.frequency_vector
 
@@ -1420,8 +1497,35 @@ class Fitter:
 
 
     ####################################V AUXILLIARY V##################################################################
+    def write_model_data(self, param_set, model_order):
+        """
+        Auxilliary function to calculate the impedance of the model
+
+        :param param_set: A Parameters() object containing the circuits of the model
+        :param model_order: The order of the model i.e. the number of resonant circuits
+        :return: None (stores the model data in an instance variable)
+        """
+        freq = self.frequency_vector
+        mode = fitterconstants.fcnmode.OUTPUT
+        order = model_order
+        fit_main_resonance = 0
+        self.model_data = self.calculate_Z(param_set, freq, [], order, fit_main_resonance, mode)
 
     def change_parameter(self, param_set, param_name, min=None, max=None, value=None, vary=None, expr=None):
+        """
+        Auxilliary function to change a single parameter inside a Parameters() object.
+
+        Note: changing one of the attributes to "None" does not work.
+
+        :param param_set: A Parameters() object containing the parameter that will be changed
+        :param param_name: The parameter that will be changed
+        :param min:  The new min for the parameter. If not given, this attribute will not be changed.
+        :param max: The new max for the parameter. If not given, this attribute will not be changed.
+        :param value: The new value for the parameter. If not given, this attribute will not be changed.
+        :param vary: The new vary state for the parameter. If not given, this attribute will not be changed.
+        :param expr: The new expression string for the parameter. If not given, this attribute will not be changed.
+        :return: None
+        """
 
         if not min is None:
             param_set[param_name].min = min
@@ -1435,6 +1539,13 @@ class Fitter:
             param_set[param_name].expr = expr
 
     def calculate_band_norm(self, model):
+        """
+        Auxillary function used in the select_param_set() method. Calculates the difference between the data and the
+        model, but only in the region around the resonances.
+
+        :param model: A vector containing the values of the impedance of the model
+        :return: cumulative difference (larger cum.diff. means worse fit)
+        """
         #function to compare the two fit results
         freq = self.frequency_vector
         cumnorm = 0
@@ -1451,6 +1562,15 @@ class Fitter:
         return cumnorm
 
     def plot_curve(self, param_set, order, main_res, title = None):
+        """
+        Auxillary function to generate a plot of the given measurement data and the impedance of the model.
+
+        :param param_set: A Parameters() object containing the circuits of the model
+        :param order: The order of the model (i.e. the number of resonance circuits)
+        :param main_res: Boolean. If True the function will only plot the main resonance
+        :param title: Optional. String to use as title for the plot
+        :return: None
+        """
 
         testdata = self.calculate_Z(param_set, self.frequency_vector, 2, order, main_res, 2)
         plt.figure()
@@ -1459,7 +1579,20 @@ class Fitter:
         if title is not None:
             plt.title(title)
 
-    def calc_Z_simple_RLC(self,parameters,freq,data,ser_par,mode):
+    def calc_Z_simple_RLC(self, parameters, freq, data, ser_par, mode):
+        """
+        Auxillary function that calculates the impedance of a single RLC circuit.
+
+        This method is invoked by the model_bandwidth() funtion and it is an objective function like calculate_Z().
+
+        :param parameters: A Parameters() object, containing R, L and C
+        :param freq: The frequency vector over which the impedance is required
+        :param data: The corresponding data; needed if FIT mode is selected.
+        :param ser_par: Whether the RLC is a serial or parallel resonant circuit (1=serial;2=parallel)
+        :param mode: Can be FIT or OUTPUT, selects what will be returned.
+        :return: if mode == FIT, will return the difference in magnitude between the data and the model;
+                if mode == OUTPUT, will return the impedance of the resonant circuit
+        """
         w = np.pi*2*freq
         Z_R = parameters['R'].value
         Z_L = parameters['L'].value * 1j * w
@@ -1484,6 +1617,15 @@ class Fitter:
                 return Z
 
     def model_bandwidth(self, freqdata, data, peakfreq):
+        """
+        Auxillary function to brute-force fit a resonance circuit around a peak.
+
+        :param freqdata: The frequency vector for said peak
+        :param data: The measurement data around the peak
+        :param peakfreq: the resonant frequency of the peak
+        :return: Tuple: [b_l, b_u, R, L, C] The lower and upper 3dB points from the model (in Hz) and the R, L and C
+            values for a circuit that models the band
+        """
 
 
         #get the height of the peak and the index(will be used later)
@@ -1640,6 +1782,12 @@ class Fitter:
                 return [b_l, b_u, out.params['R'].value, out.params['L'].value, out.params['C'].value]
 
     def fix_main_resonance_parameters(self, param_set):
+        """
+        Auxillary function to lock the main resonance parameters in place
+
+        :param param_set: A Parameters() object containing the main resonance parameters that shell be fixed
+        :return: None
+        """
         param_set['R_s'].vary = False
         param_set['L'].vary = False
         param_set['C'].vary = False
@@ -1650,6 +1798,13 @@ class Fitter:
                 param_set['R_iso'].vary = False
 
     def free_parameters_higher_order(self, param_set):
+        """
+        Auxillary function to free (i.e. set vary to True) the higher order circuit parameters.
+
+        :param param_set: A Parameters object, containing the higher order resonances
+        :return: None
+        """
+
         for key_number in range(1, self.order + 1):
             #create keys
             C_key   = "C%s" % key_number
@@ -1662,7 +1817,16 @@ class Fitter:
             param_set[w_key].vary = True
 
     def fix_parameters(self, param_set, R = True, L=True, C=True, w=True):
-        #Method to fix the parameters in place, giving this function a "True", locks the corresponding parameters in place
+        """
+        Auxilliary function to lock parameters in a Parameters() object
+
+        :param param_set: A Parameters() object containing the parameters to lock
+        :param R: Boolean. Whether to lock these parameters or not. True locks the parameters. Will lock all higher order Rs
+        :param L: Boolean. Whether to lock these parameters or not. True locks the parameters. Will lock all higher order Ls
+        :param C: Boolean. Whether to lock these parameters or not. True locks the parameters. Will lock all higher order Cs
+        :param w: Boolean. Whether to lock these parameters or not. True locks the parameters. Will lock all higher order ws
+        :return: None
+        """
 
         param_set['R_s'].vary = False
         param_set['C'].vary = False
