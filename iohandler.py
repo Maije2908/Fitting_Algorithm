@@ -20,7 +20,6 @@ class IOhandler:
         self.files = []
         self.outpath = None
 
-
     def set_out_path(self, path):
         """
         Setter method to set the output path for the IOhandler
@@ -49,7 +48,6 @@ class IOhandler:
                 self.files.append(newfile)
         except Exception as e:
             raise e
-
 
     def generate_Netlist_2_port(self, parameters, fit_order, fit_type, saturation_table, captype = None):
         """
