@@ -75,7 +75,7 @@ class fcnmode:
     FIT_REAL:   int = 4
     FIT_IMAG:   int = 5
 
-class multiple_fit: #TODO: OBSOLETE I THINK
+class multiple_fit:
     FULL_FIT = 1
     MAIN_RES_FIT = 2
 

@@ -5,7 +5,7 @@ import skrf as rf
 import pandas as pd
 import os
 from fitter import *
-import fitter_config
+import constants
 import matplotlib
 from matplotlib import pyplot as plt
 
@@ -72,7 +72,7 @@ class IOhandler:
         order = fit_order
 
         match fit_type:
-            case fitter_config.El.INDUCTOR:
+            case constants.El.INDUCTOR:
 
                 # define the name of the model here:
                 model_name = "L_1"
@@ -124,7 +124,7 @@ class IOhandler:
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
 
 
-            case fitter_config.El.CAPACITOR:
+            case constants.El.CAPACITOR:
 
                 # define the name of the model here:
                 model_name = "C_1"
@@ -152,7 +152,7 @@ class IOhandler:
 
                 ############### ACOUSTIC RESONANCE PARAMETERS FOR MLCCs ################################################
 
-                if captype == fitter_config.captype.MLCC:
+                if captype == constants.captype.MLCC:
                     RA = out['R_A'].value
                     LA = out['L_A'].value
                     CA = out['C_A'].value
@@ -245,7 +245,7 @@ class IOhandler:
         order = fit_order
 
         match fit_type:
-            case fitter_config.El.INDUCTOR:
+            case constants.El.INDUCTOR:
 
                 # define the name of the model here:
                 model_name = "L_1"
@@ -315,7 +315,7 @@ class IOhandler:
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
 
 
-            case fitter_config.El.CAPACITOR:
+            case constants.El.CAPACITOR:
 
                 # define the name of the model here:
                 model_name = "C_1"
@@ -365,7 +365,7 @@ class IOhandler:
                     lib += "\n"
 
                 ############### ACOUSTIC RESONANCE FOR MLCCs ###########################################################
-                if captype == fitter_config.captype.MLCC:
+                if captype == constants.captype.MLCC:
                     RA = out['R_A'].value
                     LA = out['L_A'].value
                     CA = out['C_A'].value
@@ -444,7 +444,7 @@ class IOhandler:
 
         #write the main resonance parameters to the dict
         match fit_type:
-            case fitter_config.El.INDUCTOR:
+            case constants.El.INDUCTOR:
                 R_s_list = []
                 R_Fe_list =[]
                 L_list = []
@@ -461,7 +461,7 @@ class IOhandler:
                 out_dict['C'] = C_list
 
 
-            case fitter_config.El.CAPACITOR:
+            case constants.El.CAPACITOR:
                 R_s_list = []
                 R_Iso_list = []
                 L_list = []
@@ -477,7 +477,7 @@ class IOhandler:
                 out_dict['L'] = L_list
                 out_dict['C'] = C_list
 
-                if captype == fitter_config.captype.MLCC:
+                if captype == constants.captype.MLCC:
                     R_A_list = []
                     L_A_list = []
                     C_A_list = []
@@ -608,13 +608,13 @@ class IOhandler:
         #may be obsolete
         plt.savefig(os.path.join(plot_folder, "Bode_plot_" + filename + ".png"), dpi = 300)
 
-        if fitter_config.SHOW_BODE_PLOTS:
+        if constants.SHOW_BODE_PLOTS:
             plt.show()
         else:
             plt.close(fig)
 
         #Diffplot
-        if fitter_config.OUTPUT_DIFFPLOTS:
+        if constants.OUTPUT_DIFFPLOTS:
             diff_data = abs(mdl)-abs(z21)
             diff_data_percent = (diff_data/abs(z21))*100
             title = filename + " (Model-Measurement)/Measurement in %"
@@ -632,7 +632,7 @@ class IOhandler:
             # plt.plot(freq, diff_data_percent, 'r', linewidth=3, alpha=1)
             plt.savefig(os.path.join(plot_folder, "Diff_plot_" + filename + ".png"))
 
-        if fitter_config.SHOW_BODE_PLOTS:
+        if constants.SHOW_BODE_PLOTS:
             plt.show()
         else:
             plt.close(fig)

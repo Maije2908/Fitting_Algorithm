@@ -2,9 +2,11 @@
 import tkinter as tk
 from tkinter import filedialog
 
-import fitter_config
+import constants
 from fitter import *
 import GUI_config
+import constants
+import config
 import copy
 import os
 import re
@@ -39,7 +41,7 @@ class GUI:
         self.filename_ref_button = []
         self.ref_file_select =None
 
-        self.mp_pool = mp.Pool(mp.cpu_count())
+        self.mp_pool = mp.Pool(config.MULTIPROCESSING_COUNT)
 
         # Window GUI_config
         self.root: tk.Tk = tk.Tk()
@@ -305,7 +307,7 @@ class GUI:
         """
 
         # TODO: the capacitor type is hardcoded here, consider some entry box or something
-        captype = fitter_config.captype.MLCC
+        captype = config.CAPTYPE
 
 
         self.logger.info("----------Run----------\n")
@@ -316,7 +318,7 @@ class GUI:
         passive_nom = self.entry_to_float(self.entry_nominal_value.get())
         res         = self.entry_to_float(self.entry_resistance.get())
         prom        = self.entry_to_float(self.entry_prominence.get())
-        sat         = self.entry_to_float(self.entry_saturation.get())
+
 
         #get the shunt/series through setting
         shunt_series = self.shunt_series.get()
@@ -416,18 +418,18 @@ class GUI:
                 if it == 0:
                     #fit the main resonance for the first file
                     match fit_type:
-                        case fitter_config.El.INDUCTOR:
+                        case constants.El.INDUCTOR:
                             fitted_main_res_params = fitter.fit_main_res_inductor_file_1(main_res_params)
-                        case fitter_config.El.CAPACITOR:
+                        case constants.El.CAPACITOR:
                             fitted_main_res_params = fitter.fit_main_res_capacitor_file_1(main_res_params)
                 else:
                     #fit the main resonance for every other file (we have to overwrite some parameters here, since the
                     # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
                     main_res_params = fitter.overwrite_main_res_params_file_n(main_res_params, parameter_list[0])
                     match fit_type:
-                        case fitter_config.El.INDUCTOR:
+                        case constants.El.INDUCTOR:
                             fitted_main_res_params = fitter.fit_main_res_inductor_file_n(main_res_params)
-                        case fitter_config.El.CAPACITOR:
+                        case constants.El.CAPACITOR:
                             fitted_main_res_params = fitter.fit_main_res_capacitor_file_n(main_res_params)
                 #finally write the fitted main resonance parameters to the list
                 parameter_list.append(fitted_main_res_params)
@@ -437,7 +439,7 @@ class GUI:
             ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
 
             # get acoustic resonance frequency for all files, if not found write "None" to list
-            if captype == fitter_config.captype.MLCC and fit_type == fitter_config.El.CAPACITOR:
+            if captype == constants.captype.MLCC and fit_type == constants.El.CAPACITOR:
                 acoustic_res_frqs = []
                 for fitter in fitters:
                     try:
@@ -463,7 +465,7 @@ class GUI:
                             parameter_list[it].add('R_A', value=hi_R)
                 else:
                     self.logger.info("WARNING: MLCCs captype selected, but only one file is present. Switching to generic captype")
-                    captype = fitter_config.captype.GENERIC
+                    captype = constants.captype.GENERIC
                     for fitter in fitters:
                         fitter.set_captype(captype)
 
@@ -572,21 +574,21 @@ class GUI:
             # create saturation table and get nominal value
             saturation_table = {}
             match fit_type:
-                case fitter_config.El.INDUCTOR:
+                case constants.El.INDUCTOR:
                     saturation_table['L'] = self.generate_saturation_table(parameter_list, 'L', dc_bias)
                     saturation_table['R_Fe'] = self.generate_saturation_table(parameter_list, 'R_Fe',
                                                                               dc_bias)
-                case fitter_config.El.CAPACITOR:
+                case constants.El.CAPACITOR:
                     saturation_table['C'] = self.generate_saturation_table(parameter_list, 'C', dc_bias)
                     saturation_table['R_s'] = self.generate_saturation_table(parameter_list, 'R_s', dc_bias)
 
             # write saturation table for acoustic resonance
-            if fit_type == fitter_config.El.CAPACITOR and captype == fitter_config.captype.MLCC:
+            if fit_type == constants.El.CAPACITOR and captype == constants.captype.MLCC:
                 saturation_table['R_A'] = self.generate_saturation_table(parameter_list, 'R_A', dc_bias)
                 saturation_table['L_A'] = self.generate_saturation_table(parameter_list, 'L_A', dc_bias)
                 saturation_table['C_A'] = self.generate_saturation_table(parameter_list, 'C_A', dc_bias)
 
-            if fitter_config.FULL_FIT:
+            if config.FULL_FIT:
 
                 # create saturation tables for all parameters
                 for key_number in range(1, order + 1):
@@ -610,13 +612,13 @@ class GUI:
             #export parameters
             self.iohandler.export_parameters(parameter_list, order, fit_type, captype)
 
-            if fitter_config.FULL_FIT:
+            if config.FULL_FIT:
                 self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],order, fit_type, saturation_table, captype=captype)
             else:
                 self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table, captype=captype)
 
             for it, fitter in enumerate(fitters):
-                upper_frq_lim = fitter_config.FREQ_UPPER_LIMIT
+                upper_frq_lim = constants.FREQ_UPPER_LIMIT
 
                 fitter.write_model_data(parameter_list[it], order)
 
@@ -693,9 +695,9 @@ class GUI:
         assignment_matrix = asg_mat_new
 
         match fitters[0].fit_type: #TODO: this could use some better way of determining the fit type
-            case fitter_config.El.INDUCTOR:
+            case constants.El.INDUCTOR:
                 r_default = 1e-1
-            case fitter_config.El.CAPACITOR:
+            case constants.El.CAPACITOR:
                 r_default = 1e9
 
         #switch key numbers
@@ -735,17 +737,17 @@ class GUI:
         :return: The out_set with copied main element parameters
         """
         match fit_type:
-            case fitter_config.El.INDUCTOR:
+            case constants.El.INDUCTOR:
                 out_set.add('R_s', value = parameter_set['R_s'].value)
                 out_set.add('R_Fe', value =parameter_set['R_Fe'].value)
                 out_set.add('L', value =parameter_set['L'].value)
                 out_set.add('C', value =parameter_set['C'].value)
-            case fitter_config.El.CAPACITOR:
+            case constants.El.CAPACITOR:
                 out_set.add('R_s', value =parameter_set['R_s'].value)
                 out_set.add('R_iso', value =parameter_set['R_iso'].value)
                 out_set.add('L', value =parameter_set['L'].value)
                 out_set.add('C', value =parameter_set['C'].value)
-                if captype == fitter_config.captype.MLCC:
+                if captype == constants.captype.MLCC:
                     out_set.add('R_A', value=parameter_set['R_A'].value)
                     out_set.add('L_A', value=parameter_set['L_A'].value)
                     out_set.add('C_A', value=parameter_set['C_A'].value)
