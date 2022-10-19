@@ -1,12 +1,10 @@
 # import packages
 import tkinter as tk
 from tkinter import filedialog
-#maybe import later for logging to gui
-#import tkinter.scrolledtext as scroll_text
-#import logging
-import fitterconstants
+
+import fitter_config
 from fitter import *
-import config
+import GUI_config
 import copy
 import os
 import re
@@ -55,10 +53,10 @@ class GUI:
 
         self.mp_pool = mp.Pool(mp.cpu_count())
 
-        # Window config
+        # Window GUI_config
         self.root: tk.Tk = tk.Tk()
         self.root.wm_title('Fitting Program V2')
-        self.root.config(bg='#FFFFFF')
+        self.root.GUI_config(bg='#FFFFFF')
 
         # print screen size
         print("Width: ", self.root.winfo_screenwidth())
@@ -80,24 +78,23 @@ class GUI:
         # self.create_file_list()
 
     def create_drop_down(self):
-        self.drop_down_var = tk.StringVar(self.root, config.DROP_DOWN_ELEMENTS[0])
+        self.drop_down_var = tk.StringVar(self.root, GUI_config.DROP_DOWN_ELEMENTS[0])
 
-        self.option_menu = tk.OptionMenu(self.root, self.drop_down_var, *config.DROP_DOWN_ELEMENTS)
-        max_drop_length = len(max(config.DROP_DOWN_ELEMENTS, key=len))
-        self.option_menu.config(font=config.DROP_DOWN_FONT, width=max_drop_length + 5, height=config.DROP_DOWN_HEIGHT)
-        self.option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.W, **config.HEADLINE_PADDING)
+        self.option_menu = tk.OptionMenu(self.root, self.drop_down_var, *GUI_config.DROP_DOWN_ELEMENTS)
+        max_drop_length = len(max(GUI_config.DROP_DOWN_ELEMENTS, key=len))
+        self.option_menu.GUI_config(font=GUI_config.DROP_DOWN_FONT, width=max_drop_length + 5, height=GUI_config.DROP_DOWN_HEIGHT)
+        self.option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.W, **GUI_config.HEADLINE_PADDING)
 
     def create_shunt_series_radio_button(self):
         self.shunt_series = tk.IntVar()
         label_calc = tk.Label(self.root, text="Z Calculation Method")
-        label_calc.config(font=config.ENTRY_FONT)
-        label_calc.grid(column=2, row=1, sticky=tk.NW, **config.HEADLINE_PADDING)
+        label_calc.GUI_config(font=GUI_config.ENTRY_FONT)
+        label_calc.grid(column=2, row=1, sticky=tk.NW, **GUI_config.HEADLINE_PADDING)
 
-        r1 = tk.Radiobutton(self.root, text = 'Shunt Through', variable=self.shunt_series,value=config.SHUNT_THROUGH)
-        r2 = tk.Radiobutton(self.root, text = 'Series Through', variable=self.shunt_series,value=config.SERIES_THROUGH)
+        r1 = tk.Radiobutton(self.root, text = 'Shunt Through', variable=self.shunt_series, value=GUI_config.SHUNT_THROUGH)
+        r2 = tk.Radiobutton(self.root, text = 'Series Through', variable=self.shunt_series, value=GUI_config.SERIES_THROUGH)
         r1.grid(column=2, row=2)
         r2.grid(column=2, row=3)
-
 
     def create_specification_field(self):
 
@@ -106,66 +103,66 @@ class GUI:
         vcmd = (self.root.register(self.entry_number_callback), "%P")
 
         # Headline
-        label_spec = tk.Label(self.root, text="Specification", bg=config.BCKGND_COLOR)
-        label_spec.config(font=config.HEADLINE_FONT)
-        label_spec.grid(column=0, row=1, columnspan=2, sticky=tk.NW, **config.HEADLINE_PADDING)
+        label_spec = tk.Label(self.root, text="Specification", bg=GUI_config.BCKGND_COLOR)
+        label_spec.GUI_config(font=GUI_config.HEADLINE_FONT)
+        label_spec.grid(column=0, row=1, columnspan=2, sticky=tk.NW, **GUI_config.HEADLINE_PADDING)
 
         # initial value
-        passive_element_label = tk.Label(self.root, text="F/C", bg=config.BCKGND_COLOR)
-        passive_element_label.config(font=config.ENTRY_FONT)
-        passive_element_label.grid(column=0, row=2, sticky=tk.W, **config.SPEC_PADDING)
+        passive_element_label = tk.Label(self.root, text="F/C", bg=GUI_config.BCKGND_COLOR)
+        passive_element_label.GUI_config(font=GUI_config.ENTRY_FONT)
+        passive_element_label.grid(column=0, row=2, sticky=tk.W, **GUI_config.SPEC_PADDING)
 
         self.entry_nominal_value = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
-        self.entry_nominal_value.config(font=config.ENTRY_FONT)
-        self.entry_nominal_value.grid(column=1, row=2, sticky=tk.W, **config.ENTRY_PADDING)
+        self.entry_nominal_value.GUI_config(font=GUI_config.ENTRY_FONT)
+        self.entry_nominal_value.grid(column=1, row=2, sticky=tk.W, **GUI_config.ENTRY_PADDING)
 
         # initial resistance value
-        label_resistance = tk.Label(self.root, text="\u03A9", bg=config.BCKGND_COLOR)
-        label_resistance.config(font=config.ENTRY_FONT)
-        label_resistance.grid(column=0, row=3, sticky=tk.W, **config.SPEC_PADDING)
+        label_resistance = tk.Label(self.root, text="\u03A9", bg=GUI_config.BCKGND_COLOR)
+        label_resistance.GUI_config(font=GUI_config.ENTRY_FONT)
+        label_resistance.grid(column=0, row=3, sticky=tk.W, **GUI_config.SPEC_PADDING)
 
         self.entry_resistance = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
-        self.entry_resistance.config(font=config.ENTRY_FONT)
-        self.entry_resistance.grid(column=1, row=3, sticky=tk.W, **config.ENTRY_PADDING)
+        self.entry_resistance.GUI_config(font=GUI_config.ENTRY_FONT)
+        self.entry_resistance.grid(column=1, row=3, sticky=tk.W, **GUI_config.ENTRY_PADDING)
 
         # Saturation Table
-        label_saturation = tk.Label(self.root, text="Saturation Table", bg=config.BCKGND_COLOR)
-        label_saturation.config(font=config.ENTRY_FONT)
-        label_saturation.grid(column=0, row=4, sticky=tk.W, **config.SPEC_PADDING)
+        label_saturation = tk.Label(self.root, text="Saturation Table", bg=GUI_config.BCKGND_COLOR)
+        label_saturation.GUI_config(font=GUI_config.ENTRY_FONT)
+        label_saturation.grid(column=0, row=4, sticky=tk.W, **GUI_config.SPEC_PADDING)
         # endregion
 
         self.entry_saturation = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
-        self.entry_saturation.config(font=config.ENTRY_FONT)
-        self.entry_saturation.grid(column=1, row=4, sticky=tk.W, **config.ENTRY_PADDING)
+        self.entry_saturation.GUI_config(font=GUI_config.ENTRY_FONT)
+        self.entry_saturation.grid(column=1, row=4, sticky=tk.W, **GUI_config.ENTRY_PADDING)
 
         # Prominence
-        label_prominence = tk.Label(self.root, text="Prominence in dB", bg=config.BCKGND_COLOR)
-        label_prominence.config(font=config.ENTRY_FONT)
-        label_prominence.grid(column=0, row=5, sticky=tk.W, **config.SPEC_PADDING)
+        label_prominence = tk.Label(self.root, text="Prominence in dB", bg=GUI_config.BCKGND_COLOR)
+        label_prominence.GUI_config(font=GUI_config.ENTRY_FONT)
+        label_prominence.grid(column=0, row=5, sticky=tk.W, **GUI_config.SPEC_PADDING)
 
         self.entry_prominence = tk.Entry(self.root, validate='all', validatecommand=(vcmd))
-        self.entry_prominence.config(font=config.ENTRY_FONT)
-        self.entry_prominence.grid(column=1, row=5, sticky=tk.W, **config.ENTRY_PADDING)
+        self.entry_prominence.GUI_config(font=GUI_config.ENTRY_FONT)
+        self.entry_prominence.grid(column=1, row=5, sticky=tk.W, **GUI_config.ENTRY_PADDING)
 
     def create_browse_button(self):
         browse_button = tk.Button(self.root, command=self.callback_browse_s2p_file, text="Select s2p File(s)")
-        browse_button.config(font=config.ENTRY_FONT)
-        browse_button.grid(column=0, row=6, sticky=tk.W, **config.BUTTON_LEFT_PADDING)
+        browse_button.GUI_config(font=GUI_config.ENTRY_FONT)
+        browse_button.grid(column=0, row=6, sticky=tk.W, **GUI_config.BUTTON_LEFT_PADDING)
 
     def create_run_button(self):
         browse_button = tk.Button(self.root, command=self.callback_run, text="Run")
-        browse_button.config(font=config.ENTRY_FONT)
-        browse_button.grid(column=1, row=6, sticky=tk.W, **config.BUTTON_RIGHT_PADDING)
+        browse_button.GUI_config(font=GUI_config.ENTRY_FONT)
+        browse_button.grid(column=1, row=6, sticky=tk.W, **GUI_config.BUTTON_RIGHT_PADDING)
 
     def create_clear_files_button(self):
         browse_button = tk.Button(self.root, command=self.callback_clear_files, text="Clear Files")
-        browse_button.config(font=config.ENTRY_FONT)
-        browse_button.grid(column=4, row=0, sticky=tk.W, **config.BUTTON_RIGHT_PADDING)
+        browse_button.GUI_config(font=GUI_config.ENTRY_FONT)
+        browse_button.grid(column=4, row=0, sticky=tk.W, **GUI_config.BUTTON_RIGHT_PADDING)
 
     def create_log_window(self):
-        self.st = scrolledtext.ScrolledText(self.root, state='disabled')#, width=config.LOG_WIDTH,  height=config.LOG_HEIGHT)
+        self.st = scrolledtext.ScrolledText(self.root, state='disabled')#, width=GUI_config.LOG_WIDTH,  height=GUI_config.LOG_HEIGHT)
         self.st.configure(font='TkFixedFont')
-        self.st.grid(column=0,row=9,columnspan=3,sticky=tk.W,**config.ENTRY_PADDING)
+        self.st.grid(column=0, row=9, columnspan=3, sticky=tk.W, **GUI_config.ENTRY_PADDING)
         # self.st.pack()
         self.texthndl = Text_Handler(self.st)
         self.logger = logging.getLogger()
@@ -174,7 +171,7 @@ class GUI:
 
     def create_filelist_frame (self):
         self.filelist_frame = tk.LabelFrame(self.root, text = 'Files')
-        self.filelist_frame.grid(column = 4, row = 1, rowspan = 10, columnspan=2, sticky=tk.NW, **config.SPEC_PADDING)
+        self.filelist_frame.grid(column = 4, row = 1, rowspan = 10, columnspan=2, sticky=tk.NW, **GUI_config.SPEC_PADDING)
         # create headings for the columns
         ref_lbl = tk.Label(self.filelist_frame, text='Reference File?')
         name_lbl = tk.Label(self.filelist_frame, text='Filename')
@@ -194,7 +191,6 @@ class GUI:
 
         return file_current_voltage_list
 
-
     def update_file_list(self):
         rownumber = len(self.filename_label) + 1
         vcmd = (self.root.register(self.entry_number_callback), "%P")
@@ -205,8 +201,8 @@ class GUI:
             label_name = file.name
             label = tk.Label(self.filelist_frame, text= label_name)
             entry = tk.Entry(self.filelist_frame, width = 5, validate='all', validatecommand=(vcmd))
-            label.grid(column=1, row = rownumber, sticky=tk.NW, **config.SPEC_PADDING)
-            entry.grid(column=2, row = rownumber, sticky=tk.NSEW, **config.SPEC_PADDING)
+            label.grid(column=1, row = rownumber, sticky=tk.NW, **GUI_config.SPEC_PADDING)
+            entry.grid(column=2, row = rownumber, sticky=tk.NSEW, **GUI_config.SPEC_PADDING)
             #create a button for the selection of the reference file
             r_button = tk.Radiobutton(self.filelist_frame, variable=self.ref_file_select, value =rownumber - 1)
             r_button.grid(column=0, row=rownumber)
@@ -215,7 +211,6 @@ class GUI:
             self.filename_entry.append(entry)
             self.filename_label.append(label)
             self.filename_ref_button.append(r_button)
-
 
     def callback_clear_files(self):
         #method to clear the file list and also the files from the iohandler
@@ -231,13 +226,6 @@ class GUI:
         self.filename_entry = []
         self.filename_ref_button = []
 
-
-
-    ####################################################################################################################
-    # Button commands
-
-    # Method that is invoked when the "open file" button is pressed; opens a file dialoge, and invokes the IOhandler
-    # in order to load the touchstone file
     def callback_browse_s2p_file(self):
         filename = tk.filedialog.askopenfilename(title=
                                                  'Open Measured Data (Touchstone-Format)',
@@ -254,7 +242,7 @@ class GUI:
 
         #NOTE: second parameter should be to select inductivity/capacitance; unsure (yet) if this is necessary
         try:
-            self.iohandler.load_file(path_list, 2)
+            self.iohandler.load_file(path_list)
             self.logger.info("Opened Files:")
             [self.logger.info(file_path) for file_path in path_list]
         except Exception as e:
@@ -266,12 +254,10 @@ class GUI:
 
         return 0
 
-
-    #method to run the fitting algorithm, invoked when "run" button is pressed
     def callback_run(self):
 
         # TODO: the capacitor type is hardcoded here, consider some entry box or something
-        captype = fitterconstants.captype.MLCC
+        captype = fitter_config.captype.MLCC
 
 
         self.logger.info("----------Run----------\n")
@@ -298,11 +284,11 @@ class GUI:
                 raise Exception("Shunt/Series-Through not set!\nPlease select a calculation mode")
 
 
-            if element_type_str == config.DROP_DOWN_ELEMENTS[0]:
-                fit_type = config.El.INDUCTOR
-            elif element_type_str == config.DROP_DOWN_ELEMENTS[1]:
-                fit_type = config.El.CAPACITOR
-            elif element_type_str == config.DROP_DOWN_ELEMENTS[2]:
+            if element_type_str == GUI_config.DROP_DOWN_ELEMENTS[0]:
+                fit_type = GUI_config.El.INDUCTOR
+            elif element_type_str == GUI_config.DROP_DOWN_ELEMENTS[1]:
+                fit_type = GUI_config.El.CAPACITOR
+            elif element_type_str == GUI_config.DROP_DOWN_ELEMENTS[2]:
                 # self.logger.error('CMCs not implemented yet, please change element type')
                 raise Exception('CMCs not implemented yet, please change element type')
 
@@ -350,10 +336,10 @@ class GUI:
 
                 #calculate the impedance data for the fitter
                 match shunt_series:
-                    case config.SHUNT_THROUGH:
-                        fitter_instance.calc_shunt_thru(config.Z0)
-                    case config.SERIES_THROUGH:
-                        fitter_instance.calc_series_thru(config.Z0)
+                    case GUI_config.SHUNT_THROUGH:
+                        fitter_instance.calc_shunt_thru(GUI_config.Z0)
+                    case GUI_config.SERIES_THROUGH:
+                        fitter_instance.calc_series_thru(GUI_config.Z0)
 
                 #smooth the impedance data and pass the specification
                 fitter_instance.smooth_data()
@@ -382,18 +368,18 @@ class GUI:
                 if it == 0:
                     #fit the main resonance for the first file
                     match fit_type:
-                        case fitterconstants.El.INDUCTOR:
+                        case fitter_config.El.INDUCTOR:
                             fitted_main_res_params = fitter.fit_main_res_inductor_file_1(main_res_params)
-                        case fitterconstants.El.CAPACITOR:
+                        case fitter_config.El.CAPACITOR:
                             fitted_main_res_params = fitter.fit_main_res_capacitor_file_1(main_res_params)
                 else:
                     #fit the main resonance for every other file (we have to overwrite some parameters here, since the
                     # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
                     main_res_params = fitter.overwrite_main_res_params_file_n(main_res_params, parameter_list[0])
                     match fit_type:
-                        case fitterconstants.El.INDUCTOR:
+                        case fitter_config.El.INDUCTOR:
                             fitted_main_res_params = fitter.fit_main_res_inductor_file_n(main_res_params)
-                        case fitterconstants.El.CAPACITOR:
+                        case fitter_config.El.CAPACITOR:
                             fitted_main_res_params = fitter.fit_main_res_capacitor_file_n(main_res_params)
                 #finally write the fitted main resonance parameters to the list
                 parameter_list.append(fitted_main_res_params)
@@ -403,7 +389,7 @@ class GUI:
             ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
 
             # get acoustic resonance frequency for all files, if not found write "None" to list
-            if captype == fitterconstants.captype.MLCC and fit_type == fitterconstants.El.CAPACITOR:
+            if captype == fitter_config.captype.MLCC and fit_type == fitter_config.El.CAPACITOR:
                 acoustic_res_frqs = []
                 for fitter in fitters:
                     try:
@@ -429,7 +415,7 @@ class GUI:
                             parameter_list[it].add('R_A', value=hi_R)
                 else:
                     self.logger.info("WARNING: MLCCs captype selected, but only one file is present. Switching to generic captype")
-                    captype = fitterconstants.captype.GENERIC
+                    captype = fitter_config.captype.GENERIC
                     for fitter in fitters:
                         fitter.set_captype(captype)
 
@@ -538,21 +524,21 @@ class GUI:
             # create saturation table and get nominal value
             saturation_table = {}
             match fit_type:
-                case fitterconstants.El.INDUCTOR:
+                case fitter_config.El.INDUCTOR:
                     saturation_table['L'] = self.generate_saturation_table(parameter_list, 'L', dc_bias)
                     saturation_table['R_Fe'] = self.generate_saturation_table(parameter_list, 'R_Fe',
                                                                               dc_bias)
-                case fitterconstants.El.CAPACITOR:
+                case fitter_config.El.CAPACITOR:
                     saturation_table['C'] = self.generate_saturation_table(parameter_list, 'C', dc_bias)
                     saturation_table['R_s'] = self.generate_saturation_table(parameter_list, 'R_s', dc_bias)
 
             # write saturation table for acoustic resonance
-            if fit_type == fitterconstants.El.CAPACITOR and captype == fitterconstants.captype.MLCC:
+            if fit_type == fitter_config.El.CAPACITOR and captype == fitter_config.captype.MLCC:
                 saturation_table['R_A'] = self.generate_saturation_table(parameter_list, 'R_A', dc_bias)
                 saturation_table['L_A'] = self.generate_saturation_table(parameter_list, 'L_A', dc_bias)
                 saturation_table['C_A'] = self.generate_saturation_table(parameter_list, 'C_A', dc_bias)
 
-            if fitterconstants.FULL_FIT:
+            if fitter_config.FULL_FIT:
 
                 # create saturation tables for all parameters
                 for key_number in range(1, order + 1):
@@ -576,13 +562,13 @@ class GUI:
             #export parameters
             self.iohandler.export_parameters(parameter_list, order, fit_type, captype)
 
-            if fitterconstants.FULL_FIT:
+            if fitter_config.FULL_FIT:
                 self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],order, fit_type, saturation_table, captype=captype)
             else:
-                self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table)
+                self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table, captype=captype)
 
             for it, fitter in enumerate(fitters):
-                upper_frq_lim = fitterconstants.FREQ_UPPER_LIMIT
+                upper_frq_lim = fitter_config.FREQ_UPPER_LIMIT
 
                 fitter.write_model_data(parameter_list[it], order)
 
@@ -651,9 +637,9 @@ class GUI:
         assignment_matrix = asg_mat_new
 
         match fitters[0].fit_type: #TODO: this could use some better way of determining the fit type
-            case fitterconstants.El.INDUCTOR:
+            case fitter_config.El.INDUCTOR:
                 r_default = 1e-1
-            case fitterconstants.El.CAPACITOR:
+            case fitter_config.El.CAPACITOR:
                 r_default = 1e9
 
         #switch key numbers
@@ -684,17 +670,17 @@ class GUI:
 
     def copy_nominals(self,out_set, parameter_set, fit_type, captype = None):
         match fit_type:
-            case fitterconstants.El.INDUCTOR:
+            case fitter_config.El.INDUCTOR:
                 out_set.add('R_s', value = parameter_set['R_s'].value)
                 out_set.add('R_Fe', value =parameter_set['R_Fe'].value)
                 out_set.add('L', value =parameter_set['L'].value)
                 out_set.add('C', value =parameter_set['C'].value)
-            case fitterconstants.El.CAPACITOR:
+            case fitter_config.El.CAPACITOR:
                 out_set.add('R_s', value =parameter_set['R_s'].value)
                 out_set.add('R_iso', value =parameter_set['R_iso'].value)
                 out_set.add('L', value =parameter_set['L'].value)
                 out_set.add('C', value =parameter_set['C'].value)
-                if captype == fitterconstants.captype.MLCC:
+                if captype == fitter_config.captype.MLCC:
                     out_set.add('R_A', value=parameter_set['R_A'].value)
                     out_set.add('L_A', value=parameter_set['L_A'].value)
                     out_set.add('C_A', value=parameter_set['C_A'].value)
@@ -773,10 +759,6 @@ class GUI:
 
         return saturation_table
 
-
-    # check function, invoked by the validationcommand of the entry-fields
-    # returns TRUE if the value entried is a number; can have a leading + or - and can have ONE decimal point (.)
-    # returns FALSE otherwise
     def entry_number_callback(self, checkstring):
         # regular expression copied from: https://stackoverflow.com/questions/46116037/tkinter-restrict-entry-data-to-float
         regex = re.compile(r"(\+|\-)?[0-9.]*$")
@@ -803,6 +785,5 @@ class GUI:
         except:
             return None
 
-
-    def start(self):
+    def start_GUI(self):
         self.root.mainloop()

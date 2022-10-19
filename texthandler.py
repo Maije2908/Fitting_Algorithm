@@ -3,11 +3,18 @@
 import logging
 import tkinter
 import threading
+"""
+"""
 
-    #see https://gist.github.com/moshekaplan/c425f861de7bbf28ef06 for reference
 
 class Text_Handler(logging.Handler):
-    """This class allows you to log to a Tkinter Text or ScrolledText widget"""
+    """
+        Texthandler for GUI output of log messages; copypasted
+
+        This class allows you to log to a Tkinter Text or ScrolledText widget
+        #see https://gist.github.com/moshekaplan/c425f861de7bbf28ef06 for reference
+    """
+
     def __init__(self, text):
         # run the regular Handler __init__
         logging.Handler.__init__(self)
@@ -15,6 +22,12 @@ class Text_Handler(logging.Handler):
         self.text = text
 
     def emit(self, record):
+        """
+        Method to emit text to the GUI scrolledtext widget
+        Overrides method in logging.Handler
+        :param record: Message to output
+        :return: None
+        """
         msg = self.format(record)
         def append():
             self.text.configure(state='normal')

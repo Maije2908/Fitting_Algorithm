@@ -31,23 +31,11 @@ import platform
 from GUI import *
 from iohandler import *
 
-
-# print different System settings:
-# operating system
-if platform.system() == 'Linux':
-    print('Linux detected.')
-elif platform.system() == 'Windows':
-    print('Windows detected.')
-elif platform.system() == 'Darwin':
-    print('Mac detected.')
-else:
-    print('No valid operating system detected!')
-
 # start GUI
 if __name__ == '__main__':
-    #initialize iohandler prior to GUI, since GUI needs an instance of it, same goes for the fitter
+    #initialize iohandler prior to GUI, since GUI needs an instance of it
     iohandler = IOhandler()
 
     gui = GUI(iohandler)
 
-    gui.start()
+    gui.start_GUI()
