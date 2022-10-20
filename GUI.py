@@ -41,11 +41,10 @@ class GUI:
         self.filename_ref_button = []
         self.ref_file_select =None
 
-        self.mp_pool = mp.Pool(config.MULTIPROCESSING_COUNT)
 
         # Window GUI_config
         self.root: tk.Tk = tk.Tk()
-        self.root.wm_title('Fitting Program V2')
+        self.root.wm_title('ATMIS')
         self.root.config(bg='#FFFFFF')
 
         # print screen size
@@ -54,7 +53,8 @@ class GUI:
 
         # set window size
         self.root.geometry(
-            "%dx%d" % (int(0.5 * self.root.winfo_screenwidth()), int(0.75 * self.root.winfo_screenheight())))
+            "%dx%d" % (int(GUI_config.GUI_REL_WIDTH * self.root.winfo_screenwidth()),
+                       int(GUI_config.GUI_REL_HEIGHT * self.root.winfo_screenheight())))
 
         # here starts the creation of the widgets
         self.create_drop_down()
@@ -516,6 +516,8 @@ class GUI:
             '''
 
             ################ HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ############################################
+            self.mp_pool = mp.Pool(config.MULTIPROCESSING_COUNT)
+
             for it, fitter in enumerate(fitters):
                 fitter.get_resonances()
 
