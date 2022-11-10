@@ -47,9 +47,9 @@ class GUI:
         self.root.wm_title('ATMIS')
         self.root.config(bg='#FFFFFF')
 
-        # print screen size
-        print("Width: ", self.root.winfo_screenwidth())
-        print("Height: ", self.root.winfo_screenheight())
+        # # print screen size
+        # print("Width: ", self.root.winfo_screenwidth())
+        # print("Height: ", self.root.winfo_screenheight())
 
         # set window size
         self.root.geometry(
@@ -306,7 +306,7 @@ class GUI:
         :return: None
         """
 
-        # TODO: the capacitor type is hardcoded here, consider some entry box or something
+        # TODO: consider some entry box or something
         captype = config.CAPTYPE
 
 
@@ -352,8 +352,6 @@ class GUI:
 
 
         try:
-            # create a fitter instance (the logger instance needs to be passed to the constructor)
-            self.fitter = Fitter(self.logger)
 
             #check if files are present
             if not self.iohandler.files:
@@ -620,7 +618,7 @@ class GUI:
                 self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table, captype=captype)
 
             for it, fitter in enumerate(fitters):
-                upper_frq_lim = constants.FREQ_UPPER_LIMIT
+                upper_frq_lim = config.FREQ_UPPER_LIMIT
 
                 fitter.write_model_data(parameter_list[it], order)
 
@@ -642,7 +640,6 @@ class GUI:
 
         finally:
             plt.show()
-            self.fitter = None
 
 
     ####################################################################################################################

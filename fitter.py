@@ -18,6 +18,7 @@ import pandas as pd
 # import constants
 import constants
 from constants import *
+import config
 # constants for this class
 FIT_BY = constants.fcnmode.FIT
 
@@ -384,9 +385,9 @@ class Fitter:
         phase_data = self.data_ang
 
         # frequency limit the data
-        magnitude_data = magnitude_data[freq < constants.FREQ_UPPER_LIMIT]
-        phase_data = phase_data[freq < constants.FREQ_UPPER_LIMIT]
-        freq = freq[freq < constants.FREQ_UPPER_LIMIT]
+        magnitude_data = magnitude_data[freq < config.FREQ_UPPER_LIMIT]
+        phase_data = phase_data[freq < config.FREQ_UPPER_LIMIT]
+        freq = freq[freq < config.FREQ_UPPER_LIMIT]
 
         # get prominence
         prominence_mag = self.prominence
@@ -1189,9 +1190,9 @@ class Fitter:
 
         # Frequency limit data for fit
         fit_data_frq_lim = fit_data[np.logical_and(freq > self.f0 * constants.MIN_ZONE_OFFSET_FACTOR,
-                                                   freq < constants.FREQ_UPPER_LIMIT)]
+                                                   freq < config.FREQ_UPPER_LIMIT)]
         freq_data_frq_lim = freq[np.logical_and(freq > self.f0 * constants.MIN_ZONE_OFFSET_FACTOR,
-                                                freq < constants.FREQ_UPPER_LIMIT)]
+                                                freq < config.FREQ_UPPER_LIMIT)]
 
         # fit the parameter set
         fit_main_resonance = 0
