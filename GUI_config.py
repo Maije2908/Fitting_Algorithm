@@ -6,7 +6,7 @@ GUI_REL_HEIGHT = 0.63
 # Drop-Down GUI_config
 DROP_DOWN_WIDTH:        int = 10
 DROP_DOWN_HEIGHT:       int = 1
-DROP_DOWN_ELEMENTS =    ["Inductor", "Capacitor"]#, "Common-Mode Choke"]
+DROP_DOWN_ELEMENTS =    ["Inductor", "Capacitor", "Common-Mode Choke"]
 DROP_DOWN_FONT =        "Helvetica 12 bold"
 
 # Specification GUI_config

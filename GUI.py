@@ -4,12 +4,14 @@ from tkinter import filedialog
 
 import constants
 from fitter import *
+from sNpfile import *
 import GUI_config
 import constants
 import config
 import copy
 import os
 import re
+import skrf as rf
 from tkinter import scrolledtext
 from texthandler import *
 from lmfit import Parameters
@@ -18,7 +20,7 @@ import multiprocessing as mp
 
 class GUI:
     """
-    The GUI is responsible for creating the user interface and dispatching tasks to the other classes, it instanciates
+    The GUI is responsible for creating the user interface and dispatching tasks to the other classes, it instantiates
     most things and is essentially the "heart" of this program
     """
     def __init__(self, iohandler_instance):
@@ -29,6 +31,7 @@ class GUI:
         self.entry_nominal_value = None
         self.entry_resistance = None
         self.entry_prominence = None
+        self.browse_button = None
         self.shunt_series = None
         self.selected_s2p_files = None
         self.iohandler = iohandler_instance
@@ -40,6 +43,8 @@ class GUI:
         self.filename_entry = []
         self.filename_ref_button = []
         self.ref_file_select =None
+        #variables for cmcs
+        self.cmc_files = {}
 
 
         # Window GUI_config
@@ -74,11 +79,75 @@ class GUI:
         :return: None
         """
         self.drop_down_var = tk.StringVar(self.root, GUI_config.DROP_DOWN_ELEMENTS[0])
+        self.drop_down_var.trace_add('write', self.drop_down_update_callback)
 
         self.option_menu = tk.OptionMenu(self.root, self.drop_down_var, *GUI_config.DROP_DOWN_ELEMENTS)
         max_drop_length = len(max(GUI_config.DROP_DOWN_ELEMENTS, key=len))
         self.option_menu.config(font=GUI_config.DROP_DOWN_FONT, width=max_drop_length + 5, height=GUI_config.DROP_DOWN_HEIGHT)
         self.option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.W, **GUI_config.HEADLINE_PADDING)
+
+    def drop_down_update_callback(self, var, index, mode):
+        """
+        method to set the filelist frame to CMC config or coil/cap config
+
+        :param var:
+        :param index:
+        :param mode:
+        :return:
+        """
+        selected_element = self.drop_down_var.get()
+        if selected_element == GUI_config.DROP_DOWN_ELEMENTS[2]:
+            #change GUI to CMC here
+            self.filelist_frame.destroy()
+            self.browse_button.destroy()
+            self.callback_clear_files()
+            self.create_cmc_frame()
+        else:
+            self.filelist_frame.destroy()
+            self.create_browse_button()
+            self.create_filelist_frame()
+            self.cmc_files = {}
+
+
+    def create_cmc_frame(self):
+        self.filelist_frame = tk.LabelFrame(self.root, text='Files')
+        self.filelist_frame.grid(column=4, row=1, rowspan=10, columnspan=2, sticky=tk.NW, **GUI_config.SPEC_PADDING)
+        # create headings for the columns
+        ref_lbl = tk.Label(self.filelist_frame, text='Mode')
+        name_lbl = tk.Label(self.filelist_frame, text='Bias')
+
+        ref_lbl.grid(column=0,row=0, sticky="w")
+        name_lbl.grid(column=1,row=0)
+
+        #create mode lables
+        cmlabel = tk.Label(self.filelist_frame, text='Common Mode')
+        dmlabel = tk.Label(self.filelist_frame, text='Differential Mode')
+        cmlabel.grid(column=0, row=1, sticky="w")
+        dmlabel.grid(column=0, row=2, sticky="w")
+
+        #create buttons for file selection
+        cmbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("CM"), text= "Load")
+        dmbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("DM"), text= "Load")
+        cmbutton.grid(column=2, row=1)
+        dmbutton.grid(column=2, row=2)
+
+    def load_cmc_file(self, mode: str):
+        try:
+            filename = tk.filedialog.askopenfilename(title=
+                                                     'Load ' + mode + ' Measurement',
+                                                     filetypes=((".s2p", "*.s2p*"),
+                                                                ("all files", "*.*")), multiple=False)
+            #we need to check if the filename is not an empty string (i.e. if the user has not canceled the load)
+            if filename:
+                ntwk = rf.Network(os.path.abspath(filename))
+                # generate class for storing the data in and write to array
+                newfile = SNpFile(ntwk, ntwk.name)
+                self.cmc_files[mode+"file"] = newfile
+        except Exception as e:
+            raise e
+
+
+
 
     def create_shunt_series_radio_button(self):
         """
@@ -145,9 +214,9 @@ class GUI:
 
         :return: None
         """
-        browse_button = tk.Button(self.root, command=self.callback_browse_s2p_file, text="Select s2p File(s)")
-        browse_button.config(font=GUI_config.ENTRY_FONT)
-        browse_button.grid(column=0, row=6, sticky=tk.W, **GUI_config.BUTTON_LEFT_PADDING)
+        self.browse_button = tk.Button(self.root, command=self.callback_browse_s2p_file, text="Select s2p File(s)")
+        self.browse_button.config(font=GUI_config.ENTRY_FONT)
+        self.browse_button.grid(column=0, row=6, sticky=tk.W, **GUI_config.BUTTON_LEFT_PADDING)
 
     def create_run_button(self):
         """
