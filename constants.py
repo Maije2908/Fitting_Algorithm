@@ -70,6 +70,7 @@ DEFAULT_OFFSET_PEAK = 40 #samples; this specifies the default offset for a reson
 #mode flags
 class fcnmode:
     FIT:        int = 1
+    FIT_LOG:    int = 6
     OUTPUT:     int = 2
     ANGLE:      int = 3
     FIT_REAL:   int = 4
@@ -94,7 +95,7 @@ OUTPUT_DIFFPLOTS = 1
 DEBUG_BW_MODEL = 0
 DEBUG_BW_MODEL_VERBOSE = 0
 DEBUG_FIT = 0
-DEBUG_BW_DETECTION = 1
+DEBUG_BW_DETECTION = 0
 DEBUG_MULTIPLE_FITE_FIT = 0#1
 
 

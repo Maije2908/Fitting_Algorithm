@@ -28,7 +28,7 @@ class Fitter:
     def __init__(self, logger_instance):
         self.nominal_value = None
         self.series_resistance = None
-        self.prominence = None
+        self.prominence = constants.PROMINENCE_DEFAULT
         self.saturation = None
 
         self.file = None
@@ -641,15 +641,15 @@ class Fitter:
         match self.fit_type:
             case constants.El.INDUCTOR:
                 bw_value = res_value / np.sqrt(2)
-                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < bw_value)))[0][0]
-                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < bw_value)))[0][0]
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag < abs(bw_value))))[0][0]
+                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag < abs(bw_value))))[0][0]
                 BW = freq[f_upper_index] - freq[f_lower_index]
                 R_Fe = (self.f0 * (self.f0 * 2 * np.pi) * self.nominal_value) / BW
                 R_Fe = abs(self.z21_data[self.f0_index])
             case constants.El.CAPACITOR:
                 bw_value = res_value * np.sqrt(2)
-                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag > bw_value)))[0][0]
-                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag > bw_value)))[0][0]
+                f_lower_index = np.flipud(np.argwhere(np.logical_and(freq < self.f0, self.data_mag > abs(bw_value))))[0][0]
+                f_upper_index = (np.argwhere(np.logical_and(freq > self.f0, self.data_mag > abs(bw_value))))[0][0]
                 BW = freq[f_upper_index] - freq[f_lower_index]
                 R_Iso = constants.R_ISO_VALUE
 
@@ -1167,6 +1167,9 @@ class Fitter:
         match modeflag:
             case fcnmode.FIT:
                 diff = abs(data)-abs(Z)
+                return (diff)
+            case fcnmode.FIT_LOG:
+                diff = np.log10(abs(data)) - np.log10(abs(Z))
                 return (diff)
             case fcnmode.OUTPUT:
                 return Z

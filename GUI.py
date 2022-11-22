@@ -4,6 +4,7 @@ from tkinter import filedialog
 
 import constants
 from fitter import *
+from cmc_fitter import *
 from sNpfile import *
 import GUI_config
 import constants
@@ -45,6 +46,7 @@ class GUI:
         self.ref_file_select =None
         #variables for cmcs
         self.cmc_files = {}
+        self.checklables = {}
 
 
         # Window GUI_config
@@ -114,7 +116,7 @@ class GUI:
         self.filelist_frame.grid(column=4, row=1, rowspan=10, columnspan=2, sticky=tk.NW, **GUI_config.SPEC_PADDING)
         # create headings for the columns
         ref_lbl = tk.Label(self.filelist_frame, text='Mode')
-        name_lbl = tk.Label(self.filelist_frame, text='Bias')
+        name_lbl = tk.Label(self.filelist_frame, text='Present')
 
         ref_lbl.grid(column=0,row=0, sticky="w")
         name_lbl.grid(column=1,row=0)
@@ -125,11 +127,21 @@ class GUI:
         cmlabel.grid(column=0, row=1, sticky="w")
         dmlabel.grid(column=0, row=2, sticky="w")
 
+
         #create buttons for file selection
         cmbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("CM"), text= "Load")
         dmbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("DM"), text= "Load")
         cmbutton.grid(column=2, row=1)
         dmbutton.grid(column=2, row=2)
+
+        #create checkmark lables
+        dmchecklabel = tk.Label(self.filelist_frame, text='')
+        cmchecklabel = tk.Label(self.filelist_frame, text='')
+        cmchecklabel.grid(column=1, row=1)
+        dmchecklabel.grid(column=1, row=2)
+        self.checklables["DM"] = dmchecklabel
+        self.checklables["CM"] = cmchecklabel
+
 
     def load_cmc_file(self, mode: str):
         try:
@@ -142,11 +154,10 @@ class GUI:
                 ntwk = rf.Network(os.path.abspath(filename))
                 # generate class for storing the data in and write to array
                 newfile = SNpFile(ntwk, ntwk.name)
-                self.cmc_files[mode+"file"] = newfile
+                self.cmc_files[mode] = newfile
+                self.checklables[mode].config(text = "\u2713")
         except Exception as e:
             raise e
-
-
 
 
     def create_shunt_series_radio_button(self):
@@ -374,6 +385,42 @@ class GUI:
 
         :return: None
         """
+        if self.drop_down_var.get() == GUI_config.DROP_DOWN_ELEMENTS[2]:
+            self.fit_cmc()
+        else:
+            self.fit_coil_cap()
+
+    def fit_cmc(self):
+
+        Z0 = 50
+
+        #instanciate cmc fitter with logger instance
+        fitter_instance = CMC_Fitter(self.logger)
+
+        #iterate through loaded files and safe the keys
+        checkkey = []
+        for key in self.cmc_files:
+            checkkey.append(key)
+
+        #check if all required configurations for CMCs are present
+        if not(set(checkkey) == set(config.CMC_REQUIRED_CONFIGURATIONS)):
+            raise Exception("not all required files present")
+
+        fitter_instance.set_file(self.cmc_files)
+        fitter_instance.calc_series_thru(Z0)
+        fitter_instance.smooth_data()
+        fitter_instance.get_main_resonance()
+        fitter_instance.calculate_nominal_value()
+        fitter_instance.get_resonances()
+        fitter_instance.create_nominal_parameters()
+        fitter_instance.fit_cmc_main_res()
+        fitter_instance.create_higher_order_parameters()
+
+
+
+        pass
+
+    def fit_coil_cap(self):
 
         # TODO: consider some entry box or something
         captype = config.CAPTYPE
