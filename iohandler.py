@@ -1,5 +1,4 @@
-
-
+import config
 from sNpfile import *
 import skrf as rf
 import pandas as pd
@@ -78,8 +77,8 @@ class IOhandler:
                 model_name = "L_1"
 
                 # main element parameters
-                L = out['L'].value
-                C = out['C'].value
+                L = out['L'].value*config.INDUNIT
+                C = out['C'].value*config.CAPUNIT
                 R_s = out['R_s'].value
                 R_p = out['R_Fe'].value
 
@@ -92,8 +91,8 @@ class IOhandler:
 
                 ############### HIGHER ORDER ELEMENTS ##################################################################
                 for circuit in range(1, order + 1):
-                    Cx = out['C%s' % circuit].value
-                    Lx = out['L%s' % circuit].value
+                    Cx = out['C%s' % circuit].value*config.CAPUNIT
+                    Lx = out['L%s' % circuit].value*config.INDUNIT
                     Rx = out['R%s' % circuit].value
                     node2 = circuit + 1 if circuit < order else 'PORT2'
                     lib += 'C{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=node2) + str(Cx) + "\n"
@@ -130,8 +129,8 @@ class IOhandler:
                 model_name = "C_1"
 
                 # main element parameters
-                C = out['C'].value
-                Ls = out['L'].value
+                C = out['C'].value*config.CAPUNIT
+                Ls = out['L'].value*config.INDUNIT
                 R_s = out['R_s'].value
                 R_iso = out['R_iso'].value
 
@@ -154,8 +153,8 @@ class IOhandler:
 
                 if captype == constants.captype.MLCC:
                     RA = out['R_A'].value
-                    LA = out['L_A'].value
-                    CA = out['C_A'].value
+                    LA = out['L_A'].value*config.INDUNIT
+                    CA = out['C_A'].value*config.CAPUNIT
                     # current dependent coil for higher order res:
                     lib += 'BL{no} PORT1 NL{node1} '.format(no='A', node1='A') + 'V=V(VL{no})*V(K_L{no})'.format(no='A') + "\n"
                     lib += 'L{no} VL{no} 0 '.format(no='A') + str(LA) + "\n"
@@ -186,8 +185,8 @@ class IOhandler:
 
                 ############### HIGHER ORDER ELEMENTS ##################################################################
                 for circuit in range(1, order + 1):
-                    Cx = out['C%s' % circuit].value
-                    Lx = out['L%s' % circuit].value
+                    Cx = out['C%s' % circuit].value*config.CAPUNIT
+                    Lx = out['L%s' % circuit].value*config.INDUNIT
                     Rx = out['R%s' % circuit].value
 
                     lib += 'R{no} PORT1 {node2} '.format(no=circuit, node2=circuit) + str(Rx) + "\n"
@@ -251,8 +250,8 @@ class IOhandler:
                 model_name = "L_1"
 
                 # parameters for the main elements
-                L = out['L'].value
-                C = out['C'].value
+                L = out['L'].value*config.INDUNIT
+                C = out['C'].value*config.CAPUNIT
                 R_s = out['R_s'].value
                 R_p = out['R_Fe'].value
 
@@ -263,8 +262,8 @@ class IOhandler:
 
                 ############### HIGHER ORDER ELEMENTS ##################################################################
                 for circuit in range(1, order + 1):
-                    Cx = out['C%s' % circuit].value
-                    Lx = out['L%s' % circuit].value
+                    Cx = out['C%s' % circuit].value*config.CAPUNIT
+                    Lx = out['L%s' % circuit].value*config.INDUNIT
                     Rx = out['R%s' % circuit].value
                     node2 = circuit + 1 if circuit < order else 'PORT2'
 
@@ -321,8 +320,8 @@ class IOhandler:
                 model_name = "C_1"
 
                 # main element parameters
-                C = out['C'].value
-                Ls = out['L'].value
+                C = out['C'].value*config.CAPUNIT
+                Ls = out['L'].value*config.INDUNIT
                 R_s = out['R_s'].value
                 R_iso = out['R_iso'].value
 
@@ -334,8 +333,8 @@ class IOhandler:
 
                 ############### HIGHER ORDER ELEMENTS ##################################################################
                 for circuit in range(1, order + 1):
-                    Cx = out['C%s' % circuit].value
-                    Lx = out['L%s' % circuit].value
+                    Cx = out['C%s' % circuit].value*config.CAPUNIT
+                    Lx = out['L%s' % circuit].value*config.INDUNIT
                     Rx = out['R%s' % circuit].value
                     node2 = circuit + 1 if circuit < order else 'PORT2'
 
@@ -367,8 +366,8 @@ class IOhandler:
                 ############### ACOUSTIC RESONANCE FOR MLCCs ###########################################################
                 if captype == constants.captype.MLCC:
                     RA = out['R_A'].value
-                    LA = out['L_A'].value
-                    CA = out['C_A'].value
+                    LA = out['L_A'].value*config.INDUNIT
+                    CA = out['C_A'].value*config.CAPUNIT
                     #current dependent coil for higher order res:
                     lib += 'BL{no} PORT1 NL{node1} '.format(no='A', node1='A') + 'V=V(VL{no})*V(K_L{no})'.format(no='A') + "\n"
                     lib += 'L{no} VL{no} 0 '.format(no='A') + str(LA) + "\n"
@@ -452,8 +451,8 @@ class IOhandler:
                 for param_set in param_array:
                     R_s_list.append(param_set['R_s'].value)
                     R_Fe_list.append(param_set['R_Fe'].value)
-                    L_list.append(param_set['L'].value)
-                    C_list.append(param_set['C'].value)
+                    L_list.append(param_set['L'].value*config.INDUNIT)
+                    C_list.append(param_set['C'].value*config.CAPUNIT)
 
                 out_dict['R_s'] = R_s_list
                 out_dict['R_Fe'] = R_Fe_list
@@ -469,8 +468,8 @@ class IOhandler:
                 for param_set in param_array:
                     R_s_list.append(param_set['R_s'].value)
                     R_Iso_list.append(param_set['R_iso'].value)
-                    L_list.append(param_set['L'].value)
-                    C_list.append(param_set['C'].value)
+                    L_list.append(param_set['L'].value*config.INDUNIT)
+                    C_list.append(param_set['C'].value*config.CAPUNIT)
 
                 out_dict['R_s'] = R_s_list
                 out_dict['R_iso'] = R_Iso_list
@@ -483,8 +482,8 @@ class IOhandler:
                     C_A_list = []
                     for param_set in param_array:
                         R_A_list.append(param_set['R_A'].value)
-                        L_A_list.append(param_set['L_A'].value)
-                        C_A_list.append(param_set['C_A'].value)
+                        L_A_list.append(param_set['L_A'].value*config.INDUNIT)
+                        C_A_list.append(param_set['C_A'].value*config.CAPUNIT)
                     out_dict['R_A'] = R_A_list
                     out_dict['L_A'] = L_A_list
                     out_dict['C_A'] = C_A_list
@@ -509,11 +508,11 @@ class IOhandler:
 
             #iterate through parameter sets
             for param_set in param_array:
-                clist.append(param_set[C_key].value)
-                llist.append(param_set[L_key].value)
+                clist.append(param_set[C_key].value*config.CAPUNIT)
+                llist.append(param_set[L_key].value*config.INDUNIT)
                 rlist.append(param_set[R_key].value)
-                wlist.append(param_set[w_key].value)
-                bwlist.append(param_set[BW_key].value)
+                wlist.append(param_set[w_key].value*config.FUNIT)
+                bwlist.append(param_set[BW_key].value*config.FUNIT)
 
             out_dict[C_key] = clist
             out_dict[L_key] = llist

@@ -88,6 +88,21 @@ class captype:
     GENERIC = 1
     MLCC = 2
 
+class capunits:
+    FARADS:         float = 1
+    MILLIFARADS:    float = 1e-3
+    MICROFARADS:    float = 1e-6
+
+class indunits:
+    HENRYS:         float = 1
+    MILLIHENRIES:   float = 1e-3
+    MICROHENRIES:   float = 1e-6
+
+class funits:
+    HERTZ:          float = 1
+    KILOHERTZ:      float = 1e3
+    MEGAHERTZ:      float = 1e6
+
 #determines whether to generate differnce plots or not
 OUTPUT_DIFFPLOTS = 1
 

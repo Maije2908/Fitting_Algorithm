@@ -569,11 +569,17 @@ class Fitter:
         C=C_new
         params = copy.copy(param_set)
 
+        #scale parameters to match units
+        C = C / config.CAPUNIT
+        L = L / config.INDUNIT
+        w_c = w_c / config.FUNIT
+        expr_string_L = '(1/((C_A*'+ str(config.CAPUNIT)+')*(w_A*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
+
         #create the parameters for the acoustic resonance
         params.add('R_A', value=R_new, min=R*0.8, max=R_new*1.2, vary=True)
         params.add('C_A', value=C, min=C * 0.8, max=C * 1.5, vary=True)
         params.add('w_A', value =w_c, min = w_c*0.9, max=w_c*1.2, vary=True)
-        params.add('L_A', value=L, expr='1/(C_A*w_A**2)')
+        params.add('L_A', value=L, expr=expr_string_L)
 
 
         #frequency limit the data to the bandwidth of the circuit and do a fit using the limited data
@@ -636,7 +642,6 @@ class Fitter:
         freq = self.frequency_vector
         res_value = self.z21_data[self.f0_index]
         w0 = self.f0 * 2 * np.pi
-        param_set.add('w0',value=w0,vary=False)
 
         match self.fit_type:
             case constants.El.INDUCTOR:
@@ -657,10 +662,15 @@ class Fitter:
             case constants.El.INDUCTOR:
                 #calculate ideal capacitor for this resonance
                 cap_ideal = 1 / (self.nominal_value * ((self.f0*2*np.pi) ** 2))
-                #add to parameters
 
-                expression_string_L = '1/(' + str(self.f0*2*np.pi) + '**2*' + 'C)'
 
+                #scale parameters to units used
+                cap_ideal = cap_ideal / config.CAPUNIT
+                w0 = w0 / config.FUNIT
+                expression_string_L = '(1/((C*'+ str(config.CAPUNIT)+')*(w0*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
+
+                # add to parameters
+                param_set.add('w0', value=w0, vary=False)
                 param_set.add('R_Fe', value=R_Fe, min=constants.MIN_R_FE, max=constants.MAX_R_FE, vary=True)
                 param_set.add('R_s', value=self.series_resistance, min=self.series_resistance * 0.01,
                                     max=self.series_resistance * 1.111, vary=True)
@@ -674,8 +684,12 @@ class Fitter:
                 # calculate ideal inductor for this resonance
                 ind_ideal = 1 / (self.nominal_value * ((self.f0 * 2 * np.pi) ** 2))
 
-                expression_string_C = '1/(' + str(self.f0 * 2 * np.pi) + '**2*' + 'L)'
+                #scale parameters to units used
+                ind_ideal = ind_ideal / config.INDUNIT
+                w0 = w0 / config.FUNIT
+                expression_string_C = '(1/((L*' + str(config.INDUNIT) + ')*(w0*' + str(config.FUNIT) + ')**2))/' + str(config.CAPUNIT)
 
+                param_set.add('w0', value=w0, vary=False)
                 param_set.add('R_iso', value=R_Iso, min=constants.MIN_R_ISO, max=constants.MAX_R_ISO, vary=True)
                 param_set.add('R_s', value=self.series_resistance, min=self.series_resistance * 0.01,
                                     max=self.series_resistance * 1.111, vary=False)
@@ -830,10 +844,22 @@ class Fitter:
                 value_cap = C_adjusted
 
 
+            # rescale parameters to match units
+            value_cap = value_cap / config.CAPUNIT
+
+            w_c = w_c / config.FUNIT
+            min_w = min_w / config.FUNIT
+            max_w = max_w / config.FUNIT
+            BW_value = BW_value / config.FUNIT
+            BW_min = BW_min / config.FUNIT
+            BW_max = BW_max / config.FUNIT
+
+
 
 
             #################### CAPACITORS ############################################################################
             if self.fit_type == constants.El.CAPACITOR:
+
                 # good values for capacitor fitting
                 max_cap = value_cap * 1e1
                 min_cap = value_cap * 1e-1
@@ -841,37 +867,28 @@ class Fitter:
                 r_max = r_value * 1.01
                 r_min = r_value * 0.990
 
-                expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                expression_string_R = '(1/(' + w_key + '/(' + BW_key + '*' + str(2 * np.pi) + ')))*sqrt(' + L_key + '/' + C_key + ')'
-                expression_string_C = '1/(' + '('+w_key+'/(' + BW_key + '*' + str(2*np.pi)+'))*' + R_key +'*'+ w_key+')'
+                expression_string_C = '(1/(' + '(('+w_key+'*'+str(config.FUNIT)+ ')/((' + BW_key +'*'+str(config.FUNIT) +')*' \
+                                      + str(2*np.pi)+'))*' + R_key +'*('+ w_key+'*'+str(config.FUNIT)  +')))*'+str(config.CAPUNIT)
 
-                param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
+
+
                 param_set.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
-                param_set.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-
-                param_set.add(L_key, expr=expression_string_L, vary=False)
-                param_set.add(R_key, expr=expression_string_R, vary=False)
-
                 match config_number:
                     case 1:
-                        expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                        expression_string_R = '((' + BW_key + '*' + str(2 * np.pi) + ')/(' + w_key  + '))*sqrt(' + L_key + '/' + C_key + ')'
+                        #TODO: check expression string for case 1 with unit scaling
+                        expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
+
                         param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                        param_set.add(L_key, expr=expression_string_L, vary=False)
                         param_set.add(R_key, value = r_value, max = r_max, min = r_min, vary = True)
                         param_set.add(C_key, expr=expression_string_C, vary=False)
+                        param_set.add(L_key, expr=expression_string_L, vary=False)
                     case 2:
+                        expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
 
-                        expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                        expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(
-                            2 * np.pi) + '))' + '/' + R_key + ')**2'
-                        expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(
-                            2 * np.pi) + ')))/(' + R_key + '*' + w_key + ')'
                         param_set.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
                         param_set.add(R_key, value=r_value, min=r_value * 0.2, max=r_value * 5)
                         param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
                         param_set.add(L_key, expr=expression_string_L)
-                        # self.parameters.add(C_key, expr=expression_string_C)
 
 
 
@@ -880,38 +897,29 @@ class Fitter:
 
                 max_cap = value_cap * 1e1#2
                 min_cap = value_cap * 1e-1#500e-3
-                min_w = w_c * constants.MIN_W_FACTOR
-                max_w = w_c*constants.MAX_W_FACTOR
 
-
-                param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=False)
 
                 param_set.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
-
-                param_set.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-
-                # #GUI_config A -> does not perform too well
-                # self.parameters.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
-                # self.parameters.add(L_key, expr=expression_string_L, vary=False)
-
                 match config_number:
                     case 1:
                         r_min= r_value*0.9
                         r_max= r_value*1.1
                         #GUI_config B -> default GUI_config; this goes via the Q factor
-                        expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                        expression_string_R = '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))*sqrt(' +  L_key + '/' + C_key + ')'
-                        expression_string_C = '(' + w_key + '/(' + BW_key + '*' + str(2 * np.pi) + '))/('+w_key+'*'+R_key+')'
+                        expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
+                        expression_string_C = '(1/(' + '((' + w_key + '*' + str(
+                            config.FUNIT) + ')/((' + BW_key + '*' + str(config.FUNIT) + ')*' \
+                                              + str(2 * np.pi) + '))*' + R_key + '*(' + w_key + '*' + str(
+                            config.FUNIT) + ')))*' + str(config.CAPUNIT)
+
                         param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
                         param_set.add(R_key, value=r_value, min = r_min, max=r_max, vary=True)
-                        param_set.add(L_key, expr=expression_string_L, vary=False)
                         param_set.add(C_key, expr=expression_string_C, vary=False)
+                        param_set.add(L_key, expr=expression_string_L, vary=False)
+
                     case 2:
 
+                        expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
 
-                        expression_string_L = '1/(' + w_key + '**2*' + C_key + ')'
-                        expression_string_C = L_key + '*(' + '(' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + '))' + '/' + R_key + ')**2'
-                        expression_string_C = '((' + w_key + '/(' + BW_key + '*' + str(2*np.pi) + ')))/('+R_key+'*'+w_key+')'
                         param_set.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
                         param_set.add(R_key, value = r_value, min = r_value * 0.5, max = r_value * 2)
                         param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
@@ -1016,6 +1024,8 @@ class Fitter:
                 R_new = params['R_Fe'].value + R_diff
                 #adjust C depending on Q and new R_Fe
                 C_new = Q_main / (w0*R_new)
+                #C_new needs to be rescaled to match units
+                C_new = C_new / config.CAPUNIT
                 self.change_parameter(params, 'R_Fe', min = R_new *0.8, max = R_new*1.2, value = R_new, vary = False)
                 self.change_parameter(params, 'C', min = C_new*0.8, max = C_new*1.2, value= C_new, vary = False)
 
@@ -1030,6 +1040,8 @@ class Fitter:
                 R_new = params['R_s'].value + R_diff
                 # adjust L depending on Q and new R_Fe
                 L_new = (R_new*Q_main)/w0
+                #rescale L_new to match units
+                L_new = L_new / config.INDUNIT
                 self.change_parameter(params, 'R_s', min=R_new * 0.8, max=R_new * 1.2, value=R_new, vary=False)
                 self.change_parameter(params, 'L', min=L_new * 0.8, max=L_new * 1.2, value=L_new, vary=False)
 
@@ -1064,11 +1076,12 @@ class Fitter:
                         R_diff = r_peak - np.real(curve_data[dataindex])
                         if (R + R_diff) > 0:
                             R_adjusted = R + R_diff
-                            w_c = params['w%s' % key_number].value
-                            BW = params['BW%s' % key_number].value
+                            w_c = params['w%s' % key_number].value * config.FUNIT
+                            BW = params['BW%s' % key_number].value * config.FUNIT
                             Q = w_c / (BW*2*np.pi)
                             C_adjusted = Q / (R_adjusted * w_c)
-
+                            #rescale parameter to match units
+                            C_adjusted = C_adjusted / config.CAPUNIT
                             self.change_parameter(params, R_key, min = R_adjusted*0.2, max = R_adjusted *5, value = R_adjusted, vary = True, expr ='')
                             self.change_parameter(params, C_key, min = C_adjusted*1e-1, max = C_adjusted *1e1, value = C_adjusted, vary = True)
                         else:
@@ -1117,8 +1130,8 @@ class Fitter:
         w = freq * 2 * np.pi
 
         #get parameters for main circuit
-        C = parameters['C'].value
-        L = parameters['L'].value
+        C = parameters['C'].value * config.CAPUNIT
+        L = parameters['L'].value * config.INDUNIT
         R_s = parameters['R_s'].value
 
         match self.fit_type:
@@ -1142,7 +1155,7 @@ class Fitter:
 
         #if MLCC
         if self.captype == constants.captype.MLCC and not fit_main_res:
-            Z_A = parameters['R_A'].value + 1j*w*parameters['L_A'].value + 1/(1j*w*parameters['C_A'].value)
+            Z_A = parameters['R_A'].value + (1j*w*parameters['L_A'].value*config.INDUNIT) + (1/(1j*w*parameters['C_A'].value*config.CAPUNIT))
             Z = 1/(1/Z_main + 1/Z_A)
 
 
@@ -1152,8 +1165,8 @@ class Fitter:
             C_key = "C%s" % key_number
             L_key = "L%s" % key_number
             R_key = "R%s" % key_number
-            C_act = parameters[C_key].value
-            L_act = parameters[L_key].value
+            C_act = parameters[C_key].value * config.CAPUNIT
+            L_act = parameters[L_key].value * config.INDUNIT
             R_act = parameters[R_key].value
             Z_C   = 1 / (1j * w * C_act)
             Z_L   = (1j * w * L_act)
@@ -1473,8 +1486,9 @@ class Fitter:
 
         match self.fit_type:
             case constants.El.INDUCTOR:
-                L_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * param_set0['C'].value)
+                L_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * (param_set0['C'].value * config.CAPUNIT))
                 self.nominal_value = L_ideal
+                L_ideal = L_ideal / config.INDUNIT
                 C_val = param_set0['C'].value
                 R_s   = param_set0['R_s'].value
                 self.change_parameter(param_set, param_name='C', value=C_val, min=C_val * 0.8, max=C_val * 1.2,
@@ -1485,8 +1499,9 @@ class Fitter:
                                       max=L_ideal * 1.25, expr='')
 
             case constants.El.CAPACITOR:
-                C_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * param_set0['L'].value)
+                C_ideal = 1 / ((self.f0 * 2 * np.pi) ** 2 * (param_set0['L'].value * config.INDUNIT))
                 self.nominal_value = C_ideal
+                C_ideal = C_ideal/config.CAPUNIT
                 L_val = param_set0['L'].value
                 R_iso = param_set0['R_iso'].value
                 # write back value for L and R_iso
