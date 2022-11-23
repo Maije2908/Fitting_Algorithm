@@ -1198,14 +1198,16 @@ class Fitter:
                                                 freq < config.FREQ_UPPER_LIMIT)]
 
         # fit the parameter set
-        fit_main_resonance = 0
-        out = minimize(self.calculate_Z, param_set,
-                        args=(freq_data_frq_lim, fit_data_frq_lim, fit_order, fit_main_resonance, FIT_BY,),
-                        method='powell', options={'xtol': 1e-18, 'disp': True})
+        if self.order:
+            fit_main_resonance = 0
+            out = minimize(self.calculate_Z, param_set,
+                            args=(freq_data_frq_lim, fit_data_frq_lim, fit_order, fit_main_resonance, FIT_BY,),
+                            method='powell', options={'xtol': 1e-18, 'disp': True})
+            return out.params
 
+        else:
+            return param_set
 
-
-        return out.params
 
     def fit_main_res_inductor_file_1(self, param_set):
         """

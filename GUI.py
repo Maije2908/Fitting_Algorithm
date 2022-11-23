@@ -104,11 +104,13 @@ class GUI:
             self.browse_button.destroy()
             self.callback_clear_files()
             self.create_cmc_frame()
+            self.iohandler.files = []
         else:
             self.filelist_frame.destroy()
             self.create_browse_button()
             self.create_filelist_frame()
             self.cmc_files = {}
+            self.iohandler.files = []
 
 
     def create_cmc_frame(self):
@@ -142,7 +144,6 @@ class GUI:
         self.checklables["DM"] = dmchecklabel
         self.checklables["CM"] = cmchecklabel
 
-
     def load_cmc_file(self, mode: str):
         try:
             filename = tk.filedialog.askopenfilename(title=
@@ -158,7 +159,6 @@ class GUI:
                 self.checklables[mode].config(text = "\u2713")
         except Exception as e:
             raise e
-
 
     def create_shunt_series_radio_button(self):
         """
@@ -553,9 +553,11 @@ class GUI:
             ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
 
             # get acoustic resonance frequency for all files, if not found write "None" to list
-            if captype == constants.captype.MLCC and fit_type == constants.El.CAPACITOR:
+            if captype == constants.captype.MLCC and fit_type == constants.El.CAPACITOR and len(fitters) > 1:
                 acoustic_res_frqs = []
-                for fitter in fitters:
+                #append None for first file
+                acoustic_res_frqs.append(None)
+                for fitter in fitters[1:]:
                     try:
                         acoustic_res_frqs.append(fitter.get_acoustic_resonance())
                     except:
@@ -783,12 +785,12 @@ class GUI:
 
 
         #create an assignment matrix, looking for the resonance in the next dataset (relative keys)
-        assignment_matrix = np.full(( len(parameter_list), max(orders)), None)
+        assignment_matrix = np.atleast_2d(np.full(( len(parameter_list), max(orders)), None))
 
         for set_number in range(1, np.shape(w_array)[0]):
             ref_array = list(filter(lambda x: x is not None, w_array[set_number - 1]))
             for param_number in range(np.shape(w_array)[1]):
-                if not w_array[set_number][param_number] is None:
+                if not w_array[set_number][param_number] is None and ref_array:
                     diff = abs(ref_array - w_array[set_number][param_number])
                     best_match = np.argwhere(diff == min(diff))[0][0]
                     assignment_matrix[set_number, param_number] = best_match
@@ -801,10 +803,12 @@ class GUI:
             for param_number in range(np.shape(w_array)[1]):
                 if not assignment_matrix[set_number][param_number] is None:
                     rel_key = assignment_matrix[set_number][param_number]
-                    for backwards_set_number in reversed(range(1, set_number)):
-                        rel_key = assignment_matrix[backwards_set_number][rel_key]
-                    abs_key = rel_key
-                    asg_mat_new[set_number][param_number] = abs_key
+                    if not rel_key is None:
+                        for backwards_set_number in reversed(range(1, set_number)):
+                            if not assignment_matrix[backwards_set_number][rel_key] is None:
+                                rel_key = assignment_matrix[backwards_set_number][rel_key]
+                        abs_key = rel_key
+                        asg_mat_new[set_number][param_number] = abs_key
 
 
         assignment_matrix = asg_mat_new
@@ -814,6 +818,15 @@ class GUI:
                 r_default = 1e-1
             case constants.El.CAPACITOR:
                 r_default = 1e9
+
+
+        #check if first parameters object has all keys needed, else fill first array with all keys
+        for check_key in range(1, np.shape(w_array)[1]+1):
+            w_key = "w%s" % check_key
+            if not w_key in parameter_list[0]:
+                first_occurence = np.argwhere(assignment_matrix[:, param_number] != None)[0][0]
+                first_occurence_set = parameter_list[first_occurence]
+                parameter_list[0] = self.fill_key(parameter_list[0], first_occurence_set, check_key, r_default)
 
         #switch key numbers
         for set_number in range(1, np.shape(w_array)[0]):
