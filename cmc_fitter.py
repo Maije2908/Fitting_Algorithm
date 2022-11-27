@@ -103,9 +103,7 @@ class CMC_Fitter(Fitter):
             self.peak_heights = self.bandwidth_dict[key][2]
 
             self.params_dict[key] = super().create_higher_order_parameters(2,self.params_dict[key])
-
-
-
+            self.bandwidth_dict[key][0] = self.modeled_bandwidths
 
     def fit_cmc_higher_order_res(self):
         for key in self.file_dict:
@@ -116,10 +114,19 @@ class CMC_Fitter(Fitter):
             self.f0_index = self.main_res_dict[key][1]
 
             self.nominal_value = self.nominals_dict[key]
+            self.order = self.order_dict[key]
+            self.modeled_bandwidths = self.bandwidth_dict[key][0]
 
+            self.params_dict[key] = super().correct_parameters(self.params_dict[key], 0, 2)
             self.params_dict[key] = super().pre_fit_bands(self.params_dict[key])
             self.params_dict[key] = super().fit_curve_higher_order(self.params_dict[key])
 
+    def plot_curves_cmc(self):
+        for key in self.file_dict:
+            self.data_mag = self.smooth_data_dict[key][0]
+            self.data_ang = self.smooth_data_dict[key][1]
+            self.z21_data = self.data_dict[key]
+            super().plot_curve(self.params_dict[key], self.order_dict[key], 0, key)
 
 
 

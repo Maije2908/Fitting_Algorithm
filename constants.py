@@ -7,7 +7,7 @@ class El:
 PROMINENCE_DEFAULT = 0.5
 MAIN_RESONANCE_OFFSET = 50 #obsolete
 MAX_ORDER = 15
-FREQ_UPPER_LIMIT = 1.2e9 #2e9 #3.9e8 #2e9 #500e6 #2e9
+FREQ_UPPER_LIMIT = 200e6 #2e9 #3.9e8 #2e9 #500e6 #2e9
 
 # offset factor for the first resonance detected after the main peak (min_f = f0 * OFFSET_FACTOR)
 # if the first resonance after the main peak is not fitted, consider setting this to a lower value
@@ -34,7 +34,7 @@ MIN_CAP = 1e-20 #minimum capacitor
 MAX_CAP_FACTOR = 1e5 #was 1e3
 
 
-MAX_W_FACTOR = 1.05
+MAX_W_FACTOR = 1.0001
 MIN_W_FACTOR = 1/MAX_W_FACTOR
 BW_MAX_FACTOR = 1.01
 BW_MIN_FACTOR = 1/BW_MAX_FACTOR
@@ -92,6 +92,7 @@ class capunits:
     FARADS:         float = 1
     MILLIFARADS:    float = 1e-3
     MICROFARADS:    float = 1e-6
+    NANOFARADS:     float = 1e-9
 
 class indunits:
     HENRYS:         float = 1

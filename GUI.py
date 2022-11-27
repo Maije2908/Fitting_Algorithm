@@ -415,6 +415,7 @@ class GUI:
         fitter_instance.create_nominal_parameters()
         fitter_instance.fit_cmc_main_res()
         fitter_instance.create_higher_order_parameters()
+        fitter_instance.fit_cmc_higher_order_res()
 
 
 

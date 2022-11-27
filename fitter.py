@@ -20,7 +20,7 @@ import constants
 from constants import *
 import config
 # constants for this class
-FIT_BY = constants.fcnmode.FIT
+FIT_BY = config.FIT_BY
 
 
 class Fitter:
@@ -867,14 +867,14 @@ class Fitter:
                 r_max = r_value * 1.01
                 r_min = r_value * 0.990
 
-                expression_string_C = '(1/(' + '(('+w_key+'*'+str(config.FUNIT)+ ')/((' + BW_key +'*'+str(config.FUNIT) +')*' \
-                                      + str(2*np.pi)+'))*' + R_key +'*('+ w_key+'*'+str(config.FUNIT)  +')))*'+str(config.CAPUNIT)
+                expression_string_C = '(('+BW_key +'*'+ str(config.FUNIT) +'*'+ str(2*np.pi)+')/(('+w_key+'*'+str(config.FUNIT)+')**2*'+R_key+'))/'+str(config.CAPUNIT)
 
 
 
                 param_set.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
                 match config_number:
                     case 1:
+
                         #TODO: check expression string for case 1 with unit scaling
                         expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
 
@@ -906,10 +906,7 @@ class Fitter:
                         r_max= r_value*1.1
                         #GUI_config B -> default GUI_config; this goes via the Q factor
                         expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
-                        expression_string_C = '(1/(' + '((' + w_key + '*' + str(
-                            config.FUNIT) + ')/((' + BW_key + '*' + str(config.FUNIT) + ')*' \
-                                              + str(2 * np.pi) + '))*' + R_key + '*(' + w_key + '*' + str(
-                            config.FUNIT) + ')))*' + str(config.CAPUNIT)
+                        expression_string_C = '(1/(' +str(2*np.pi)+'*'+BW_key+'*'+str(config.FUNIT)+'*'+R_key +'))/'+str(config.CAPUNIT)
 
                         param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
                         param_set.add(R_key, value=r_value, min = r_min, max=r_max, vary=True)
