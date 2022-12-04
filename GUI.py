@@ -816,9 +816,9 @@ class GUI:
 
         match fitters[0].fit_type: #TODO: this could use some better way of determining the fit type
             case constants.El.INDUCTOR:
-                r_default = 1e-1
+                r_default = config.R_FILL_IND
             case constants.El.CAPACITOR:
-                r_default = 1e9
+                r_default = config.R_FILL_CAP
 
 
         #check if first parameters object has all keys needed, else fill first array with all keys

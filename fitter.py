@@ -286,7 +286,7 @@ class Fitter:
                 slope_quantile_50 = np.quantile(np.gradient(self.data_mag)[freq < f0], 0.5)
                 max_slope = slope_quantile_50 * constants.QUANTILE_MULTIPLICATION_FACTOR
                 # boolean index the data that has lower than max slope and calculate the mean
-                C_vals_eff = np.array(C_vals)[np.gradient(self.data_mag)[freq < f0][offset:] < max_slope]
+                C_vals_eff = np.array(C_vals)[abs(np.gradient(self.data_mag)[freq < f0][offset:]) < abs(max_slope)]
                 self.nominal_value = np.mean(C_vals_eff)
                 self.offset = offset
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value))
@@ -640,7 +640,7 @@ class Fitter:
         """
 
         freq = self.frequency_vector
-        res_value = self.z21_data[self.f0_index]
+        res_value = abs(self.z21_data[self.f0_index])
         w0 = self.f0 * 2 * np.pi
 
         match self.fit_type:
@@ -1218,7 +1218,6 @@ class Fitter:
         else:
             return param_set
 
-
     def fit_main_res_inductor_file_1(self, param_set):
         """
         Method to fit the main resonance circuit for an inductor for the first file (i.e. the reference file)
@@ -1716,7 +1715,7 @@ class Fitter:
         expr_string_L = '1/(C*'+ str(w_c2)+')'
         temp_params.add('R', value=abs(r_val), min = abs(r_val)*0.8,max=abs(r_val)*1.25,vary=False)
         # temp_params.add('L', value = L,  min = L*1e-3, max = L*1e3)
-        temp_params.add('C',value = C, min = C*1e-3, max = C*1e6)
+        temp_params.add('C',value = C)#, min = C*1e-3, max = C*1e6)
         temp_params.add('L',expr=expr_string_L)
 
 
