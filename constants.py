@@ -21,7 +21,7 @@ MIN_R_FE = 10
 MAX_R_FE = 1e9
 MIN_R_ISO = 1e5
 MAX_R_ISO = 1e12
-R_ISO_VALUE = 1e15
+R_ISO_VALUE = 1e9
 
 
 #max/min values for the higher order circuits
@@ -46,7 +46,7 @@ BANDWIDTH_STRETCH_LAST_ZONE = 1
 #threshold for the calculation of the offset; necessary for small coils that have a lot of zero crossings at low frequencies
 PHASE_OFFSET_THRESHOLD = 60 #60 #°
 #value for detection of the inductive/capacitive range; if phase is below this value, inductive/capacitive range will not be detected
-PERMITTED_MIN_PHASE = 75 #75
+PERMITTED_MIN_PHASE = 20 #75
 
 
 #Decide wheter to full fit the higher order resonances (0= main res fit; 1= full fit)
@@ -87,6 +87,8 @@ class calc_method:
 class captype:
     GENERIC = 1
     MLCC = 2
+    HIGH_C = 3
+
 
 class capunits:
     FARADS:         float = 1
@@ -111,6 +113,7 @@ OUTPUT_DIFFPLOTS = 1
 DEBUG_BW_MODEL = 0
 DEBUG_BW_MODEL_VERBOSE = 0
 DEBUG_FIT = 0
+DEBUG_MESSAGES = 1
 DEBUG_BW_DETECTION = 0
 DEBUG_MULTIPLE_FITE_FIT = 0#1
 

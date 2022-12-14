@@ -109,6 +109,7 @@ class GUI:
             self.filelist_frame.destroy()
             self.create_browse_button()
             self.create_filelist_frame()
+            self.callback_clear_files()
             self.cmc_files = {}
             self.iohandler.files = []
 

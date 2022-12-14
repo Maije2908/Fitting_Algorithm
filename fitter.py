@@ -216,7 +216,10 @@ class Fitter:
                 # calculate the offset; the data can be noisy at lower frequencies, leading to a lot of zero crossings
                 # in the phase, which lead to misdetection of the main resonant frequency; hence we use a constant for
                 # the minimum phase, everything lower than that will not be used for detection
-                offset = np.argwhere(self.data_ang > constants.PHASE_OFFSET_THRESHOLD)[0][0]
+                if sum(self.data_ang > constants.PHASE_OFFSET_THRESHOLD) > 0:
+                    offset = np.argwhere(self.data_ang > constants.PHASE_OFFSET_THRESHOLD)[0][0]
+                else:
+                    offset = 0
 
                 # find first point where the phase crosses 0 using numpy.argwhere --> f0
                 index_angle_smaller_zero = np.argwhere(self.data_ang[offset:] < 0)
@@ -259,8 +262,10 @@ class Fitter:
 
             case El.CAPACITOR:
                 # calculation of the capacitance works analogue to the inductance
-
-                offset = np.argwhere(self.data_ang < -constants.PHASE_OFFSET_THRESHOLD)[0][0]
+                if sum((self.data_ang < -constants.PHASE_OFFSET_THRESHOLD)) > 0:
+                    offset = np.argwhere(self.data_ang < -constants.PHASE_OFFSET_THRESHOLD)[0][0]
+                else:
+                    offset = 0
 
                 # find first point where the phase crosses 0
                 index_angle_larger_zero = np.argwhere(self.data_ang[offset:] > 0)
@@ -282,11 +287,12 @@ class Fitter:
                     # if bool_select[it]:
                     C_vals.append(-1/(np.imag(curve_sample[0])*curve_sample[1]))
 
+
                 # find the 50% quantile of the slope data and define the max slope allowed
-                slope_quantile_50 = np.quantile(np.gradient(self.data_mag)[freq < f0], 0.5)
+                slope_quantile_50 = np.quantile(np.gradient(C_vals), 0.5)
                 max_slope = slope_quantile_50 * constants.QUANTILE_MULTIPLICATION_FACTOR
                 # boolean index the data that has lower than max slope and calculate the mean
-                C_vals_eff = np.array(C_vals)[abs(np.gradient(self.data_mag)[freq < f0][offset:]) < abs(max_slope)]
+                C_vals_eff = np.array(C_vals)[abs(np.gradient(C_vals)) < abs(max_slope)]
                 self.nominal_value = np.mean(C_vals_eff)
                 self.offset = offset
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value))
@@ -328,13 +334,19 @@ class Fitter:
         match self.fit_type:
 
             case constants.El.INDUCTOR: #INDUCTOR
-                offset = np.argwhere(self.data_ang > constants.PHASE_OFFSET_THRESHOLD)[0][0]
+                if sum(self.data_ang > constants.PHASE_OFFSET_THRESHOLD) > 0:
+                    offset = np.argwhere(self.data_ang < -constants.PHASE_OFFSET_THRESHOLD)[0][0]
+                else:
+                    offset = 0
                 index_angle_smaller_zero = np.argwhere(self.data_ang[offset:] < 0)
                 index_ang_zero_crossing = offset + index_angle_smaller_zero[0][0]
                 continuity_check = index_angle_smaller_zero[10][0]
 
             case constants.El.CAPACITOR: #CAPACITOR
-                offset = np.argwhere(self.data_ang < -constants.PHASE_OFFSET_THRESHOLD)[0][0]
+                if sum(self.data_ang < -constants.PHASE_OFFSET_THRESHOLD) > 0:
+                    offset = np.argwhere(self.data_ang < -constants.PHASE_OFFSET_THRESHOLD)[0][0]
+                else:
+                    offset = 0
                 index_angle_larger_zero = np.argwhere(self.data_ang[offset:] > 0)
                 index_ang_zero_crossing = offset + index_angle_larger_zero[0][0]
                 continuity_check = index_angle_larger_zero[10][0]
@@ -1330,9 +1342,13 @@ class Fitter:
         data_frq_lim = data_for_fit  # self.z21_data[(freq < self.f0 * constants.MIN_ZONE_OFFSET_FACTOR)][self.offset:]
 
         # check if the main resonance fit yields good results -> else: go with initial guess
-        if abs(sum(abs(new_data) - abs(data_frq_lim))) < abs(sum(abs(old_data) - abs(data_frq_lim))):
+        if abs(sum(np.log10(abs(new_data)) - np.log10(abs(data_frq_lim)))) < abs(sum(np.log10(abs(old_data)) - np.log10(abs(data_frq_lim)))):
+            if constants.DEBUG_MESSAGES:
+                self.logger.info("CAPFIT MR: did fit")
             param_set = out.params
         else:
+            if constants.DEBUG_MESSAGES:
+                self.logger.info("CAPFIT MR: did not fit (used param set as is)")
             # redundant, but for readability
             param_set = param_set
 
