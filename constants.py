@@ -4,7 +4,7 @@ class El:
     INDUCTOR: int = 1
     CAPACITOR: int = 2
 
-PROMINENCE_DEFAULT = 0.5
+PROMINENCE_DEFAULT = 3
 MAIN_RESONANCE_OFFSET = 50 #obsolete
 MAX_ORDER = 15
 FREQ_UPPER_LIMIT = 200e6 #2e9 #3.9e8 #2e9 #500e6 #2e9
@@ -20,8 +20,8 @@ MAIN_RES_PARASITIC_UPPER_BOUND = 2
 MIN_R_FE = 10
 MAX_R_FE = 1e9
 MIN_R_ISO = 1e5
-MAX_R_ISO = 1e12
-R_ISO_VALUE = 1e9
+MAX_R_ISO = 1e9
+R_ISO_VALUE = 10e6
 
 
 #max/min values for the higher order circuits
@@ -45,8 +45,9 @@ BANDWIDTH_STRETCH_LAST_ZONE = 1
 
 #threshold for the calculation of the offset; necessary for small coils that have a lot of zero crossings at low frequencies
 PHASE_OFFSET_THRESHOLD = 60 #60 #°
+PHASE_OFFSET_THRESHOLD_CAPS = 20
 #value for detection of the inductive/capacitive range; if phase is below this value, inductive/capacitive range will not be detected
-PERMITTED_MIN_PHASE = 20 #75
+PERMITTED_MIN_PHASE = 75 #75
 
 
 #Decide wheter to full fit the higher order resonances (0= main res fit; 1= full fit)

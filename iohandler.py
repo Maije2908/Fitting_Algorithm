@@ -15,7 +15,8 @@ class IOhandler:
     It also takes care of the output, generating the LTSpice Netlists as well as generating the Bode-plots for output
     """
 
-    def __init__(self):
+    def __init__(self, logger_instance):
+        self.logger = logger_instance
         self.files = []
         self.outpath = None
 
@@ -42,8 +43,16 @@ class IOhandler:
             for actual_path in path:
                 ntwk = rf.Network(actual_path)
 
+
                 # generate class for storing the data in and write to array
                 newfile = SNpFile(ntwk, ntwk.name)
+
+                #check if file is already loaded -> if so, skip it
+                if newfile.name in [file.name for file in self.files]:
+                    self.logger.warning("Warning; file: \"" + newfile.name + "\" already present, did not load!")
+                    continue
+
+                self.logger.info("Opened file: \"" + newfile.name+"\"")
                 self.files.append(newfile)
         except Exception as e:
             raise e
