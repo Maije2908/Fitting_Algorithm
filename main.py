@@ -29,11 +29,10 @@ import platform
 
 # import my packages
 from GUI import *
-from iohandler import *
+
 
 # start GUI
 if __name__ == '__main__':
-    #initialize iohandler prior to GUI, since GUI needs an instance of it
 
     gui = GUI()
 

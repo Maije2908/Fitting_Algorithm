@@ -38,6 +38,7 @@ class GUI:
         self.browse_button = None
         self.shunt_series = None
         self.selected_s2p_files = None
+
         self.iohandler = None
         self.fitter = None
         self.logger = None
@@ -79,7 +80,6 @@ class GUI:
         IOhandleinstance = IOhandler(self.logger)
         self.iohandler = IOhandleinstance
 
-        # self.create_file_list()
 
     def create_drop_down(self):
         """
@@ -119,7 +119,6 @@ class GUI:
             self.callback_clear_files()
             self.cmc_files = {}
             self.iohandler.files = []
-
 
     def create_cmc_frame(self):
         self.filelist_frame = tk.LabelFrame(self.root, text='Files')
@@ -404,7 +403,7 @@ class GUI:
         elif self.drop_down_var.get() == GUI_config.DROP_DOWN_ELEMENTS[1]:#CAP
             self.fit_cap()
         elif self.drop_down_var.get() == GUI_config.DROP_DOWN_ELEMENTS[0]:#COIL
-            self.fit_coil_cap()
+            self.fit_coil()
 
     def fit_cmc(self):
 
@@ -437,73 +436,17 @@ class GUI:
 
         pass
 
-    def fit_coil_cap(self):
+    def fit_coil(self):
 
         # TODO: consider some entry box or something
         captype = config.CAPTYPE
+        fit_type = constants.El.INDUCTOR
 
 
         self.logger.info("----------Run----------\n")
-
-
-
-        #get values from the entry boxes
-        passive_nom = self.entry_to_float(self.entry_nominal_value.get())
-        res         = self.entry_to_float(self.entry_resistance.get())
-        prom        = self.entry_to_float(self.entry_prominence.get())
-
-
-
-        #get the shunt/series through setting
-        shunt_series = self.shunt_series.get()
-
-        #get the type of element from the dropdown list
-        element_type_str = self.drop_down_var.get()
-
+        [passive_nom, res, prom, shunt_series, files, dc_bias] = self.read_from_GUI()
 
         try:
-            #raise an exception if shunt/series through was not set
-            if not (shunt_series):
-                # self.logger.error("Shunt/Series-Through not set!\nPlease select a calculation mode")
-                raise Exception("Shunt/Series-Through not set!\nPlease select a calculation mode")
-
-
-            if element_type_str == GUI_config.DROP_DOWN_ELEMENTS[0]:
-                fit_type = GUI_config.El.INDUCTOR
-            elif element_type_str == GUI_config.DROP_DOWN_ELEMENTS[1]:
-                fit_type = GUI_config.El.CAPACITOR
-            elif element_type_str == GUI_config.DROP_DOWN_ELEMENTS[2]:
-                # self.logger.error('CMCs not implemented yet, please change element type')
-                raise Exception('CMCs not implemented yet, please change element type')
-
-        except Exception as e:
-            #write exception to log
-            self.logger.error(str(e) + '\n')
-            raise
-
-
-
-
-
-        try:
-
-            #check if files are present
-            if not self.iohandler.files:
-                raise Exception("Error: No Files present")
-
-
-            #get selected reference file and make a list with all files that are not the reference file
-            ref_file = self.iohandler.files[self.ref_file_select.get()]
-            other_files = np.concatenate((self.iohandler.files[:self.ref_file_select.get()], self.iohandler.files[self.ref_file_select.get() + 1:]))
-            if ref_file is None:
-                raise Exception("Error: Please select a reference file")
-
-
-            #get the values from the entries that define the currents/voltages of each file
-            dc_bias = self.get_file_current_voltage_values()
-            if None in dc_bias:
-                raise Exception("Error: Please specify the current/voltage values for the given files!")
-
 
             ################ PARSING AND PRE-PROCESSING ################################################################
 
@@ -511,7 +454,7 @@ class GUI:
             fitters = []
             parameter_list = []
 
-            for it, file in enumerate(self.iohandler.files):
+            for it, file in enumerate(files):
                 #instanciate a fitter and pass it the file and the logger instance
                 fitter_instance = Fitter(self.logger)
                 fitter_instance.set_file(file)
@@ -783,57 +726,20 @@ class GUI:
         captype = config.CAPTYPE
 
         # fit type is capacitor for this method
-        fit_type = GUI_config.El.CAPACITOR
+        fit_type = constants.El.CAPACITOR
 
         self.logger.info("----------Run----------\n")
 
-
-
-        #get values from the entry boxes
-        passive_nom = self.entry_to_float(self.entry_nominal_value.get())
-        res         = self.entry_to_float(self.entry_resistance.get())
-        prom        = self.entry_to_float(self.entry_prominence.get())
-
-        if passive_nom is None and captype == constants.captype.HIGH_C:
-            raise Exception("Error: Nominal value is required for High C model")
-
-        #get the shunt/series through setting
-        shunt_series = self.shunt_series.get()
+        [passive_nom, res, prom, shunt_series, files, dc_bias] = self.read_from_GUI(captype)
 
         try:
-            #raise an exception if shunt/series through was not set
-            if not (shunt_series):
-                # self.logger.error("Shunt/Series-Through not set!\nPlease select a calculation mode")
-                raise Exception("Shunt/Series-Through not set!\nPlease select a calculation mode")
-        except Exception as e:
-            #write exception to log
-            self.logger.error(str(e) + '\n')
-            raise
-
-        try:
-            #check if files are present
-            if not self.iohandler.files:
-                raise Exception("Error: No Files present")
-            #get selected reference file and make a list with all files that are not the reference file
-            ref_file = self.iohandler.files[self.ref_file_select.get()]
-            other_files = np.concatenate((self.iohandler.files[:self.ref_file_select.get()], self.iohandler.files[self.ref_file_select.get() + 1:]))
-            if ref_file is None:
-                raise Exception("Error: Please select a reference file")
-            else:
-                files = [ref_file, other_files]
-            #get the values from the entries that define the currents/voltages of each file
-            dc_bias = self.get_file_current_voltage_values()
-            if None in dc_bias:
-                raise Exception("Error: Please specify the current/voltage values for the given files!")
-
-
             ################ PARSING AND PRE-PROCESSING ################################################################
 
             #create an array for the fitter instances and one for the parameters
             fitters = []
             parameter_list = []
 
-            for it, file in enumerate(self.iohandler.files):
+            for it, file in enumerate(files):
                 #instanciate a fitter and pass it the file and the logger instance
                 fitter_instance = Fitter(self.logger)
                 fitter_instance.set_file(file)
@@ -1139,6 +1045,55 @@ class GUI:
 
         finally:
             plt.show()
+
+    def read_from_GUI(self, captype = None):
+        """
+        function to read values from the several entry boxes, radiobuttons etc from the GUI
+        :return:
+        """
+
+        # get values from the entry boxes
+        passive_nom = self.entry_to_float(self.entry_nominal_value.get())
+        res = self.entry_to_float(self.entry_resistance.get())
+        prom = self.entry_to_float(self.entry_prominence.get())
+
+        # get the shunt/series through setting
+        shunt_series = self.shunt_series.get()
+
+
+        try:
+            #check if nominal value is present for the hi C model
+            if passive_nom is None and captype == constants.captype.HIGH_C:
+                raise Exception("Error: Nominal value is required for High C model")
+            # raise an exception if shunt/series through was not set
+            if not (shunt_series):
+                raise Exception("Error: Shunt/Series-Through not set!\nPlease select a calculation mode")
+            # check if files are present
+            if not self.iohandler.files:
+                raise Exception("Error: No Files present")
+            # get selected reference file and make a list with all files that are not the reference file
+            ref_file = self.iohandler.files[self.ref_file_select.get()]
+            other_files = np.concatenate((self.iohandler.files[:self.ref_file_select.get()],
+                                          self.iohandler.files[self.ref_file_select.get() + 1:]))
+            if ref_file is None:
+                raise Exception("Error: Please select a reference file")
+
+            # get the values from the entries that define the currents/voltages of each file
+            dc_bias = self.get_file_current_voltage_values()
+            if None in dc_bias:
+                raise Exception("Error: Please specify the current/voltage values for the given files!")
+
+            # the reference file has to be the first file in the list, but also the DC bias needs to match, so we'll
+            # have to shuffle around a bit
+            dc_bias.insert(0, dc_bias.pop(self.ref_file_select.get()))
+            files = np.concatenate([[ref_file], other_files])
+
+
+            return [passive_nom, res, prom, shunt_series, files, dc_bias]
+
+        except Exception as e:
+            self.logger.error(str(e) + '\n')
+            raise
 
 
     ####################################################################################################################
