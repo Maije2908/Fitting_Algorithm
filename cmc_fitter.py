@@ -78,7 +78,7 @@ class CMC_Fitter(Fitter):
 
             self.params_dict[key] = super().create_nominal_parameters(self.params_dict[key])
             #clear some parameters we obtain from the super() method
-            self.params_dict[key].pop('R_s')
+            # self.params_dict[key].pop('R_s') EDIT: we might need R_s
             self.params_dict[key]['L'].expr = ''
             self.params_dict[key]['L'].vary = True
             #set new boundaries for our parameters
@@ -91,6 +91,7 @@ class CMC_Fitter(Fitter):
 
 
             if key == "DM":
+                #TODO: this is hardcoded
                 self.params_dict[key].add('R_p', value = 150, vary = False)
                 self.params_dict[key].add('L_p', value = 1.33e-6/config.INDUNIT, vary = False)
                 self.params_dict[key].add('C_p', value = 7.95e-12/config.CAPUNIT, vary = False)

@@ -4,7 +4,7 @@ import constants
 CAPTYPE = constants.captype.HIGH_C
 FULL_FIT = 1
 MULTIPROCESSING_COUNT = 16
-FREQ_UPPER_LIMIT = 1e9
+FREQ_UPPER_LIMIT = 1.5e9
 
 CAPUNIT = constants.capunits.NANOFARADS
 INDUNIT = constants.indunits.MICROHENRIES

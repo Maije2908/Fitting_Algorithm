@@ -93,7 +93,7 @@ class GUI:
         self.option_menu = tk.OptionMenu(self.root, self.drop_down_var, *GUI_config.DROP_DOWN_ELEMENTS)
         max_drop_length = len(max(GUI_config.DROP_DOWN_ELEMENTS, key=len))
         self.option_menu.config(font=GUI_config.DROP_DOWN_FONT, width=max_drop_length + 5, height=GUI_config.DROP_DOWN_HEIGHT)
-        self.option_menu.grid(column=0, row=0, columnspan=2, sticky=tk.W, **GUI_config.HEADLINE_PADDING)
+        self.option_menu.grid(column=0, row=0, columnspan=1, sticky=tk.W, **GUI_config.HEADLINE_PADDING)
 
     def drop_down_update_callback(self, var, index, mode):
         """
@@ -106,19 +106,51 @@ class GUI:
         """
         selected_element = self.drop_down_var.get()
         if selected_element == GUI_config.DROP_DOWN_ELEMENTS[2]:
-            #change GUI to CMC here
+            #change GUI to CMC
             self.filelist_frame.destroy()
             self.browse_button.destroy()
             self.callback_clear_files()
             self.create_cmc_frame()
             self.iohandler.files = []
         else:
+            if selected_element == GUI_config.DROP_DOWN_ELEMENTS[1]: #capacitor
+                self.create_captype_dropdown()
+            elif selected_element == GUI_config.DROP_DOWN_ELEMENTS[0]: #inductor
+                self.captype_menu.destroy()
+            #rebuild GUI for coil/cap config
             self.filelist_frame.destroy()
             self.create_browse_button()
             self.create_filelist_frame()
-            self.callback_clear_files()
+            self.callback_clear_files() #TODO: idk if we should remove all files when selecting a different element
             self.cmc_files = {}
             self.iohandler.files = []
+
+    def create_captype_dropdown(self):
+        """
+        function to create a dropdown menu for the various types of capacitors
+        :return:
+        """
+        self.captype_var = tk.StringVar(self.root, GUI_config.CAPTYPE_DROPDOWN_ELEMENTS[0])
+
+        self.captype_menu = tk.OptionMenu(self.root, self.captype_var, *GUI_config.CAPTYPE_DROPDOWN_ELEMENTS)
+        max_drop_length = len(max(GUI_config.CAPTYPE_DROPDOWN_ELEMENTS, key=len))
+        self.captype_menu.config(font=GUI_config.DROP_DOWN_FONT, width=20,
+                                height=GUI_config.DROP_DOWN_HEIGHT,)
+        self.captype_menu.grid(column=1, row=0, columnspan=1, sticky=tk.W, **GUI_config.HEADLINE_PADDING)
+
+    def return_captype(self):
+        """
+        function to return the captype from the drop down menu to the "run" function
+        :return: captype; integer variable representing the type of capacitor
+        """
+        captype_string =  self.captype_var.get()
+
+        if captype_string == GUI_config.CAPTYPE_DROPDOWN_ELEMENTS[0]:
+            return constants.captype.GENERIC
+        elif captype_string == GUI_config.CAPTYPE_DROPDOWN_ELEMENTS[1]:
+            return constants.captype.MLCC
+        elif captype_string == GUI_config.CAPTYPE_DROPDOWN_ELEMENTS[2]:
+            return constants.captype.HIGH_C
 
     def create_cmc_frame(self):
         self.filelist_frame = tk.LabelFrame(self.root, text='Files')
@@ -393,7 +425,7 @@ class GUI:
         """
         Callback function for the "run" button
 
-        **This function does most of the handling of the fit and is essentially like the "main" function**
+        **Calls the corresponding fitting routines**
 
         :return: None
         """
@@ -489,64 +521,19 @@ class GUI:
                     raise Exception("Error: Something went wrong while trying to create nominal parameters; "
                                     "check if the element type is correct")
 
-
                 if it == 0:
                     #fit the main resonance for the first file
-                    match fit_type:
-                        case constants.El.INDUCTOR:
-                            fitted_main_res_params = fitter.fit_main_res_inductor_file_1(main_res_params)
-                        case constants.El.CAPACITOR:
-                            fitted_main_res_params = fitter.fit_main_res_capacitor_file_1(main_res_params)
+                     fitted_main_res_params = fitter.fit_main_res_inductor_file_1(main_res_params)
                 else:
                     #fit the main resonance for every other file (we have to overwrite some parameters here, since the
                     # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
                     main_res_params = fitter.overwrite_main_res_params_file_n(main_res_params, parameter_list[0])
-                    match fit_type:
-                        case constants.El.INDUCTOR:
-                            fitted_main_res_params = fitter.fit_main_res_inductor_file_n(main_res_params)
-                        case constants.El.CAPACITOR:
-                            fitted_main_res_params = fitter.fit_main_res_capacitor_file_n(main_res_params)
+                    fitted_main_res_params = fitter.fit_main_res_inductor_file_n(main_res_params)
                 #finally write the fitted main resonance parameters to the list
                 parameter_list.append(fitted_main_res_params)
 
             ################ END MAIN RESONANCE FIT ####################################################################
 
-            ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
-
-            # get acoustic resonance frequency for all files, if not found write "None" to list
-            if captype == constants.captype.MLCC and fit_type == constants.El.CAPACITOR and len(fitters) > 1:
-                acoustic_res_frqs = []
-                #append None for first file
-                acoustic_res_frqs.append(None)
-                for fitter in fitters[1:]:
-                    try:
-                        acoustic_res_frqs.append(fitter.get_acoustic_resonance())
-                    except:
-                        acoustic_res_frqs.append(None)
-
-                # iterate through the fitters in reversed order and fit the acoustic resonance
-                if len(fitters) > 1:
-                    for it, fitter in reversed(list(enumerate(fitters))):
-                        if acoustic_res_frqs[it] is not None:
-                            fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
-                            parameter_list[it] = fitter.fit_acoustic_resonance(parameter_list[it])
-                        else:
-                            # if there is no frequency for the actual resonance take the previous frequency
-                            # (NOTE): this might even be obsolete
-                            acoustic_res_frqs[it] = acoustic_res_frqs[it - 1]
-                            fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
-                            # manually write the parameters of the previous fit to the dataset
-                            hi_R = parameter_list[it - 1]['R_A'].value * 1e4
-                            parameter_list[it].add('L_A', value=parameter_list[it - 1]['L_A'].value)
-                            parameter_list[it].add('C_A', value=parameter_list[it - 1]['C_A'].value)
-                            parameter_list[it].add('R_A', value=hi_R)
-                else:
-                    self.logger.info("WARNING: MLCCs captype selected, but only one file is present. Switching to generic captype")
-                    captype = constants.captype.GENERIC
-                    for fitter in fitters:
-                        fitter.set_captype(captype)
-
-            ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
             '''
             ################ HIGHER ORDER RESONANCES - SINGLE PROCESS ##################################################
 
@@ -723,7 +710,7 @@ class GUI:
     def fit_cap(self):
 
         # TODO: consider some entry box or something
-        captype = config.CAPTYPE
+        captype = self.return_captype()
 
         # fit type is capacitor for this method
         fit_type = constants.El.CAPACITOR
@@ -792,8 +779,6 @@ class GUI:
                     fitted_model_params = fitter.fit_hi_C_model(main_res_params)
                     parameter_list.append(fitted_model_params)
 
-                # # if we have detected a resonance that has higher frequency than our bathtub model, we can limit the
-                # # value of the coil used for the main resonance
                 # angleplot = False
                 #
                 # fitter.plot_curve(main_res_params, 0, 1, "onlyMR nonfit", angle = angleplot)

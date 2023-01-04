@@ -4,7 +4,7 @@ class El:
     INDUCTOR: int = 1
     CAPACITOR: int = 2
 
-PROMINENCE_DEFAULT = 3
+PROMINENCE_DEFAULT = .5
 MAIN_RESONANCE_OFFSET = 50 #obsolete
 MAX_ORDER = 15
 FREQ_UPPER_LIMIT = 200e6 #2e9 #3.9e8 #2e9 #500e6 #2e9
@@ -89,7 +89,6 @@ class captype:
     GENERIC = 1
     MLCC = 2
     HIGH_C = 3
-
 
 class capunits:
     FARADS:         float = 1

@@ -9,6 +9,8 @@ DROP_DOWN_HEIGHT:       int = 1
 DROP_DOWN_ELEMENTS =    ["Inductor", "Capacitor", "Common-Mode Choke"]
 DROP_DOWN_FONT =        "Helvetica 12 bold"
 
+CAPTYPE_DROPDOWN_ELEMENTS = ["Generic", "MLCC", "Electrolytic"]
+
 # Specification GUI_config
 SPEC_WIDTH:             int = 100
 SPEC_HEIGHT:            int = 2
@@ -43,11 +45,4 @@ Z0              :       int = 50
 #offset for filelist
 FILELIST_ROW_OFFSET = 9
 
-
-
-
-# Flags for the program to know which element is selected
-class El:
-    INDUCTOR: int = 1
-    CAPACITOR: int = 2
 
