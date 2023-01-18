@@ -708,10 +708,117 @@ class Fitter:
             param_set.add('R1', value = R1, min = R1*0.5, max = R1*2, vary =True )
             param_set.add('C1', value=C1, min=C1 * 0.3, max=C1 * 3, vary = True)
             param_set.add('w1', value=w1, vary = False)
-            param_set.add('BW1', value=(bu-bl)/config.FUNIT, vary = False)
+            param_set.add('BW1', value=((bu-bl))/config.FUNIT, vary = False)
             # param_set.add('L1', value=L1, min=L1 * 0.5, max=L1 * 2, vary = True)
-
             param_set.add('L1', expr = '(1/( '+ '((w1 * '+str(config.FUNIT)+') ** 2)' + '*(C1*' + str(config.CAPUNIT) + ')) )/'+str(config.INDUNIT)  )
+
+            self.order = 1
+
+            # # add another resonance as point of support between the bathtub model and the first resonance
+            # f_A = f1/1.2
+            # w_A = f_A*2*np.pi
+            # Q_A = .8
+            # R_A = 2 * self.series_resistance
+            # C_A = 1 / (Q_A * R_A * w_A)
+            # L_A = 1/((w_A**2)*C_A)
+            #
+            # C_A = C_A/config.CAPUNIT
+            # L_A = L_A/config.INDUNIT
+            # w_A = w_A/config.FUNIT
+            # param_set.add('w_A', value = w_A, min = w_A*0.9, max = w_A*1.3)
+            # param_set.add('R_A', value = R_A, min = R_A*0.1, max = R_A*1e1)
+            # param_set.add('C_A', value = C_A, min = C_A*1e-1, max = C_A*1e1)
+            # # param_set.add('L_A', value = L_A, min = L_A*1e-1, max = L_A*1e1)
+            #
+            # param_set.add('L_A', expr='(1/( ' + '((w_A * ' + str(config.FUNIT) + ') ** 2)' + '*(C_A*' + str(
+            #     config.CAPUNIT) + ')) )/' + str(config.INDUNIT))
+
+
+            #TODO: for testing purposes
+
+            # f2 = f1/1.4
+            # w2 = f2*2*np.pi
+            # Q2 = Q_A
+            # R2 = 2*self.series_resistance
+            # C2 = 1/(Q2*R2*w2)
+            # L2 = 1/((w2**2)*C2)
+            #
+            # C2 = C2 / config.CAPUNIT
+            # L2 = L2 / config.INDUNIT
+            # w2 = w2 / config.FUNIT
+            # param_set.add('w2', value=w2, min=w2 * 0.9, max=w2 * 1.3)
+            # param_set.add('BW2', value=0, vary = False)
+            # param_set.add('R2', value=R2, min=R2 * 0.1, max=R2 * 1e1)
+            # param_set.add('C2', value=C2, min=C2 * 1e-1, max=C2 * 1e1)
+            # # param_set.add('L_A', value = L_A, min = L_A*1e-1, max = L_A*1e1)
+            #
+            # param_set.add('L2', expr='(1/( ' + '((w2 * ' + str(config.FUNIT) + ') ** 2)' + '*(C2*' + str(
+            #     config.CAPUNIT) + ')) )/' + str(config.INDUNIT))
+            #
+            # f3 = f1 / 1.6
+            # w3 = f3 * 2 * np.pi
+            # Q3 = Q_A
+            # R3 = 2 * self.series_resistance
+            # C3 = 1 / (Q3 * R3 * w3)
+            # L3 = 1 / ((w3 ** 2) * C3)
+            #
+            # C3 = C3 / config.CAPUNIT
+            # L3 = L3 / config.INDUNIT
+            # w3 = w3 / config.FUNIT
+            # param_set.add('w3', value=w3, min=w3 * 0.9, max=w3 * 1.3)
+            # param_set.add('BW3', value=0, vary=False)
+            # param_set.add('R3', value=R3, min=R3 * 0.1, max=R3 * 1e1)
+            # param_set.add('C3', value=C3, min=C3 * 1e-1, max=C3 * 1e1)
+            # # param_set.add('L_A', value = L_A, min = L_A*1e-1, max = L_A*1e1)
+            #
+            # param_set.add('L3', expr='(1/( ' + '((w3 * ' + str(config.FUNIT) + ') ** 2)' + '*(C3*' + str(
+            #     config.CAPUNIT) + ')) )/' + str(config.INDUNIT))
+
+            # f4 = f1 / 1.8
+            # w4 = f4 * 2 * np.pi
+            # Q4 = Q_A
+            # R4 = 2 * self.series_resistance
+            # C4 = 1 / (Q4 * R4 * w4)
+            # L4 = 1 / ((w4 ** 2) * C4)
+            #
+            # C4 = C4 / config.CAPUNIT
+            # L4 = L4 / config.INDUNIT
+            # w4 = w4 / config.FUNIT
+            # param_set.add('w4', value=w4, min=w4 * 0.9, max=w4 * 1.3)
+            # param_set.add('R4', value=R4, min=R4 * 0.1, max=R4 * 1e1)
+            # param_set.add('C4', value=C4, min=C4 * 1e-1, max=C4 * 1e1)
+            # # param_set.add('L_A', value = L_A, min = L_A*1e-1, max = L_A*1e1)
+            #
+            # param_set.add('L4', expr='(1/( ' + '((w3 * ' + str(config.FUNIT) + ') ** 2)' + '*(C3*' + str(
+            #     config.CAPUNIT) + ')) )/' + str(config.INDUNIT))
+            #
+            # f3 = f1 / 2
+            # w3 = f2 * 2 * np.pi
+            # Q3 = Q_A
+            # R3 = 2 * self.series_resistance
+            # C3 = 1 / (Q3 * R3 * w3)
+            # L3 = 1 / ((w3 ** 2) * C3)
+            #
+            # C3 = C3 / config.CAPUNIT
+            # L3 = L3 / config.INDUNIT
+            # w3 = w3 / config.FUNIT
+            # param_set.add('w3', value=w3, min=w3 * 0.9, max=w3 * 1.3)
+            # param_set.add('R3', value=R3, min=R3 * 0.1, max=R3 * 1e1)
+            # param_set.add('C3', value=C3, min=C3 * 1e-1, max=C3 * 1e1)
+            # # param_set.add('L_A', value = L_A, min = L_A*1e-1, max = L_A*1e1)
+            #
+            # param_set.add('L3', expr='(1/( ' + '((w3 * ' + str(config.FUNIT) + ') ** 2)' + '*(C3*' + str(
+            #     config.CAPUNIT) + ')) )/' + str(config.INDUNIT))
+
+
+            # self.order = 3
+
+
+
+
+
+            #TODO: END for testing purposes
+
 
 
 
@@ -723,7 +830,7 @@ class Fitter:
 
             slope_data = scipy.signal.savgol_filter(np.gradient(self.data_mag), 52, 3)
             maxslope_index = np.argwhere(slope_data == max(slope_data))[0][0]
-            lr_offset = 100
+            lr_offset = int(len(self.frequency_vector)*0.025)
             l_index = maxslope_index-lr_offset
             r_index = maxslope_index+lr_offset
             data = abs(self.z21_data[l_index:r_index])
@@ -748,15 +855,18 @@ class Fitter:
         fit_order = self.order
         mode = constants.fcnmode.FIT_LOG
 
+        modelfreq = freq[freq<=config.FREQ_UPPER_LIMIT]
+        modeldata = data[freq<=config.FREQ_UPPER_LIMIT]
+
         if self.order:
             fit_main_resonance = 0
             out = minimize(self.calculate_Z, param_set,
-                            args=(freq, data, fit_order, fit_main_resonance, mode,),
+                            args=(modelfreq, modeldata, fit_order, fit_main_resonance, mode,),
                             method='powell', options={'xtol': 1e-18, 'disp': True})
         else:
             fit_main_resonance = 1
             out = minimize(self.calculate_Z, param_set,
-                           args=(freq, data, fit_order, fit_main_resonance, mode,),
+                           args=(modelfreq, modeldata, fit_order, fit_main_resonance, mode,),
                            method='powell', options={'xtol': 1e-18, 'disp': True})
         return out.params
 
@@ -1288,7 +1398,6 @@ class Fitter:
         if self.captype == constants.captype.MLCC and not fit_main_res:
             Z_A = parameters['R_A'].value + (1j*w*parameters['L_A'].value*config.INDUNIT) + (1/(1j*w*parameters['C_A'].value*config.CAPUNIT))
             Z = 1/(1/Z_main + 1/Z_A)
-
 
 
         for actual in range(1, order + 1):
@@ -2014,6 +2123,80 @@ class Fitter:
             param_set[L_key].vary = not L
             param_set[R_key].vary = not R
             param_set[w_key].vary = not w
+
+
+    ################################V EXPERIMENTAL V####################################################################
+
+    def create_brutebank_model(self, param_set, number_circuits, initial_q):
+
+        freq = self.frequency_vector
+        data = self.z21_data
+
+        banks = np.logspace(min(np.log10(freq)), max(np.log10(freq)), number_circuits + 2)[1:-1]
+
+        indices = [np.argwhere(freq == [min(freq, key=lambda x: abs(x - bank)) for bank in banks][i])[0][0] for i in np.arange(len(banks))]
+
+        datapoints = data[indices]
+        frequencies = freq[indices]
+
+        for it, center_freq in enumerate(frequencies):
+
+
+
+                w_c = center_freq*2*np.pi
+                #TODO: find a metric that represents how much the circuits interact with each other and set the resistance
+                # values to appropriately high values EDIT: I'm going with factor 10 for now
+                R = abs(datapoints[it]) * number_circuits/5
+                C = 1 / (initial_q * R * w_c)
+
+                BW = (w_c/initial_q)/2*np.pi
+                if it != 0:
+                    # create keys
+                    C_key = "C%s" %   (it)
+                    L_key = "L%s" %   (it)
+                    R_key = "R%s" %   (it)
+                    w_key = "w%s" %   (it)
+                    BW_key = "BW%s" % (it)
+                else:
+                    C_key = "C"
+                    L_key = "L"
+                    R_key = "R_s"
+                    w_key = "w"
+                    BW_key = "BW"
+                    param_set.add("R_iso", value=10e6, vary=False)
+
+                expression_string_L = '(1/((' + C_key + '*' + str(config.CAPUNIT) + ')*(' + w_key + '*' + str(
+                    config.FUNIT) + ')**2))/' + str(config.INDUNIT)
+
+                C = C/config.CAPUNIT
+                w_c = w_c/config.FUNIT
+                BW= BW/config.FUNIT
+
+                param_set.add(C_key, min=C*0.6, max=C*1.33, value=C, vary=True)
+                param_set.add(R_key, value=R, min=R * 0.2, max=R * 5)
+                param_set.add(w_key, min=w_c*0.8, max=w_c*1.2, value=w_c, vary=True)
+                param_set.add(L_key, expr=expression_string_L)
+                param_set.add(BW_key, min=BW * 0.8, max=BW * 1.2, value=BW, vary=False)
+
+        self.order = number_circuits -1
+        return param_set
+
+    def fit_brutebank_model(self, param_set):
+        freq = self.frequency_vector
+        data = self.z21_data
+        fit_order = self.order
+        mode = constants.fcnmode.FIT_LOG
+
+        modelfreq = freq[freq<=config.FREQ_UPPER_LIMIT]
+        modeldata = data[freq<=config.FREQ_UPPER_LIMIT]
+
+        fit_main_resonance = 0
+        out = minimize(self.calculate_Z, param_set,
+                        args=(modelfreq, modeldata, fit_order, fit_main_resonance, mode,),
+                        method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        return out.params
+
 
 
 

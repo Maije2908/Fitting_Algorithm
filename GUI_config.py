@@ -1,6 +1,6 @@
 
 #size of the GUI relative to screensize
-GUI_REL_WIDTH = 0.5
+GUI_REL_WIDTH = 0.55
 GUI_REL_HEIGHT = 0.63
 
 # Drop-Down GUI_config

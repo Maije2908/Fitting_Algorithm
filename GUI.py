@@ -470,8 +470,6 @@ class GUI:
 
     def fit_coil(self):
 
-        # TODO: consider some entry box or something
-        captype = config.CAPTYPE
         fit_type = constants.El.INDUCTOR
 
 
@@ -719,6 +717,10 @@ class GUI:
 
         [passive_nom, res, prom, shunt_series, files, dc_bias] = self.read_from_GUI(captype)
 
+        #set prominence to 3dB in case of High C model, because we need to avoid misdetection of resonances here
+        if captype == constants.captype.HIGH_C:
+            prom = 3
+
         try:
             ################ PARSING AND PRE-PROCESSING ################################################################
 
@@ -748,31 +750,32 @@ class GUI:
             ################ END PARSING AND PRE-PROCESSING ############################################################
 
             ################ HIGH C RESONANCE DETECTION ################################################################
+            if captype == constants.captype.HIGH_C:
+                #we need to specify some resonance frequency even if there is no detectable resonant frequency
+                # yet the f0 is required for some routines, hence we set it to an arbitrary value lower than the first resonance
+                for it, fitter in enumerate(fitters):
+                    fitter.f0 = 0
+                    freq = fitter.frequency_vector
+                    fitter.get_resonances()
+                    try:
+                        lowest_res = fitter.bandwidths[0][1]
+                        fitter.f0 = lowest_res / 8
+                    except:
+                        # if we didn't find anything, we just set it to 10e5... why not I guess
+                        fitter.f0 = 10e5
 
-            #we need to specify some resonance frequency even if there is no detectable resonant frequency
-            # yet the f0 is required for some routines, hence we set it to an arbitrary value lower than the first resonance
-            for it, fitter in enumerate(fitters):
-                fitter.f0 = 0
-                freq = fitter.frequency_vector
-                fitter.get_resonances()
-                try:
-                    lowest_res = fitter.bandwidths[0][1]
-                    fitter.f0 = lowest_res / 8
-                except:
-                    # if we didn't find anything, we just set it to 10e5... why not I guess
-                    fitter.f0 = 10e5
-
-                #TODO: this can lead to trouble if the resonant frequency is set to such a low value that there are
-                # no values at frequencies lower than f0
-                #also we need to account for R_s
-                R_s = abs(np.mean(fitter.z21_data[freq < fitter.f0]))
-                fitter.series_resistance = R_s
+                    #TODO: this can lead to trouble if the resonant frequency is set to such a low value that there are
+                    # no values at frequencies lower than f0
+                    #also we need to account for R_s
+                    R_s = abs(np.mean(fitter.z21_data[freq < fitter.f0]))
+                    fitter.series_resistance = R_s
 
 
             ################ END HIGH C RESONANCE DETECTION ############################################################
 
             ################ HIGH C MODEL ##############################################################################
             if captype == constants.captype.HIGH_C:
+
                 for it, fitter in enumerate(fitters):
                     params = Parameters()
                     main_res_params = fitter.create_hi_C_parameters(params)
