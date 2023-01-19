@@ -699,20 +699,40 @@ class Fitter:
             freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
             data_BW_mdl = self.data_mag[f_l_index:f_u_index] * np.exp(1j * np.radians(self.data_ang[f_l_index:f_u_index]))
 
-            [bl, bu, R1, L1, C1] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl, f1)
+            # try to estimate the values for the resonance via the bandwidth model;
+            # sometimes this procedure fails because the resonance is not pronounced enough, in this case we skip it
+            # because the bathtub model will suffice for modeling
+            try:
+                [bl, bu, R1, L1, C1] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl, f1)
 
-            L1 = L1 / config.INDUNIT
-            C1 = C1 / config.CAPUNIT
-            w1 = w1 / config.FUNIT
+                L1 = L1 / config.INDUNIT
+                C1 = C1 / config.CAPUNIT
+                w1 = w1 / config.FUNIT
 
-            param_set.add('R1', value = R1, min = R1*0.5, max = R1*2, vary =True )
-            param_set.add('C1', value=C1, min=C1 * 0.3, max=C1 * 3, vary = True)
-            param_set.add('w1', value=w1, vary = False)
-            param_set.add('BW1', value=((bu-bl))/config.FUNIT, vary = False)
-            # param_set.add('L1', value=L1, min=L1 * 0.5, max=L1 * 2, vary = True)
-            param_set.add('L1', expr = '(1/( '+ '((w1 * '+str(config.FUNIT)+') ** 2)' + '*(C1*' + str(config.CAPUNIT) + ')) )/'+str(config.INDUNIT)  )
+                param_set.add('R1', value = R1, min = R1*0.5, max = R1*2, vary =True )
+                param_set.add('C1', value=C1, min=C1 * 0.3, max=C1 * 3, vary = True)
+                param_set.add('w1', value=w1, vary = False)
+                param_set.add('BW1', value=((bu-bl))/config.FUNIT, vary = False)
+                # param_set.add('L1', value=L1, min=L1 * 0.5, max=L1 * 2, vary = True)
+                param_set.add('L1', expr = '(1/( '+ '((w1 * '+str(config.FUNIT)+') ** 2)' + '*(C1*' + str(config.CAPUNIT) + ')) )/'+str(config.INDUNIT)  )
 
-            self.order = 1
+                self.order = 1
+            except:
+                # if we skip the resonance, we need to reset the order
+                self.order = 0
+
+                # also we can try the slope approach here for improved accuracy
+                slope_data = scipy.signal.savgol_filter(np.gradient(self.data_mag), 52, 3)
+                maxslope_index = np.argwhere(slope_data == max(slope_data))[0][0]
+                lr_offset = int(len(self.frequency_vector) * 0.025)
+                l_index = maxslope_index - lr_offset
+                r_index = maxslope_index + lr_offset
+                data = abs(self.z21_data[l_index:r_index])
+                freq = self.frequency_vector[l_index:r_index]
+                w = freq * 2 * np.pi
+                L_values = data / w
+                L_val = np.mean(L_values) / config.INDUNIT
+                param_set.add('L', value=L_val, min=L_val * 1e-1, max=L_val * 1e1)
 
             # # add another resonance as point of support between the bathtub model and the first resonance
             # f_A = f1/1.2
