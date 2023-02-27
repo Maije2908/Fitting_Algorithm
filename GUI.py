@@ -52,7 +52,6 @@ class GUI:
         self.cmc_files = {}
         self.checklables = {}
 
-
         # Window GUI_config
         self.root: tk.Tk = tk.Tk()
         self.root.wm_title('ATMIS')
@@ -80,6 +79,7 @@ class GUI:
         IOhandleinstance = IOhandler(self.logger)
         self.iohandler = IOhandleinstance
 
+        self.root.mainloop()
 
     def create_drop_down(self):
         """
@@ -165,23 +165,30 @@ class GUI:
         #create mode lables
         cmlabel = tk.Label(self.filelist_frame, text='Common Mode')
         dmlabel = tk.Label(self.filelist_frame, text='Differential Mode')
+        oclabel = tk.Label(self.filelist_frame, text='Open Circuit')
         cmlabel.grid(column=0, row=1, sticky="w")
         dmlabel.grid(column=0, row=2, sticky="w")
+        oclabel.grid(column=0, row=3, sticky="w")
 
 
         #create buttons for file selection
         cmbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("CM"), text= "Load")
         dmbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("DM"), text= "Load")
+        ocbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("OC"), text= "Load")
         cmbutton.grid(column=2, row=1)
         dmbutton.grid(column=2, row=2)
+        ocbutton.grid(column=2, row=3)
 
         #create checkmark lables
         dmchecklabel = tk.Label(self.filelist_frame, text='')
         cmchecklabel = tk.Label(self.filelist_frame, text='')
+        occhecklabel = tk.Label(self.filelist_frame, text='')
         cmchecklabel.grid(column=1, row=1)
         dmchecklabel.grid(column=1, row=2)
+        occhecklabel.grid(column=1, row=3)
         self.checklables["DM"] = dmchecklabel
         self.checklables["CM"] = cmchecklabel
+        self.checklables["OC"] = occhecklabel
 
     def load_cmc_file(self, mode: str):
         try:
@@ -450,19 +457,23 @@ class GUI:
             checkkey.append(key)
 
         #check if all required configurations for CMCs are present
-        if not(set(checkkey) == set(config.CMC_REQUIRED_CONFIGURATIONS)):
+        if not(set(config.CMC_REQUIRED_CONFIGURATIONS).issubset(set(checkkey))):
             raise Exception("not all required files present")
 
         fitter_instance.set_file(self.cmc_files)
-        fitter_instance.calc_series_thru(Z0)
+        fitter_instance.calc_impedances(Z0)
         fitter_instance.smooth_data()
         fitter_instance.get_main_resonance()
         fitter_instance.calculate_nominal_value()
         fitter_instance.get_resonances()
         fitter_instance.create_nominal_parameters()
+        fitter_instance.plot_curves_cmc(1)
         fitter_instance.fit_cmc_main_res()
+        fitter_instance.plot_curves_cmc(1)
         fitter_instance.create_higher_order_parameters()
         fitter_instance.fit_cmc_higher_order_res()
+        fitter_instance.plot_curves_cmc(0)
+        # fitter_instance.one_sided_params_to_sym_params()
 
 
 
@@ -578,7 +589,9 @@ class GUI:
             '''
 
             ################ HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ############################################
+            # mp.freeze_support()
             self.mp_pool = mp.Pool(config.MULTIPROCESSING_COUNT)
+
 
             for it, fitter in enumerate(fitters):
                 fitter.get_resonances()

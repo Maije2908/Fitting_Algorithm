@@ -115,7 +115,7 @@ DEBUG_BW_MODEL_VERBOSE = 0
 DEBUG_FIT = 0
 DEBUG_MESSAGES = 1
 DEBUG_BW_DETECTION = 0
-DEBUG_MULTIPLE_FITE_FIT = 0#1
+DEBUG_MULTIPLE_FITE_FIT = 0
 
 
 #determines whether to show bode plots or only save them

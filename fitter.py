@@ -304,6 +304,9 @@ class Fitter:
 
         return self.nominal_value
 
+    def calculate_nominal_value_noisy_data(self):
+        pass
+
     def calculate_nominal_Rs(self):
         """
         Function to calculate the series resistance of the DUT if it was not provided.
