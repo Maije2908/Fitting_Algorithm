@@ -254,7 +254,7 @@ class Fitter:
                 L_vals_mean = np.array(L_vals)[np.gradient(self.data_mag)[freq<f0][offset:] < max_slope]
                 
                 # finally write the obtained nominal value to the instance variable; also write back the offset
-                self.nominal_value = np.mean(L_vals_mean)
+                self.nominal_value = np.median(L_vals_mean)
                 self.offset = offset
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value)) #TODO: this has to be normalized output to 1e-3/-6/-9 etc
                 self.logger.info("Nominal Inductance not provided, calculated: " + output_dec.to_eng_string())
@@ -297,7 +297,7 @@ class Fitter:
                 max_slope = slope_quantile_50 * constants.QUANTILE_MULTIPLICATION_FACTOR
                 # boolean index the data that has lower than max slope and calculate the mean
                 C_vals_eff = np.array(C_vals)[abs(np.gradient(C_vals)) < abs(max_slope)]
-                self.nominal_value = np.mean(C_vals_eff)
+                self.nominal_value = np.median(C_vals_eff)
                 self.offset = offset
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value))
                 self.logger.info("Nominal Capacitance not provided, calculated: " + output_dec.to_eng_string())
@@ -2146,7 +2146,6 @@ class Fitter:
             param_set[L_key].vary = not L
             param_set[R_key].vary = not R
             param_set[w_key].vary = not w
-
 
     ################################V EXPERIMENTAL V####################################################################
 

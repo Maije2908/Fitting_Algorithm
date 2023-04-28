@@ -461,18 +461,27 @@ class GUI:
             raise Exception("not all required files present")
 
         fitter_instance.set_file(self.cmc_files)
+        fitter_instance.cmcmodel = cmctype.PLATEAU
+
         fitter_instance.calc_impedances(Z0)
         fitter_instance.smooth_data()
         fitter_instance.get_main_resonance()
         fitter_instance.calculate_nominal_value()
         fitter_instance.get_resonances()
-        fitter_instance.create_nominal_parameters()
+
+        fitter_instance.create_nominal_parameters_CM()
         fitter_instance.plot_curves_cmc(1)
+        #for testing:
+        fitter_instance.params_dict["DM"].pretty_print()
         fitter_instance.fit_cmc_main_res()
         fitter_instance.plot_curves_cmc(1)
+        fitter_instance.params_dict["DM"].pretty_print()
         fitter_instance.create_higher_order_parameters()
+        fitter_instance.plot_curves_cmc(0)
         fitter_instance.fit_cmc_higher_order_res()
         fitter_instance.plot_curves_cmc(0)
+
+        pass
         # fitter_instance.one_sided_params_to_sym_params()
 
 

@@ -7,7 +7,7 @@ class El:
 PROMINENCE_DEFAULT = .5
 MAIN_RESONANCE_OFFSET = 50 #obsolete
 MAX_ORDER = 15
-FREQ_UPPER_LIMIT = 200e6 #2e9 #3.9e8 #2e9 #500e6 #2e9
+
 
 # offset factor for the first resonance detected after the main peak (min_f = f0 * OFFSET_FACTOR)
 # if the first resonance after the main peak is not fitted, consider setting this to a lower value
@@ -89,6 +89,11 @@ class captype:
     GENERIC = 1
     MLCC = 2
     HIGH_C = 3
+
+class cmctype:
+    MULTIRESONANCE = 1
+    PLATEAU = 2
+    NANOCRYSTALLINE = 3
 
 class capunits:
     FARADS:         float = 1
