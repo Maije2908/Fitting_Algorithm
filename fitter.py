@@ -153,7 +153,7 @@ class Fitter:
     # Pre-Processing Methods
     ####################################################################################################################
 
-    def calc_series_thru(self, Z0):
+    def calc_series_thru(self, Z0=50):
         """
         Function to calculate the series-through impedance of the DUT
 
@@ -164,7 +164,7 @@ class Fitter:
         self.z21_data = 2 * Z0 * ((1 - self.file.data.s[:, 1, 0]) / self.file.data.s[:, 1, 0])
         self.ser_shunt = constants.calc_method.SERIES
 
-    def calc_shunt_thru(self, Z0):
+    def calc_shunt_thru(self, Z0=50):
         """
         Function to calculate the shunt-through impedance of the DUT
 
@@ -303,9 +303,6 @@ class Fitter:
                 self.logger.info("Nominal Capacitance not provided, calculated: " + output_dec.to_eng_string())
 
         return self.nominal_value
-
-    def calculate_nominal_value_noisy_data(self):
-        pass
 
     def calculate_nominal_Rs(self):
         """

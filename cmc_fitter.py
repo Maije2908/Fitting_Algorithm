@@ -11,33 +11,11 @@ class CMC_Fitter(Fitter):
         #init the Fitter class
         super().__init__(logger)
         #specific variables for CMC
-        self.data_dict = {}
-        self.file_dict = None
         self.fit_type = constants.El.INDUCTOR
-        self.smooth_data_dict = {}
-        self.nominals_dict = {}
-        self.main_res_dict = {}
-        self.bandwidth_dict = {}
-        self.order_dict = {}
-        self.params_dict = {}
+
         #TODO: Series resistance is hardcoded to one Ohm
         self.series_resistance = 1
         self.cmcmodel = None
-
-    def set_file(self, file_dict):
-        self.file_dict = file_dict
-
-    def calc_impedances(self, Z0):
-        for key in self.file_dict:
-            super().set_file(self.file_dict[key])
-            super().calc_series_thru(Z0)
-            self.data_dict[key] = self.z21_data
-
-    def smooth_data(self):
-        for key in self.file_dict:
-            self.z21_data = self.data_dict[key]
-            super().smooth_data()
-            self.smooth_data_dict[key] = [self.data_mag, self.data_ang]
 
     def one_sided_params_to_sym_params(self):
         '''
@@ -126,7 +104,6 @@ class CMC_Fitter(Fitter):
         self.params_dict[key]['L'].min = self.params_dict[key]['L'].value * 0.98e0
         self.params_dict[key]['R_Fe'].max = self.params_dict[key]['R_Fe'].value * 1e3
         self.params_dict[key]['R_Fe'].min = self.params_dict[key]['R_Fe'].value * 1e-3
-
 
     def create_nominal_parameters_DM(self, param_set = None):
         for key in [k for k in self.file_dict.keys()]:

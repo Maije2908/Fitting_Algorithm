@@ -1333,6 +1333,7 @@ class GUI:
     def entry_number_callback(self, checkstring):
         """
         Method to check whether something entered in an entry box is a valid float. Employs regex.
+        Callback function for validate commands
 
         :param checkstring: The string to check
         :return: True if entered string is a valid float, False otherwise

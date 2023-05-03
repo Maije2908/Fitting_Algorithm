@@ -110,11 +110,12 @@ class IOhandler:
 
                 ################ MAIN ELEMENT ##########################################################################
                 # node connections from current dependent inductor model
+
+                main_res_terminal_port = '1' if order > 0 else 'PORT2'
                 lib += 'R_s PORT1 B1 ' + str(R_s) + "\n"
-                lib += 'R_p B1 1 R = limit({lo}, {hi}, {R_Fe} * V(K_Fe))'.format(lo = R_p * 1e-8,
-                                                                                 hi = R_p * 1e8, R_Fe = R_p) + "\n"
-                lib += 'C PORT1 1 ' + str(C) + "\n"
-                lib += 'B1 B1 1 V=V(K_L)*V(L)' + "\n"
+                lib += 'R_p B1 '+main_res_terminal_port+' R = limit({lo}, {hi}, {R_Fe} * V(K_Fe))'.format(lo = R_p * 1e-8, hi = R_p * 1e8, R_Fe = R_p) + "\n"
+                lib += 'C PORT1 '+main_res_terminal_port+' ' + str(C) + "\n"
+                lib += 'BL B1 '+main_res_terminal_port+' V=V(K_L)*V(L)' + "\n"
 
                 #'test' inductor
                 lib += 'L L 0 ' + str(L) + "\n"
@@ -302,10 +303,11 @@ class IOhandler:
                     lib += "\n"
 
                 ############### MAIN ELEMENT ###########################################################################
+                main_res_terminal_port = '1' if order > 0 else 'PORT2'
                 lib += 'R_s PORT1 B1 ' + str(R_s) + "\n"
-                lib += 'R_p B1 1 R = limit({lo}, {hi}, {R_Fe} * V(K_Fe))'.format(lo = R_p * 1e-8, hi = R_p * 1e8, R_Fe = R_p) + "\n"
-                lib += 'C PORT1 1 ' + str(C) + "\n"
-                lib += 'BL B1 1 V=V(K_L)*V(L)' + "\n"
+                lib += 'R_p B1 '+main_res_terminal_port+' R = limit({lo}, {hi}, {R_Fe} * V(K_Fe))'.format(lo = R_p * 1e-8, hi = R_p * 1e8, R_Fe = R_p) + "\n"
+                lib += 'C PORT1 '+main_res_terminal_port+' ' + str(C) + "\n"
+                lib += 'BL B1 '+main_res_terminal_port+' V=V(K_L)*V(L)' + "\n"
 
                 #'test' inductor
                 lib += 'L L 0 ' + str(L) + "\n"
