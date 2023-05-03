@@ -119,7 +119,6 @@ class Fitter:
         else:
             self.prominence = prom
 
-
     def set_captype(self, captype):
         """
         Auxilliary method to set the Capacitor type.
@@ -141,12 +140,10 @@ class Fitter:
 
         self.file = file
         try:
-            self.frequency_vector = self.file.data.f
+            self.frequency_vector = self.file.f
             self.logger.info("File: " + self.file.name)
         except Exception:
             raise Exception("No Files were provided, please select a file!")
-
-
 
 
     ####################################################################################################################
@@ -161,7 +158,7 @@ class Fitter:
         :return: None (stores calculated impedance in instance variable)
         """
 
-        self.z21_data = 2 * Z0 * ((1 - self.file.data.s[:, 1, 0]) / self.file.data.s[:, 1, 0])
+        self.z21_data = 2 * Z0 * ((1 - self.file.s[:, 1, 0]) / self.file.s[:, 1, 0])
         self.ser_shunt = constants.calc_method.SERIES
 
     def calc_shunt_thru(self, Z0=50):
@@ -172,7 +169,7 @@ class Fitter:
         :return: None (stores impedance data in instance variable)
         """
 
-        self.z21_data = (Z0 * self.file.data.s[:, 1, 0]) / (2 * (1 - self.file.data.s[:, 1, 0]))
+        self.z21_data = (Z0 * self.file.s[:, 1, 0]) / (2 * (1 - self.file.s[:, 1, 0]))
         self.ser_shunt = constants.calc_method.SHUNT
 
     def smooth_data(self):

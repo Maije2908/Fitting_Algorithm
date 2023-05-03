@@ -1,5 +1,4 @@
 import config
-from sNpfile import *
 import skrf as rf
 import pandas as pd
 import os
@@ -17,7 +16,7 @@ class IOhandler:
 
     def __init__(self, logger_instance):
         self.logger = logger_instance
-        self.files = []
+        self.files = list()
         self.outpath = None
 
     def set_out_path(self, path):
@@ -48,12 +47,12 @@ class IOhandler:
                 newfile = SNpFile(ntwk, ntwk.name)
 
                 #check if file is already loaded -> if so, skip it
-                if newfile.name in [file.name for file in self.files]:
-                    self.logger.warning("Warning; file: \"" + newfile.name + "\" already present, did not load!")
+                if ntwk.name in [file.name for file in self.files]:
+                    self.logger.warning("Warning; file: \"" + ntwk.name + "\" already present, did not load!")
                     continue
 
-                self.logger.info("Opened file: \"" + newfile.name+"\"")
-                self.files.append(newfile)
+                self.logger.info("Opened file: \"" + ntwk.name+"\"")
+                self.files.append(ntwk)
         except Exception as e:
             raise e
 

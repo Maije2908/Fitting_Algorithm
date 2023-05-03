@@ -17,36 +17,6 @@ class CMC_Fitter(Fitter):
         self.series_resistance = 1
         self.cmcmodel = None
 
-    def one_sided_params_to_sym_params(self):
-        '''
-        function to convert the one sided parameters obtained from the fit to two sided parameters that can be used in
-        a Spice type circuit simulator
-        :return:
-        '''
-        #TODO: this method is still in progress
-        symparams = {}
-        for key in self.params_dict:
-            two_sided = {}
-            if key == 'DM':
-                for param_key in self.params_dict[key]:
-                    #calculate scaling factors for the parameters (so that they are in the correct unit)
-                    #TODO: consider the different cases for elements in the parameter set (e.g. L_p vs L)
-                    if 'L' in param_key:
-                        scaling = config.INDUNIT
-                    elif 'C' in param_key:
-                        scaling = config.CAPUNIT
-                    elif 'w' in param_key:
-                        scaling = config.FUNIT
-
-                    two_sided[param_key] = self.params_dict[key][param_key]
-
-    def calculate_nominal_value(self):
-        for key in self.file_dict:
-            self.data_mag = self.smooth_data_dict[key][0]
-            self.data_ang = self.smooth_data_dict[key][1]
-            self.z21_data = self.data_dict[key]
-            super().calculate_nominal_value()
-            self.nominals_dict[key] = self.nominal_value
 
     def get_main_resonance(self):
         for key in self.file_dict:
@@ -56,28 +26,12 @@ class CMC_Fitter(Fitter):
             super().get_main_resonance()
             self.main_res_dict[key] = [self.f0, self.f0_index]
 
-    def get_resonances(self):
-        for key in [k for k in self.file_dict.keys()]:
-            self.data_mag = self.smooth_data_dict[key][0]
-            self.data_ang = self.smooth_data_dict[key][1]
-            self.z21_data = self.data_dict[key]
-            super().get_resonances()
-            self.order_dict[key] = self.order
-            self.bandwidth_dict[key] = [self.bandwidths, self.bad_bandwidth_flag, self.peak_heights]
-
     def create_nominal_parameters_CM(self):
 
         key = 'CM'
         params = Parameters()
 
-        self.data_mag = self.smooth_data_dict[key][0]
-        self.data_ang = self.smooth_data_dict[key][1]
-        self.z21_data = self.data_dict[key]
-        self.f0 = self.main_res_dict[key][0]
-        self.f0_index = self.main_res_dict[key][1]
-
-        self.params_dict[key] = Parameters()
-        self.nominal_value = self.nominals_dict[key]
+        self.parameters = params
 
         match self.cmcmodel:
             case cmctype.NANOCRYSTALLINE:
@@ -87,8 +41,8 @@ class CMC_Fitter(Fitter):
                 #TODO!!!!!
                 pass
             case cmctype.PLATEAU:
-                params.add('L', value = self.nominals_dict['CM'])
-                params.add('R', value = abs(self.data_dict['CM'][self.main_res_dict['CM'][1]]))
+                params.add('L', value = self.nominal_value)
+                params.add('R', value = abs(self.z21_data[self.f0_index]))
                 pass
 
         self.params_dict[key] = super().create_nominal_parameters(self.params_dict[key])
@@ -104,62 +58,6 @@ class CMC_Fitter(Fitter):
         self.params_dict[key]['L'].min = self.params_dict[key]['L'].value * 0.98e0
         self.params_dict[key]['R_Fe'].max = self.params_dict[key]['R_Fe'].value * 1e3
         self.params_dict[key]['R_Fe'].min = self.params_dict[key]['R_Fe'].value * 1e-3
-
-    def create_nominal_parameters_DM(self, param_set = None):
-        for key in [k for k in self.file_dict.keys()]:
-
-            self.data_mag = self.smooth_data_dict[key][0]
-            self.data_ang = self.smooth_data_dict[key][1]
-            self.z21_data = self.data_dict[key]
-            self.f0 = self.main_res_dict[key][0]
-            self.f0_index = self.main_res_dict[key][1]
-            self.fit_type = El.INDUCTOR
-
-            self.params_dict[key] = Parameters()
-            self.nominal_value = self.nominals_dict[key]
-
-            self.params_dict[key] = super().create_nominal_parameters(self.params_dict[key])
-            #clear some parameters we obtain from the super() method
-            # self.params_dict[key].pop('R_s') EDIT: we might need R_s
-            self.params_dict[key]['L'].expr = ''
-            self.params_dict[key]['L'].vary = True
-            self.params_dict[key]['R_s'].vary = False
-            #set new boundaries for our parameters
-            self.params_dict[key]['C'].max = self.params_dict[key]['C'].value * 1e2
-            self.params_dict[key]['C'].min = self.params_dict[key]['C'].value * 1e-6
-            self.params_dict[key]['L'].max = self.params_dict[key]['L'].value * 1.01e0
-            self.params_dict[key]['L'].min = self.params_dict[key]['L'].value * 0.98e0
-            self.params_dict[key]['R_Fe'].max = self.params_dict[key]['R_Fe'].value * 1e3
-            self.params_dict[key]['R_Fe'].min = self.params_dict[key]['R_Fe'].value * 1e-3
-
-
-            if key == "DM":
-                self.params_dict[key].add('C_p', value=7.95e-12 / config.CAPUNIT, min=1e-13 / config.CAPUNIT, max=1e-8 / config.CAPUNIT, vary=True)
-                # #TODO: this is hardcoded
-                #leakage inductor
-                # L_main = self.params_dict[key]['L'].value #NOTE: L is already in INDUNIT; DON'T RESCALE!!!!
-                # self.params_dict[key].add('L_leak', value=L_main/10, vary=True, min=L_main/1e3, max=L_main)
-
-                #TODO: check if OC exists
-
-                C_p = self.nominals_dict['OC']/2
-                wc = self.main_res_dict['OC'][0] * 2 * np.pi
-                L_p = (1/(wc**2*C_p))*2
-                R_p = 2*abs(self.data_dict['OC'][self.main_res_dict['OC'][1]])
-                self.params_dict[key].add('C_p', value=C_p / config.CAPUNIT, min=C_p*1e-1 / config.CAPUNIT, max=C_p*1e1 / config.CAPUNIT, vary=True)
-                # self.params_dict[key].add('L_p', value=L_p / config.INDUNIT, min=1e-13 / config.INDUNIT, max=1e-6 / config.INDUNIT, vary=True)
-                self.params_dict[key].add('R_p', value=R_p, min = 1e-6, vary=False)
-
-
-                # self.params_dict[key].add('C_p', value=C_p / config.CAPUNIT, min=C_p*1e-2 / config.CAPUNIT,max=C_p*1e2 / config.CAPUNIT, vary=True)
-                # self.params_dict[key].add('L_p', value = L_p/config.INDUNIT, min=L_p*1e-2 / config.INDUNIT, max=L_p*1e2 / config.INDUNIT, vary=True)
-                # self.params_dict[key].add('R_p', value=R_p, vary=True, min=R_p*1e-3, max=R_p*1e3)
-
-                # #parallel capacitances model for vogt j45
-                # #150;1.33e-6;7.95e-12;
-                # self.params_dict[key].add('R_p', value = 150, vary = True, min = 50, max =1500)
-                # self.params_dict[key].add('L_p', value = 1.4e-6/config.INDUNIT, min=1e-7 / config.INDUNIT, max=1e-5 / config.INDUNIT, vary=True)
-                # self.params_dict[key].add('C_p', value = 7.95e-12/config.CAPUNIT, min=1e-13 / config.CAPUNIT, max=1e-10 / config.CAPUNIT, vary=True)
 
     def fit_cmc_main_res(self):
         for key in [k for k in self.file_dict.keys() if k != 'OC']:
@@ -195,27 +93,6 @@ class CMC_Fitter(Fitter):
 
             # self.params_dict[key] = super().fit_main_res_inductor_file_1(self.params_dict[key])
 
-    def create_higher_order_parameters(self):
-        for key in [k for k in self.file_dict.keys() if k != 'OC']:
-            # if key == "DM":
-            #     self.bandwidth_dict["DM"][0].pop(0)
-            #     self.bandwidth_dict["DM"][1] = self.bandwidth_dict["DM"][1][1:]
-            #     self.bandwidth_dict["DM"][2].pop(0)
-            #     self.order_dict["DM"] -= 1
-
-            self.data_mag = self.smooth_data_dict[key][0]
-            self.data_ang = self.smooth_data_dict[key][1]
-            self.z21_data = self.data_dict[key]
-            self.f0 = self.main_res_dict[key][0]
-            self.f0_index = self.main_res_dict[key][1]
-            self.order = self.order_dict[key]
-            self.bandwidths = self.bandwidth_dict[key][0]
-            self.bad_bandwidth_flag = self.bandwidth_dict[key][1]
-            self.peak_heights = self.bandwidth_dict[key][2]
-
-            self.params_dict[key] = super().create_higher_order_parameters(2,self.params_dict[key])
-            self.bandwidth_dict[key][0] = self.modeled_bandwidths
-
     def fit_cmc_higher_order_res(self):
         for key in [k for k in self.file_dict.keys() if k != 'OC']:
             self.data_mag = self.smooth_data_dict[key][0]
@@ -234,34 +111,6 @@ class CMC_Fitter(Fitter):
             # self.fit_cmc_main_res()
             self.params_dict[key] = super().pre_fit_bands(self.params_dict[key])
             self.params_dict[key] = super().fit_curve_higher_order(self.params_dict[key])
-
-    def fix_main_resonance_parameters(self, param_set):
-        param_set['C'].vary = False
-        param_set['L'].vary = False
-        param_set['R_Fe'].vary = False
-        return param_set
-
-    def plot_curves_cmc(self, mainres):
-        for key in self.file_dict:
-
-            freq = self.frequency_vector
-            data = self.data_dict[key]
-
-            if key == 'OC':
-                params = self.params_dict['DM']
-                order = self.order_dict['DM']
-            else:
-                params = self.params_dict[key]
-                order = self.order_dict[key]
-
-
-
-            model_data = self.calculate_Z_CMC(params, self.frequency_vector, 0, order,
-                                              mainres, constants.fcnmode.OUTPUT, key )
-            plt.figure()
-            plt.loglog(freq,abs(data))
-            plt.loglog(freq,abs(model_data))
-            plt.title(key)
 
     def calculate_Z_CMC(self, parameters, frequency_vector, data, fit_order, fit_main_res, modeflag, meas_type):
         # if we only want to fit the main resonant circuit, set order to zero to avoid "for" loops
@@ -355,12 +204,29 @@ class CMC_Fitter(Fitter):
             case fcnmode.FIT_IMAG:
                 return np.imag(data) - np.imag(Z)
 
-    def calc_parallel_C(self):
-        #TODO: zombie function as of yet
-        data = self.smooth_data_dict["OC"][0]
-        freq = self.frequency_vector
 
+    def one_sided_params_to_sym_params(self):
+        '''
+        function to convert the one sided parameters obtained from the fit to two sided parameters that can be used in
+        a Spice type circuit simulator
+        :return:
+        '''
+        #TODO: this method is still in progress
+        symparams = {}
+        for key in self.params_dict:
+            two_sided = {}
+            if key == 'DM':
+                for param_key in self.params_dict[key]:
+                    #calculate scaling factors for the parameters (so that they are in the correct unit)
+                    #TODO: consider the different cases for elements in the parameter set (e.g. L_p vs L)
+                    if 'L' in param_key:
+                        scaling = config.INDUNIT
+                    elif 'C' in param_key:
+                        scaling = config.CAPUNIT
+                    elif 'w' in param_key:
+                        scaling = config.FUNIT
 
+                    two_sided[param_key] = self.params_dict[key][param_key]
 
 
 

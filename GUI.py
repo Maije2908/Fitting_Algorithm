@@ -8,7 +8,6 @@ import constants
 from fitter import *
 from iohandler import *
 from cmc_fitter import *
-from sNpfile import *
 import GUI_config
 import constants
 import config
@@ -460,8 +459,14 @@ class GUI:
         if not(set(config.CMC_REQUIRED_CONFIGURATIONS).issubset(set(checkkey))):
             raise Exception("not all required files present")
 
-        fitter_instance.set_file(self.cmc_files)
+
+
+
+        fitter_instance.set_file(self.cmc_files['CM'])
         fitter_instance.cmcmodel = cmctype.PLATEAU
+
+
+
 
         fitter_instance.calc_impedances(Z0)
         fitter_instance.smooth_data()
@@ -1083,8 +1088,8 @@ class GUI:
                 raise Exception("Error: No Files present")
             # get selected reference file and make a list with all files that are not the reference file
             ref_file = self.iohandler.files[self.ref_file_select.get()]
-            other_files = np.concatenate((self.iohandler.files[:self.ref_file_select.get()],
-                                          self.iohandler.files[self.ref_file_select.get() + 1:]))
+            other_files = self.iohandler.files[:self.ref_file_select.get()] + self.iohandler.files[self.ref_file_select.get() + 1:]
+
             if ref_file is None:
                 raise Exception("Error: Please select a reference file")
 
@@ -1096,7 +1101,7 @@ class GUI:
             # the reference file has to be the first file in the list, but also the DC bias needs to match, so we'll
             # have to shuffle around a bit
             dc_bias.insert(0, dc_bias.pop(self.ref_file_select.get()))
-            files = np.concatenate([[ref_file], other_files])
+            files = [ref_file] + other_files
 
 
             return [passive_nom, res, prom, shunt_series, files, dc_bias]
