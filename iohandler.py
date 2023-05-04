@@ -42,10 +42,6 @@ class IOhandler:
             for actual_path in path:
                 ntwk = rf.Network(actual_path)
 
-
-                # generate class for storing the data in and write to array
-                newfile = SNpFile(ntwk, ntwk.name)
-
                 #check if file is already loaded -> if so, skip it
                 if ntwk.name in [file.name for file in self.files]:
                     self.logger.warning("Warning; file: \"" + ntwk.name + "\" already present, did not load!")

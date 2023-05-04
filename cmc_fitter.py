@@ -18,13 +18,22 @@ class CMC_Fitter(Fitter):
         self.cmcmodel = None
 
 
-    def get_main_resonance(self):
-        for key in self.file_dict:
-            self.data_mag = self.smooth_data_dict[key][0]
-            self.data_ang = self.smooth_data_dict[key][1]
-            self.z21_data = self.data_dict[key]
-            super().get_main_resonance()
-            self.main_res_dict[key] = [self.f0, self.f0_index]
+
+    def plot_plateau_model(self, params,N=0):
+
+        freq = self.frequency_vector
+        omega = freq*2*np.pi
+
+        L= params['L'].value
+        R= params['R'].value
+
+
+        ZL = 1j*omega*L
+        Z = 1/(1/ZL+1/R)
+
+        plt.figure()
+        plt.loglog(self.frequency_vector, abs(self.z21_data))
+        plt.loglog(self.frequency_vector, abs(Z))
 
     def create_nominal_parameters_CM(self):
 
@@ -43,6 +52,12 @@ class CMC_Fitter(Fitter):
             case cmctype.PLATEAU:
                 params.add('L', value = self.nominal_value)
                 params.add('R', value = abs(self.z21_data[self.f0_index]))
+
+
+
+
+
+
                 pass
 
         self.params_dict[key] = super().create_nominal_parameters(self.params_dict[key])

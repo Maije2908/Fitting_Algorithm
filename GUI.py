@@ -198,9 +198,7 @@ class GUI:
             #we need to check if the filename is not an empty string (i.e. if the user has not canceled the load)
             if filename:
                 ntwk = rf.Network(os.path.abspath(filename))
-                # generate class for storing the data in and write to array
-                newfile = SNpFile(ntwk, ntwk.name)
-                self.cmc_files[mode] = newfile
+                self.cmc_files[mode] = ntwk
                 self.checklables[mode].config(text = "\u2713")
         except Exception as e:
             raise e
@@ -468,7 +466,7 @@ class GUI:
 
 
 
-        fitter_instance.calc_impedances(Z0)
+        fitter_instance.calc_series_thru(Z0)
         fitter_instance.smooth_data()
         fitter_instance.get_main_resonance()
         fitter_instance.calculate_nominal_value()
