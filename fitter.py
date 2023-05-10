@@ -976,134 +976,97 @@ class Fitter:
         :return: A Parameters() object containing the higher order circuit elements
         """
 
-        #if we got too many frequency zones -> restrict fit to max order
-        #else get order from frequency zones and write found order to class
-        if constants.MAX_ORDER >= len(self.bandwidths):
-            order = len(self.bandwidths)
-            self.order = len(self.bandwidths)
-        else:
-            order = constants.MAX_ORDER
-            self.order = order
-            self.logger.info("Info: more resonances detected than maximum order permits, set order to {value}".format(value=order))
-            #TODO: some methods are not robust enough for this fit maybe?
+        ############################## INITIALIZATION ##################################################################
 
+        # Check if the number of detected resonances is higher than the maximum order allowed
+        if MAX_ORDER >= len(self.bandwidths):
+            self.order = len(self.bandwidths)
+        else: # Restrict order to maximum order allowed
+            self.order = MAX_ORDER
+            self.logger.info("Info: more resonances detected than maximum order permits, "
+                             "set order to {value}".format(value=self.order))
+
+        # get frequency and data from instance variables
         freq = self.frequency_vector
         data = self.z21_data
+        # initialize array for the modeled bandwidths
         self.modeled_bandwidths = np.zeros([self.order, 3])
-        main_res_data = self.calculate_Z(param_set, self.frequency_vector, 2, 0, 0,
-                                         constants.fcnmode.OUTPUT)
 
+        #TODO: need to pull the param_set from instance variable since I don't like the handling with kwargs at the moment
 
-        for key_number in range(1, order + 1):
+        ############################## MAIN LOOP #######################################################################
 
-            #create keys
+        # Iterate through all detected resonances; note that we iterate by index since we need a key number
+        for key_number in range(1, self.order + 1):
+
+            # Create keys for the parameters to be written
             C_key   = "C%s" % key_number
             L_key   = "L%s" % key_number
             R_key   = "R%s" % key_number
             w_key   = "w%s" % key_number
             BW_key  = "BW%s" % key_number
 
+            # Get upper and lower frequencies of the band
+            f_lower = self.bandwidths[key_number - 1][0]
+            f_center = self.bandwidths[key_number - 1][1]
+            f_upper = self.bandwidths[key_number - 1][2]
 
-
-
-            #get upper and lower frequencies
-            b_l = self.bandwidths[key_number - 1][0]
-            b_c = self.bandwidths[key_number - 1][1]
-            b_u = self.bandwidths[key_number - 1][2]
-
+            ############################## BANDWIDTH MODEL #############################################################
             # handle bandwidths here -> since the bandwidth detection relies on the 3dB points, which are not always
-            # present, we may need to "model" the BW. If we have one of the two 3dB points though, we can assume symmetric
-            # bandwidth EDIT: bandwidth model has been applied to all peaks, since it gives good estimates for the
-            # parameter values
+            # present, we need to model the bandwidth (this is done by brute-force stepping in a separate function)
 
-            stretch_factor = 1.5
-            #get indices of the band
-            f_c_index = np.argwhere(self.frequency_vector == b_c)[0][0]
-            f_l_index = np.argwhere(self.frequency_vector == b_l)[0][0]
-            f_u_index = np.argwhere(self.frequency_vector == b_u)[0][0]
-            #calculate diffference between upper and lower, so the number of points is relative to where we are in
-            #the data, since the measurement points are not equally spaced
-            n_pts_offset = ((f_u_index - f_l_index) / 2) * stretch_factor
-            #recalc lower and upper bound
-            f_l_index = f_c_index - int(np.floor(n_pts_offset))
-            f_u_index = f_c_index + int(np.floor(n_pts_offset))
-            #get data for bandwidth model
-            freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
-            data_BW_mdl = self.data_mag[f_l_index:f_u_index]*np.exp(1j*np.radians(self.data_ang[f_l_index:f_u_index]))
+            # Get indices of the band
+            f_center_index = np.where(np.isclose(freq, f_center))[0][0]
+            f_lower_index = np.where(np.isclose(freq, f_lower))[0][0]
+            f_upper_index = np.where(np.isclose(freq, f_upper))[0][0]
 
-            #upper and lower 3dB point faulty
-            if self.bad_bandwidth_flag[key_number-1].all:
-                #now model the BW
-                [b_l,b_u,r_value,value_ind,value_cap] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl,b_c)
-            #only lower 3dB point faulty
-            elif self.bad_bandwidth_flag[key_number-1][0]:
-                [_,_, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, b_c)
-                b_l = b_c - (b_u - b_c)
-            # only upper 3dB point faulty
-            elif self.bad_bandwidth_flag[key_number - 1][1]:
-                [_,_, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, b_c)
-                b_u = b_c + (b_c - b_l)
-            #both points present -> we only want estimates for the elements
-            else:
-                [_,_, r_value, value_ind, value_cap] = self.model_bandwidth(freq_BW_mdl, data_BW_mdl, b_c)
+            # Calculate an offset so the bandwidth model receives a bit more datapoints than needed
+            # this is done relative to the bandwidth since the datapoints have log-spacing
+            n_pts_offset = int(np.floor(((f_upper_index - f_lower_index) / 2) * BW_MODEL_DATA_OFFSET_STRETCH))
+            f_lower_index = f_center_index - n_pts_offset
+            f_upper_index = f_center_index + n_pts_offset
 
+            # Get data for bandwidth model. Note that we are operating with the smoothed data here
+            freq_BW_mdl = self.frequency_vector[f_lower_index:f_upper_index]
+            data_BW_mdl = self.data_mag[f_lower_index:f_upper_index]*np.exp(1j*np.radians(self.data_ang[f_lower_index:f_upper_index]))
 
-            # bandwidth
-            BW_min = (b_u - b_l) * constants.BW_MIN_FACTOR
-            BW_max = (b_u - b_l) * constants.BW_MAX_FACTOR
-            BW_value = (b_u - b_l)  # BW_max / 8
+            # invoke bandwidth model
+            [f_lower,f_upper,r_value,value_ind,value_cap] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl,f_center)
 
             #rewrite the obtained bandwidth
-            self.modeled_bandwidths[key_number - 1][0] = b_l
-            self.modeled_bandwidths[key_number - 1][1] = b_c
-            self.modeled_bandwidths[key_number - 1][2] = b_u
+            self.modeled_bandwidths[key_number - 1][0] = f_lower
+            self.modeled_bandwidths[key_number - 1][1] = f_center
+            self.modeled_bandwidths[key_number - 1][2] = f_upper
 
             # center frequency (omega)
-            w_c = b_c * 2 * np.pi
+            w_c = f_center * 2 * np.pi
             min_w = w_c * constants.MIN_W_FACTOR
             max_w = w_c * constants.MAX_W_FACTOR
 
-            ############################# PRE-Fit ######################################################################
+            ############################# BANDWIDTH MODEL PARAMETER CORRECTION #########################################
+            # adjust the value of R; since the BW model provides us with an R for the "standalone" circuit, we need
+            # to correct it to account for the model data as well, since the model has a non-zero impedance at the
+            # point of the newly introduced resonance
+
+            # calculate impedance data for all resonances we already have, except for the one in question
+            curve_data = self.calculate_Z(param_set, freq, 2, key_number - 1, 0, constants.fcnmode.OUTPUT)
+            data_here = data[np.where(np.isclose(freq, f_center))[0][0]]
+            model_here = curve_data[np.where(np.isclose(freq, f_center))[0][0]]
+            w_c = f_center * 2 * np.pi
+            Q = f_center / (f_upper - f_lower)
 
             if self.fit_type == constants.El.CAPACITOR:
-
-                #calculate the
-                curve_data = self.calculate_Z(param_set, freq, 2, key_number-1, 0,constants.fcnmode.OUTPUT)
-                data_here = data[freq == b_c]
-                main_res_here = curve_data[freq == b_c]
-
-                w_c = b_c * 2 * np.pi
-                Q = b_c / (b_u - b_l)
-
-
-                R_adjusted = abs(1 / (1 / data_here[0] - 1 / main_res_here[0]))
+                R_adjusted = abs(1 / (1 / data_here - 1 / model_here))
                 C_adjusted = 1 / (R_adjusted * w_c * Q)
 
-                r_value = R_adjusted
-                value_cap = C_adjusted
-
-
-
             if self.fit_type == constants.El.INDUCTOR:
-
-                # calculate the
-                curve_data = self.calculate_Z(param_set, freq, 2, key_number - 1, 0,
-                                              constants.fcnmode.OUTPUT)
-                data_here = data[freq == b_c]
-                main_res_here = curve_data[freq == b_c]
-
-                w_c = b_c * 2 * np.pi
-                Q = b_c / (b_u - b_l)
-
-                # adjust the value of R; since the BW model provides us with an R for the "standalone" circuit, we need
-                # to correct it to account for the main res data as well
-                R_adjusted = abs( abs(data_here[0]) -  abs(main_res_here[0]) )
-
+                R_adjusted = abs( abs(data_here) -  abs(model_here) )
                 C_adjusted = Q / (R_adjusted * w_c)
 
-                r_value = R_adjusted
-                value_cap = C_adjusted
+            r_value = R_adjusted
+            value_cap = C_adjusted
 
+            #################### WRITE TO PARAMETER SET ################################################################
 
             # rescale parameters to match units
             value_cap = value_cap / config.CAPUNIT
@@ -1111,78 +1074,47 @@ class Fitter:
             w_c = w_c / config.FUNIT
             min_w = min_w / config.FUNIT
             max_w = max_w / config.FUNIT
+
+            # Calculate bandwidth value
+            #TODO: the bandwidth value should be dependent on the parameters, hence an expression string
+            # would be more fitting
+            BW_value = (f_upper - f_lower)
             BW_value = BW_value / config.FUNIT
-            BW_min = BW_min / config.FUNIT
-            BW_max = BW_max / config.FUNIT
 
+            # fetch parameter bounds from constants file
+            if self.fit_type == El.CAPACITOR:
+                # fetch parameter bounds for capacitors
+                r_min = r_value * RMINFACTOR_CAP
+                r_max = r_value * RMAXFACTOR_CAP
+                min_cap = value_cap * CMINFACTOR_CAP
+                max_cap = value_cap * CMAXFACTOR_CAP
 
+            elif self.fit_type == El.INDUCTOR:
+                # fetch parameter bounds for inductors
+                r_min = r_value * RMINFACTOR_COIL
+                r_max = r_value * RMAXFACTOR_COIL
+                min_cap = value_cap * CMINFACTOR_COIL
+                max_cap = value_cap * CMAXFACTOR_COIL
 
-
-            #################### CAPACITORS ############################################################################
-            if self.fit_type == constants.El.CAPACITOR:
-
-                # good values for capacitor fitting
-                max_cap = value_cap * 1e1
-                min_cap = value_cap * 1e-1
-
-                r_max = r_value * 1.01
-                r_min = r_value * 0.990
-
-                expression_string_C = '(('+BW_key +'*'+ str(config.FUNIT) +'*'+ str(2*np.pi)+')/(('+w_key+'*'+str(config.FUNIT)+')**2*'+R_key+'))/'+str(config.CAPUNIT)
-
-
-
-                param_set.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
-                match config_number:
-                    case 1:
-
-                        #TODO: check expression string for case 1 with unit scaling
-                        expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
-
-                        param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                        param_set.add(R_key, value = r_value, max = r_max, min = r_min, vary = True)
-                        param_set.add(C_key, expr=expression_string_C, vary=False)
-                        param_set.add(L_key, expr=expression_string_L, vary=False)
-                    case 2:
-                        expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
-
-                        param_set.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-                        param_set.add(R_key, value=r_value, min=r_value * 0.2, max=r_value * 5)
-                        param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                        param_set.add(L_key, expr=expression_string_L)
-
-
-
-            #################### INDUCTORS #############################################################################
             else:
+                #TODO: fit type should be defined at this point in the program; unsure whether or not an exception
+                # should be raised here since the edge case should NOT be invoked
+                raise AttributeError('Fit type not defined')
 
-                max_cap = value_cap * 1e1#2
-                min_cap = value_cap * 1e-1#500e-3
+            # define expression string for L; L is thereby bound to the corresponding C via w0 = 1/sqrt(L*C)
+            # Note that we have to take care of units here
+            expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
 
+            # finally add parameters with their bounds to param_set
+            param_set.add(BW_key, value=BW_value, vary=False)
+            param_set.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
+            param_set.add(R_key, value=r_value, min=r_min, max=r_max, vary=True)
+            param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
+            param_set.add(L_key, expr=expression_string_L)
 
-                param_set.add(BW_key, min=BW_min, max=BW_max, value=BW_value, vary=False)
-                match config_number:
-                    case 1:
-                        r_min= r_value*0.9
-                        r_max= r_value*1.1
-                        #GUI_config B -> default GUI_config; this goes via the Q factor
-                        expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
-                        expression_string_C = '(1/(' +str(2*np.pi)+'*'+BW_key+'*'+str(config.FUNIT)+'*'+R_key +'))/'+str(config.CAPUNIT)
-
-                        param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                        param_set.add(R_key, value=r_value, min = r_min, max=r_max, vary=True)
-                        param_set.add(C_key, expr=expression_string_C, vary=False)
-                        param_set.add(L_key, expr=expression_string_L, vary=False)
-
-                    case 2:
-
-                        expression_string_L = '(1/(('+ C_key +'*'+ str(config.CAPUNIT)+')*('+w_key+'*'+str(config.FUNIT)+')**2))/'+str(config.INDUNIT)
-
-                        param_set.add(C_key, min=min_cap, max=max_cap, value=value_cap, vary=True)
-                        param_set.add(R_key, value = r_value, min = r_value * 0.5, max = r_value * 2)
-                        param_set.add(w_key, min=min_w, max=max_w, value=w_c, vary=True)
-                        param_set.add(L_key, expr=expression_string_L)
-
+        #TODO: save parameters to instance variable
+        #TODO: write log message for verbose mode
+        #TODO: write state of fitter to instance
 
         return param_set
 
@@ -2142,78 +2074,5 @@ class Fitter:
             param_set[w_key].vary = not w
 
     ################################V EXPERIMENTAL V####################################################################
-
-    def create_brutebank_model(self, param_set, number_circuits, initial_q):
-
-        freq = self.frequency_vector
-        data = self.z21_data
-
-        banks = np.logspace(min(np.log10(freq)), max(np.log10(freq)), number_circuits + 2)[1:-1]
-
-        indices = [np.argwhere(freq == [min(freq, key=lambda x: abs(x - bank)) for bank in banks][i])[0][0] for i in np.arange(len(banks))]
-
-        datapoints = data[indices]
-        frequencies = freq[indices]
-
-        for it, center_freq in enumerate(frequencies):
-
-
-
-                w_c = center_freq*2*np.pi
-                #TODO: find a metric that represents how much the circuits interact with each other and set the resistance
-                # values to appropriately high values EDIT: I'm going with factor 10 for now
-                R = abs(datapoints[it]) * number_circuits/5
-                C = 1 / (initial_q * R * w_c)
-
-                BW = (w_c/initial_q)/2*np.pi
-                if it != 0:
-                    # create keys
-                    C_key = "C%s" %   (it)
-                    L_key = "L%s" %   (it)
-                    R_key = "R%s" %   (it)
-                    w_key = "w%s" %   (it)
-                    BW_key = "BW%s" % (it)
-                else:
-                    C_key = "C"
-                    L_key = "L"
-                    R_key = "R_s"
-                    w_key = "w"
-                    BW_key = "BW"
-                    param_set.add("R_iso", value=10e6, vary=False)
-
-                expression_string_L = '(1/((' + C_key + '*' + str(config.CAPUNIT) + ')*(' + w_key + '*' + str(
-                    config.FUNIT) + ')**2))/' + str(config.INDUNIT)
-
-                C = C/config.CAPUNIT
-                w_c = w_c/config.FUNIT
-                BW= BW/config.FUNIT
-
-                param_set.add(C_key, min=C*0.6, max=C*1.33, value=C, vary=True)
-                param_set.add(R_key, value=R, min=R * 0.2, max=R * 5)
-                param_set.add(w_key, min=w_c*0.8, max=w_c*1.2, value=w_c, vary=True)
-                param_set.add(L_key, expr=expression_string_L)
-                param_set.add(BW_key, min=BW * 0.8, max=BW * 1.2, value=BW, vary=False)
-
-        self.order = number_circuits -1
-        return param_set
-
-    def fit_brutebank_model(self, param_set):
-        freq = self.frequency_vector
-        data = self.z21_data
-        fit_order = self.order
-        mode = constants.fcnmode.FIT_LOG
-
-        modelfreq = freq[freq<=config.FREQ_UPPER_LIMIT]
-        modeldata = data[freq<=config.FREQ_UPPER_LIMIT]
-
-        fit_main_resonance = 0
-        out = minimize(self.calculate_Z, param_set,
-                        args=(modelfreq, modeldata, fit_order, fit_main_resonance, mode,),
-                        method='powell', options={'xtol': 1e-18, 'disp': True})
-
-        return out.params
-
-
-
 
 

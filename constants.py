@@ -24,14 +24,6 @@ MAX_R_ISO = 1e9
 R_ISO_VALUE = 10e6
 
 
-#max/min values for the higher order circuits
-RMAX = 1e5 #was 1e4
-RMIN = 1e-3
-LMIN = 1e-20
-LOG_FACTOR = 1.04 #multiplication factor for the min bandwidth #OBSOLETE
-
-MIN_CAP = 1e-20 #minimum capacitor
-MAX_CAP_FACTOR = 1e5 #was 1e3
 
 
 MAX_W_FACTOR = 1.0001
@@ -66,6 +58,34 @@ QUANTILE_MULTIPLICATION_FACTOR = 5
 MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the threshold
 
 DEFAULT_OFFSET_PEAK = 40 #samples; this specifies the default offset for a resonance peak if the 3dB point can't be found
+
+# The relative offset of the data that will be passed to the bandwidth model
+BW_MODEL_DATA_OFFSET_STRETCH = 1.5 # (-)
+
+############################## RANGE VARIABLES FOR HIGHER ORDER RESONANCES #############################################
+
+# These variables define how much the higher order resonance parameters are allowed to deviate from the initial guess
+# The variables are *factors*, i.e. multiplicative constants. This means a value of RMAX = 2 allows the maximum value of
+# a resistor to be two times its initial guess
+
+# resistor ranges for CAPACITORS
+RMINFACTOR_CAP = .2
+RMAXFACTOR_CAP = 5
+
+# resistor ranges for INDUCTORS
+RMINFACTOR_COIL = .5
+RMAXFACTOR_COIL = 2
+
+# capacitor ranges for CAPACITORS
+CMINFACTOR_CAP = 1e-1
+CMAXFACTOR_CAP = 1e1
+
+# capacitor ranges for INDUCTORS
+CMINFACTOR_COIL = 1e-1
+CMAXFACTOR_COIL = 1e1
+
+############################## ENDS RANGE VARIABLES FOR HIGHER ORDER RESONANCES ########################################
+
 
 
 #mode flags
