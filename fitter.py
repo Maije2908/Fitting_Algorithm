@@ -29,27 +29,26 @@ FIT_BY = config.FIT_BY
 
 class Fitter:
 
-    def __init__(self, file, fit_type, shunt_series = SERIES_THROUGH, captype=captype.GENERIC,
-                 logger_instance = logging.NullHandler(), Z0=50, nominal_value = None,
+    def __init__(self, file, fit_type, shunt_series = SERIES_THROUGH, captype = captype.GENERIC,
+                 logger_instance = logging.NullHandler(), Z0=50, nominal_value = None, series_resistance = None,
                  peak_detection_prominence = PROMINENCE_DEFAULT):
 
         #TODO: paradigmatically the whole class needs some refactoring
-        # 1) the fitter should not get a logging instance, logging should be handeled by the caller
         # 2) the fitter has a lot of dependency on the caller, it should be more self sufficient
-        # 3) idea is to give the fitter the following parameters in the constructor
-        #       -file -> parse it in the constructor
-        #       -shunt/series -> together with the file, the fitter can then calculate the impedance IN the constructor
-        #       -data smoothing -> can also be handled in the constructor
-        #       -offset calculation -> can also be handled in the constructor
-        #       -nominal value calculation -> also handle this in the constructor
-        #       -set_specification() -> delete the method and handle it in the constructor
         # 4) do not put the bandwidth list as NoneType in the constructor, rather let it blank and add the bandwidths
         #   as soon as they are detected
         # 5) might be an idea to pass the DC bias to the constructor?
         # 6)
 
-
+        # Set arguments that need to be passed directly
         self.ser_shunt = shunt_series
+        self.fit_type = fit_type
+        self.captype = captype
+        self.logger = logger_instance
+        self.prominence = peak_detection_prominence
+
+        #TODO: need a way to write z21 directly for impedance analyzers -> need two constructors for this class
+        self.file = file
 
         # Calculate impedance data
         if shunt_series == SERIES_THROUGH:
@@ -57,64 +56,56 @@ class Fitter:
         elif shunt_series == SHUNT_THROUGH:
             self.z21_data = self.calc_shunt_thru(file, Z0)
 
-        # Smooth data and calculate linear range offset
-        self.smooth_data(SAVGOL_WIN_LENGTH, SAVGOL_POLY_ORDER)
-        self._calculate_linear_range_offset()
+        # Set frequency vector
+        self.freq = self.file.f
 
-        #TODO: nominal value check and nom val calculation
-        # - also for Rs
-        # - also set prominence
-        # - maybe main resonance detection? although it seems like a bad idea here
+        # Smooth data
+        self._smooth_data(SAVGOL_WIN_LENGTH, SAVGOL_POLY_ORDER)
 
+        # Calculate the linear range offset except for High_C model
+        if captype != constants.captype.HIGH_C:
+            self._calculate_linear_range_offset()
+        else:
+            self._offset = 0
 
+        # Calculate nominal value if it's not provided
+        # if High_C model, nominal value needs to be provided, so calculate_nominal_value should not be invoked
+        if nominal_value is None:
+            self.calculate_nominal_value()
+        else:
+            self.nominal_value = nominal_value
 
+        # Calculate series resistance, if not provided
+        if series_resistance is None:
+            self.calculate_nominal_Rs()
+        else:
+            self.series_resistance = series_resistance
 
-
-
-        #could be private
-        self.nominal_value = None
-        self.series_resistance = None
-        self.prominence = constants.PROMINENCE_DEFAULT
-
-        #should be public
-        self.file = None
-
-        #should be public (to some extend, maybe not data_ang/data_mag)
-        self.z21_data = None
-        self.data_mag = None
-        self.data_ang = None
-        self.model_data = None
-
-        #should be public
-        self.fit_type = None
-        self.ser_shunt = None
-        self.captype = None
-
-        #need to be public (use of self.out is questionable)
-        self.out = None
+        # Create an lmfit.Parameters() object to store parameters in
         self.parameters = Parameters()
 
-        self.logger = logger_instance
-
-        #should be private
-        self.frequency_zones = None
-        self.bandwidths = None
-        self.modeled_bandwidths = []
-        self.bad_bandwidth_flag = None
-        self.peak_heights = None
-        self.freq = None
-
-        #public
-        self.acoustic_resonant_frequency = None
-        self.f0 = None
-
-        #private
-        self.f0_index = None
-
-        #public
+        # Set fit order to 0 as to have a failsafe if the resonance detection fails
         self.order = 0
-        #private
-        self._offset = None
+
+
+
+
+        # #should be private
+        # self.bandwidths = None
+        # self.modeled_bandwidths = []
+        # self.bad_bandwidth_flag = None
+        # self.peak_heights = None
+        # self.freq = None
+        #
+        # #public
+        # self.acoustic_resonant_frequency = None
+        # self.f0 = None
+        #
+        # #private
+        # self.f0_index = None
+        #
+        # #public
+        # self.order = 0
 
 
 
@@ -221,8 +212,7 @@ class Fitter:
         z21_data = (Z0 * file.s[:, 1, 0]) / (2 * (1 - file.s[:, 1, 0]))
         return z21_data
 
-
-    def smooth_data(self, window, poly_order):
+    def _smooth_data(self, window, poly_order):
         """
         Function to smooth the impedance data
 
@@ -238,7 +228,6 @@ class Fitter:
                                                    poly_order, mode=sav_gol_mode)
         #limit the phase data to +/- 90°
         self.data_ang = np.clip(self.data_ang, -90, 90)
-
 
     def calculate_nominal_value(self):
         """

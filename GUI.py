@@ -467,7 +467,7 @@ class GUI:
 
 
         fitter_instance.calc_series_thru(Z0)
-        fitter_instance.smooth_data()
+        fitter_instance._smooth_data()
         fitter_instance.get_main_resonance()
         fitter_instance.calculate_nominal_value()
         fitter_instance.get_resonances()
@@ -509,14 +509,9 @@ class GUI:
 
             for it, file in enumerate(files):
 
-                fitter_instance = Fitter(file=file, fit_type=El.INDUCTOR, shunt_series=SERIES_THROUGH, logger_instance=self.logger)
-
-                #smooth the impedance data and pass the specification
-                fitter_instance.smooth_data()
-                # fitter_instance.calculate_linear_range_offset()
-
-                fitter_instance.set_specification(passive_nom, res, prom, fit_type, captype)
-
+                fitter_instance = Fitter(file=file, fit_type=El.INDUCTOR, shunt_series=shunt_series,
+                                         series_resistance=res,peak_detection_prominence=prom, nominal_value=passive_nom,
+                                         logger_instance=self.logger)
                 #write instance to list
                 fitters.append(fitter_instance)
 
@@ -727,21 +722,22 @@ class GUI:
     def fit_cap(self):
 
         # TODO: consider some entry box or something
-        captype = self.return_captype()
 
-        # fit type is capacitor for this method
-        fit_type = constants.El.CAPACITOR
+
 
 
 
         self.logger.info("----------Run----------\n")
 
+        # This variable is redundant
+        fit_type = El.CAPACITOR
+
+        captype = self.return_captype()
         [passive_nom, res, prom, shunt_series, files, dc_bias] = self.read_from_GUI(captype)
 
         #set prominence to 3dB in case of High C model, because we need to avoid misdetection of resonances here
         if captype == constants.captype.HIGH_C:
             prom = 3
-
         try:
             ################ PARSING AND PRE-PROCESSING ################################################################
 
@@ -750,33 +746,10 @@ class GUI:
             parameter_list = []
 
             for it, file in enumerate(files):
-                #instanciate a fitter and pass it the file and the logger instance
-
-                fitter_instance = Fitter(self.logger)
-                fitter_instance.set_file(file)
-
-
-                #calculate the impedance data for the fitter
-                match shunt_series:
-                    case GUI_config.SHUNT_THROUGH:
-                        fitter_instance.calc_shunt_thru(GUI_config.Z0)
-                    case GUI_config.SERIES_THROUGH:
-                        fitter_instance.calc_series_thru(GUI_config.Z0)
-
-                #smooth the impedance data and pass the specification
-                fitter_instance.fit_type = El.CAPACITOR
-                fitter_instance.smooth_data()
-
-                #TODO: testcase, delete next 1 line(s)
-                fitter_instance.get_main_resonance()
-
-                if captype != captype.HIGH_C:
-                    fitter_instance._calculate_linear_range_offset()
-
-                #TODO: I do not like the early occurrence of this mega parsing function
-                # the set_spec should be handeled via class attributes and is in its current state rather cumbersome
-                fitter_instance.set_specification(passive_nom, res, prom, fit_type, captype)
-
+                #instanciate a fitter
+                fitter_instance = Fitter(file=file, fit_type=El.CAPACITOR, shunt_series=shunt_series, captype=captype,
+                                         series_resistance=res,peak_detection_prominence=prom, nominal_value=passive_nom,
+                                         logger_instance=self.logger)
                 #write instance to list
                 fitters.append(fitter_instance)
 
