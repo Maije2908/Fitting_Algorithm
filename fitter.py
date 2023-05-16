@@ -4,15 +4,19 @@
 
 
 import matplotlib.pyplot as plt
+import numpy
 import numpy as np
 import scipy
+import skrf
 from scipy import signal as sg
 from lmfit import minimize, Parameters
 from scipy.signal import find_peaks
 import decimal
 import copy
+import warnings
 import sys
 import pandas as pd
+import logging
 
 
 # import constants
@@ -25,44 +29,92 @@ FIT_BY = config.FIT_BY
 
 class Fitter:
 
-    def __init__(self, logger_instance):
+    def __init__(self, file, fit_type, shunt_series = SERIES_THROUGH, captype=captype.GENERIC,
+                 logger_instance = logging.NullHandler(), Z0=50, nominal_value = None,
+                 peak_detection_prominence = PROMINENCE_DEFAULT):
+
+        #TODO: paradigmatically the whole class needs some refactoring
+        # 1) the fitter should not get a logging instance, logging should be handeled by the caller
+        # 2) the fitter has a lot of dependency on the caller, it should be more self sufficient
+        # 3) idea is to give the fitter the following parameters in the constructor
+        #       -file -> parse it in the constructor
+        #       -shunt/series -> together with the file, the fitter can then calculate the impedance IN the constructor
+        #       -data smoothing -> can also be handled in the constructor
+        #       -offset calculation -> can also be handled in the constructor
+        #       -nominal value calculation -> also handle this in the constructor
+        #       -set_specification() -> delete the method and handle it in the constructor
+        # 4) do not put the bandwidth list as NoneType in the constructor, rather let it blank and add the bandwidths
+        #   as soon as they are detected
+        # 5) might be an idea to pass the DC bias to the constructor?
+        # 6)
+
+
+        self.ser_shunt = shunt_series
+
+        # Calculate impedance data
+        if shunt_series == SERIES_THROUGH:
+            self.z21_data = self.calc_series_thru(file, Z0)
+        elif shunt_series == SHUNT_THROUGH:
+            self.z21_data = self.calc_shunt_thru(file, Z0)
+
+        # Smooth data and calculate linear range offset
+        self.smooth_data(SAVGOL_WIN_LENGTH, SAVGOL_POLY_ORDER)
+        self._calculate_linear_range_offset()
+
+        #TODO: nominal value check and nom val calculation
+        # - also for Rs
+        # - also set prominence
+        # - maybe main resonance detection? although it seems like a bad idea here
+
+
+
+
+
+
+        #could be private
         self.nominal_value = None
         self.series_resistance = None
         self.prominence = constants.PROMINENCE_DEFAULT
-        self.saturation = None
 
+        #should be public
         self.file = None
 
+        #should be public (to some extend, maybe not data_ang/data_mag)
         self.z21_data = None
         self.data_mag = None
         self.data_ang = None
         self.model_data = None
 
+        #should be public
         self.fit_type = None
         self.ser_shunt = None
         self.captype = None
 
+        #need to be public (use of self.out is questionable)
         self.out = None
-
         self.parameters = Parameters()
 
         self.logger = logger_instance
 
+        #should be private
         self.frequency_zones = None
         self.bandwidths = None
         self.modeled_bandwidths = []
         self.bad_bandwidth_flag = None
         self.peak_heights = None
-        self.frequency_vector = None
+        self.freq = None
 
-
+        #public
         self.acoustic_resonant_frequency = None
         self.f0 = None
+
+        #private
         self.f0_index = None
 
+        #public
         self.order = 0
-
-        self.offset = 0
+        #private
+        self._offset = None
 
 
 
@@ -87,6 +139,9 @@ class Fitter:
         :return:            stores the given values in corresponding instance variables
 
         """
+
+        #TODO: delete this WHOLE FUNCTION and handle parsing in the constructor
+
 
         self.fit_type = fit_type
 
@@ -119,16 +174,6 @@ class Fitter:
         else:
             self.prominence = prom
 
-    def set_captype(self, captype):
-        """
-        Auxilliary method to set the Capacitor type.
-        This is used in cases where a MLCC can't be calculated and the captype has to be reset to "Generic"
-
-        :param captype:     Type of capacitor
-        :return:            None (stores captype in corresponding instance variable)
-        """
-        self.captype = captype
-
     def set_file(self, file):
         """
         Method to set the file to the fitter
@@ -140,7 +185,7 @@ class Fitter:
 
         self.file = file
         try:
-            self.frequency_vector = self.file.f
+            self.freq = self.file.f
             self.logger.info("File: " + self.file.name)
         except Exception:
             raise Exception("No Files were provided, please select a file!")
@@ -150,29 +195,34 @@ class Fitter:
     # Pre-Processing Methods
     ####################################################################################################################
 
-    def calc_series_thru(self, Z0=50):
+    @staticmethod
+    def calc_series_thru(file: skrf.Network, Z0: int = 50) -> numpy.ndarray:
         """
-        Function to calculate the series-through impedance of the DUT
+        Function to calculate the series-through impedance of the DUT based on S_21
 
-        :param Z0: nominal impedance of the measurement system
-        :return: None (stores calculated impedance in instance variable)
-        """
-
-        self.z21_data = 2 * Z0 * ((1 - self.file.s[:, 1, 0]) / self.file.s[:, 1, 0])
-        self.ser_shunt = constants.calc_method.SERIES
-
-    def calc_shunt_thru(self, Z0=50):
-        """
-        Function to calculate the shunt-through impedance of the DUT
-
-        :param Z0: nominal impedance of the measurement system
-        :return: None (stores impedance data in instance variable)
+        :param file: a sNpfile of type skrf.Network()
+        :param Z0: (optional) nominal impedance of the measurement system; default is 50
+        :return: a vector containing the series through impedance of the DUT (complex ndarray)
         """
 
-        self.z21_data = (Z0 * self.file.s[:, 1, 0]) / (2 * (1 - self.file.s[:, 1, 0]))
-        self.ser_shunt = constants.calc_method.SHUNT
+        z21_data = 2 * Z0 * ((1 - file.s[:, 1, 0]) / file.s[:, 1, 0])
+        return z21_data
 
-    def smooth_data(self):
+    @staticmethod
+    def calc_shunt_thru(file: skrf.Network, Z0: int = 50) -> numpy.ndarray:
+        """
+        Function to calculate the shunt-through impedance of the DUT based on S_21
+
+        :param file: a sNpfile of type skrf.Network()
+        :param Z0: (optional) nominal impedance of the measurement system; default is 50
+        :return: a vector containing the shunt through impedance of the DUT (complex ndarray)
+        """
+
+        z21_data = (Z0 * file.s[:, 1, 0]) / (2 * (1 - file.s[:, 1, 0]))
+        return z21_data
+
+
+    def smooth_data(self, window, poly_order):
         """
         Function to smooth the impedance data
 
@@ -183,12 +233,12 @@ class Fitter:
         """
 
         sav_gol_mode = 'interp'
-        self.data_mag = scipy.signal.savgol_filter(abs(self.z21_data), constants.SAVGOL_WIN_LENGTH,
-                                                   constants.SAVGOL_POL_ORDER, mode=sav_gol_mode)
-        self.data_ang = scipy.signal.savgol_filter(np.angle(self.z21_data, deg=True), constants.SAVGOL_WIN_LENGTH,
-                                                   constants.SAVGOL_POL_ORDER, mode=sav_gol_mode)
+        self.data_mag = scipy.signal.savgol_filter(abs(self.z21_data), window, poly_order, mode=sav_gol_mode)
+        self.data_ang = scipy.signal.savgol_filter(np.angle(self.z21_data, deg=True), window,
+                                                   poly_order, mode=sav_gol_mode)
         #limit the phase data to +/- 90°
         self.data_ang = np.clip(self.data_ang, -90, 90)
+
 
     def calculate_nominal_value(self):
         """
@@ -203,9 +253,11 @@ class Fitter:
             the calculation less precise
         """
 
+        #TODO: this method needs an overhaul
+
         offset = 0
         nominal_value = 0
-        freq = self.frequency_vector
+        freq = self.freq
 
         match self.fit_type:
             case El.INDUCTOR:
@@ -252,7 +304,7 @@ class Fitter:
                 
                 # finally write the obtained nominal value to the instance variable; also write back the offset
                 self.nominal_value = np.median(L_vals_mean)
-                self.offset = offset
+                self._offset = offset
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value)) #TODO: this has to be normalized output to 1e-3/-6/-9 etc
                 self.logger.info("Nominal Inductance not provided, calculated: " + output_dec.to_eng_string())
 
@@ -295,7 +347,7 @@ class Fitter:
                 # boolean index the data that has lower than max slope and calculate the mean
                 C_vals_eff = np.array(C_vals)[abs(np.gradient(C_vals)) < abs(max_slope)]
                 self.nominal_value = np.median(C_vals_eff)
-                self.offset = offset
+                self._offset = offset
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value))
                 self.logger.info("Nominal Capacitance not provided, calculated: " + output_dec.to_eng_string())
 
@@ -317,6 +369,64 @@ class Fitter:
 
         return self.series_resistance
 
+    def _calculate_linear_range_offset(self) -> None:
+        """
+        Method to calculate the offset for the linear range.
+
+        The offset is the number of samples where the phase of the dataset does not yet display inductive/capacitive
+        behaviour (i.e. 90°/-90° phase respectively). In order for the main resonant frequency and nominal
+        value detection to work, proper inductive/capacitive behaviour is needed.
+
+
+        :raises IndexError: If the threshold did not get crossed by any value of the phase data
+        :raises AttributeError: If the method was invoked before the fit_type instance variable was set.
+            Or if the phase data is not present.
+
+        :return: the number of samples to skip in order to be in the linear range safely
+            ("safe" in this context means a phase lower/higher than the one specified in #TODO: add constant to description)
+        :rtype: int
+
+        """
+
+        #TODO: since this method is called in the constructor the exceptions should be obsolete
+
+        # Check if fit type is set, otherwise raise an Exception
+        if self.fit_type is None:
+            raise AttributeError("Offset calculation invoked before fit_type was set!")
+
+        #Check if data is present, otherwise raise an Exception
+        if self.data_ang is None:
+            raise AttributeError("Phase data not present, please call smooth_data() before invoking this function")
+
+        # Find the offset for the linear range by taking the first point where the phase is greater/smaller than the
+        # specified minimum/maximum for inductors/capacitors respectively
+        try:
+            match self.fit_type:
+                case El.INDUCTOR:
+                        offset = np.argwhere(self.data_ang > constants.PHASE_OFFSET_THRESHOLD)[0][0]
+                case El.CAPACITOR:
+                        offset = np.argwhere(self.data_ang < -constants.PHASE_OFFSET_THRESHOLD)[0][0]
+
+        # If such a crossing of the threshold hasn't been found, raise an exception
+        except IndexError:
+
+            # Provide some information about the min/max phase
+            match self.fit_type:
+                case El.INDUCTOR:
+                    minmaxstring = "Max Phase = " + str(np.round(max(self.data_ang),1)) + "°"
+                case El.CAPACITOR:
+                    minmaxstring = "Min Phase = " + str(np.round(min(self.data_ang),1)) + "°"
+
+            # Raise the exception
+            raise IndexError("Error: Bad phase data. "+minmaxstring+"\n"
+                            "Determination of the linear inductive/capacitive range not possible.\n"
+                            "You can try to lower the "
+                            f"phase threshold (currently [+/-]{PHASE_OFFSET_THRESHOLD}°)")
+
+        # If all went well write offset to instance variable
+        else:
+            self._offset = offset
+
     def get_main_resonance(self):
         """
         Method to calculate the main resonant frequency of the DUT.
@@ -324,43 +434,48 @@ class Fitter:
         This works by looking for the zero crossing of the phase.
 
         :return: resonant frequency f0 in Hz (also writes the value and the index of the zero crossing to instance variables)
+        :rtype: float
         :raises Exception: if the resonant frequency could not be determined
         """
 
-        freq = self.frequency_vector
+        # Check if smoothed data has been set
+        if self.data_ang is None or self.data_mag is None:
+            raise AttributeError("Phase data not present, please call smooth_data() before invoking this function.")
+        # Check if fit type has been set
+        if self.fit_type is None:
+            raise AttributeError("Fit type not set.")
 
-        #set w0 to 0 in order to have feedback, if the method didn't work
+        # Check if offset calculation has been done and if not perform offset calculation
+        if self._offset is None:
+            self.logger.warn("Offset calculation has not been performed. Performing offset calculation: ")
+            # Pass exception if one was caught by the offset detection
+            try:
+                self._calculate_linear_range_offset()
+            except Exception as e:
+                self.logger.info("Failed")
+                raise
+            self.logger.info("Success")
+
+
+
+        freq = self.freq
+
+        # Set w0 to 0 in order to have feedback, if the method didn't work
         w0 = 0
 
+        # Find zero crossing of the phase
         match self.fit_type:
-
-            case constants.El.INDUCTOR: #INDUCTOR
-                testdata = self.data_ang[:]
-                if sum(self.data_ang > constants.PHASE_OFFSET_THRESHOLD) > 0:
-                    offset = np.argwhere(self.data_ang > constants.PHASE_OFFSET_THRESHOLD)[0][0]
-                else:
-                    offset = 0
-                index_angle_smaller_zero = np.argwhere(self.data_ang[offset:] < 0)
-                index_ang_zero_crossing = offset + index_angle_smaller_zero[0][0]
+            case El.INDUCTOR:
+                index_angle_smaller_zero = np.argwhere(self.data_ang[self._offset:] < 0)
+                index_ang_zero_crossing = self._offset + index_angle_smaller_zero[0][0]
                 continuity_check = index_angle_smaller_zero[10][0]
 
-            case constants.El.CAPACITOR: #CAPACITOR
-                if sum(self.data_ang < -constants.PHASE_OFFSET_THRESHOLD) > 0:
-                    offset = np.argwhere(self.data_ang < -constants.PHASE_OFFSET_THRESHOLD)[0][0]
-                else:
-                    offset = 0
-
-                try:
-                    index_angle_larger_zero = np.argwhere(self.data_ang[offset:] > 0)
-                    index_ang_zero_crossing = index_angle_larger_zero[0][0] + offset
-                    continuity_check = index_angle_larger_zero[10][0]
-                except IndexError:
-                    raise Exception("Error: could not determine main resonant frequency (no phase crossings found).\n"
-                                    "You can try to adjust the PHASE_OFFSET_THRESHOLD parameter to a smaller value")
+            case El.CAPACITOR:
+                index_angle_larger_zero = np.argwhere(self.data_ang[self._offset:] > 0)
+                index_ang_zero_crossing = index_angle_larger_zero[0][0] + self._offset
+                continuity_check = index_angle_larger_zero[10][0]
 
 
-        #write the calculated offset to the instance variable
-        self.offset = offset
 
 
         if continuity_check:
@@ -400,7 +515,7 @@ class Fitter:
             plt.figure()
             plt.title(self.file.name)
 
-        freq = self.frequency_vector
+        freq = self.freq
         magnitude_data = self.data_mag
         phase_data = self.data_ang
 
@@ -538,7 +653,7 @@ class Fitter:
             the fitted circuit elements for the acoustic resonance (this Parameters() object is also stored in an instance variable)
 
         """
-        freq = self.frequency_vector
+        freq = self.freq
         data = self.z21_data
         magnitude_data = self.data_mag
         f0 = self.f0
@@ -630,7 +745,7 @@ class Fitter:
 
         :return: obtained resonant frequency in Hz
         """
-        freq = self.frequency_vector
+        freq = self.freq
         magnitude_data = self.data_mag
         f0 = self.f0
 
@@ -654,7 +769,7 @@ class Fitter:
 
     def create_hi_C_parameters(self, param_set):
 
-        freq = self.frequency_vector
+        freq = self.freq
 
         C = self.nominal_value / config.CAPUNIT
         param_set.add('C', value = C, min = C*1e-1, max = C*1e1, vary = False)
@@ -682,8 +797,8 @@ class Fitter:
             b_l = self.bandwidths[0][0]
             b_u = self.bandwidths[0][2]
 
-            f_l_index = np.argwhere(self.frequency_vector >= b_l)[0][0]
-            f_u_index = np.argwhere(self.frequency_vector <= b_u)[-1][0]
+            f_l_index = np.argwhere(self.freq >= b_l)[0][0]
+            f_u_index = np.argwhere(self.freq <= b_u)[-1][0]
 
             # calculate difference between upper and lower, so the number of points is relative to where we are in
             # the data, since the measurement points are not equally spaced
@@ -693,7 +808,7 @@ class Fitter:
             # f_l_index = f_c_index - int(np.floor(n_pts_offset))
             # f_u_index = f_c_index + int(np.floor(n_pts_offset))
             # get data for bandwidth model
-            freq_BW_mdl = self.frequency_vector[f_l_index:f_u_index]
+            freq_BW_mdl = self.freq[f_l_index:f_u_index]
             data_BW_mdl = self.data_mag[f_l_index:f_u_index] * np.exp(1j * np.radians(self.data_ang[f_l_index:f_u_index]))
 
             # try to estimate the values for the resonance via the bandwidth model;
@@ -721,11 +836,11 @@ class Fitter:
                 # also we can try the slope approach here for improved accuracy
                 slope_data = scipy.signal.savgol_filter(np.gradient(self.data_mag), 52, 3)
                 maxslope_index = np.argwhere(slope_data == max(slope_data))[0][0]
-                lr_offset = int(len(self.frequency_vector) * 0.025)
+                lr_offset = int(len(self.freq) * 0.025)
                 l_index = maxslope_index - lr_offset
                 r_index = maxslope_index + lr_offset
                 data = abs(self.z21_data[l_index:r_index])
-                freq = self.frequency_vector[l_index:r_index]
+                freq = self.freq[l_index:r_index]
                 w = freq * 2 * np.pi
                 L_values = data / w
                 L_val = np.mean(L_values) / config.INDUNIT
@@ -847,11 +962,11 @@ class Fitter:
 
             slope_data = scipy.signal.savgol_filter(np.gradient(self.data_mag), 52, 3)
             maxslope_index = np.argwhere(slope_data == max(slope_data))[0][0]
-            lr_offset = int(len(self.frequency_vector)*0.025)
+            lr_offset = int(len(self.freq) * 0.025)
             l_index = maxslope_index-lr_offset
             r_index = maxslope_index+lr_offset
             data = abs(self.z21_data[l_index:r_index])
-            freq = self.frequency_vector[l_index:r_index]
+            freq = self.freq[l_index:r_index]
             w = freq*2*np.pi
             L_values = data/w
             L_val = np.mean(L_values)/config.INDUNIT
@@ -867,7 +982,8 @@ class Fitter:
         return param_set
 
     def fit_hi_C_model(self, param_set):
-        freq = self.frequency_vector
+        #TODO: docstring
+        freq = self.freq
         data = self.z21_data
         fit_order = self.order
         mode = constants.fcnmode.FIT_LOG
@@ -897,7 +1013,7 @@ class Fitter:
         :return: A Parameters() object containing the main resonance parameters
         """
 
-        freq = self.frequency_vector
+        freq = self.freq
         res_value = abs(self.z21_data[self.f0_index])
         w0 = self.f0 * 2 * np.pi
 
@@ -961,6 +1077,7 @@ class Fitter:
 
         return param_set
 
+    #TODO: delete config number as soon as the callers are adapted
     def create_higher_order_parameters(self, config_number, param_set):
         """
         Method to create the circuit elements for the higher order resonances.
@@ -987,7 +1104,7 @@ class Fitter:
                              "set order to {value}".format(value=self.order))
 
         # get frequency and data from instance variables
-        freq = self.frequency_vector
+        freq = self.freq
         data = self.z21_data
         # initialize array for the modeled bandwidths
         self.modeled_bandwidths = np.zeros([self.order, 3])
@@ -1027,7 +1144,7 @@ class Fitter:
             f_upper_index = f_center_index + n_pts_offset
 
             # Get data for bandwidth model. Note that we are operating with the smoothed data here
-            freq_BW_mdl = self.frequency_vector[f_lower_index:f_upper_index]
+            freq_BW_mdl = self.freq[f_lower_index:f_upper_index]
             data_BW_mdl = self.data_mag[f_lower_index:f_upper_index]*np.exp(1j*np.radians(self.data_ang[f_lower_index:f_upper_index]))
 
             # invoke bandwidth model
@@ -1135,7 +1252,7 @@ class Fitter:
         self.fix_parameters(param_set)
 
         #initiate variables needed
-        freq = self.frequency_vector
+        freq = self.freq
         data = self.z21_data
         # self.plot_curve(self.parameters, self.order, 0)
 
@@ -1193,7 +1310,7 @@ class Fitter:
 
         """
 
-        freq = self.frequency_vector
+        freq = self.freq
         order = self.order
         data = self.z21_data
         params = copy.copy(param_set)
@@ -1389,7 +1506,7 @@ class Fitter:
         :param param_set: A Parameters() object containing the circuits of the model
         :return: A Parameters() object containing the fitted circuits
         """
-        freq = self.frequency_vector
+        freq = self.freq
         fit_data = self.z21_data
         fit_order = self.order
 
@@ -1418,7 +1535,7 @@ class Fitter:
         :return: A Parameters() object containing the fitted parameters of the main resonance
         """
 
-        freq = self.frequency_vector
+        freq = self.freq
         fit_data = self.z21_data
         fit_order = self.order
         mode = constants.fcnmode.FIT
@@ -1432,8 +1549,8 @@ class Fitter:
         data_for_fit = fit_data[(freq < self.f0 * constants.MIN_ZONE_OFFSET_FACTOR)]
 
         # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
-        freq_for_fit = freq_for_fit[self.offset:]
-        data_for_fit = data_for_fit[self.offset:]
+        freq_for_fit = freq_for_fit[self._offset:]
+        data_for_fit = data_for_fit[self._offset:]
 
         #################### Main Resonance ############################################################################
 
@@ -1486,7 +1603,7 @@ class Fitter:
         :return: A Parameters() object containing the fitted parameters of the main resonance
         """
 
-        freq = self.frequency_vector
+        freq = self.freq
         fit_data = self.z21_data
         fit_order = self.order
         mode = constants.fcnmode.FIT
@@ -1505,8 +1622,8 @@ class Fitter:
         data_for_fit = fit_data[(freq < self.f0 * constants.MIN_ZONE_OFFSET_FACTOR)]
 
         # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
-        if self.offset > 0:
-            offset = self.offset
+        if self._offset > 0:
+            offset = self._offset
         else:
             offset = 50
 
@@ -1558,7 +1675,7 @@ class Fitter:
         :return: A Parameters() object containing the fitted parameters of the main resonance
         """
 
-        freq = self.frequency_vector
+        freq = self.freq
         fit_data = self.z21_data
         fit_order = self.order
         mode = constants.fcnmode.FIT
@@ -1572,8 +1689,8 @@ class Fitter:
         data_for_fit = fit_data[(freq < self.f0 * constants.MIN_ZONE_OFFSET_FACTOR)]
 
         # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
-        freq_for_fit = freq_for_fit[self.offset:]
-        data_for_fit = data_for_fit[self.offset:]
+        freq_for_fit = freq_for_fit[self._offset:]
+        data_for_fit = data_for_fit[self._offset:]
 
         #################### Main Resonance ############################################################################
 
@@ -1602,7 +1719,7 @@ class Fitter:
         :return: A Parameters() object containing the fitted parameters of the main resonance
         """
 
-        freq = self.frequency_vector
+        freq = self.freq
         fit_data = self.z21_data
         fit_order = self.order
         mode = constants.fcnmode.FIT
@@ -1616,8 +1733,8 @@ class Fitter:
         data_for_fit = fit_data[(freq < self.f0 * constants.MIN_ZONE_OFFSET_FACTOR)]
 
         # crop some samples of the start of data (~100) because the slope at the start of the dataset might be off
-        freq_for_fit = freq_for_fit[self.offset:]
-        data_for_fit = data_for_fit[self.offset:]
+        freq_for_fit = freq_for_fit[self._offset:]
+        data_for_fit = data_for_fit[self._offset:]
 
         #################### Main Resonance ############################################################################
 
@@ -1651,7 +1768,7 @@ class Fitter:
         :param debug: Boolean. If True the function logs which set it took
         :return: The selected Parameters() object
         """
-        freq = self.frequency_vector
+        freq = self.freq
         fit_data = self.z21_data
         fit_main_resonance = False
         order = self.order
@@ -1680,7 +1797,7 @@ class Fitter:
         :return: A Parameters() object containing the updated main resonance paramters
         """
         fit_data = self.z21_data
-        freq = self.frequency_vector
+        freq = self.freq
 
         match self.fit_type:
             case constants.El.INDUCTOR:
@@ -1724,7 +1841,7 @@ class Fitter:
         :param model_order: The order of the model i.e. the number of resonant circuits
         :return: None (stores the model data in an instance variable)
         """
-        freq = self.frequency_vector
+        freq = self.freq
         mode = constants.fcnmode.OUTPUT
         order = model_order
         fit_main_resonance = 0
@@ -1766,7 +1883,7 @@ class Fitter:
         :return: cumulative difference (larger cum.diff. means worse fit)
         """
         #function to compare the two fit results
-        freq = self.frequency_vector
+        freq = self.freq
         cumnorm = 0
         zone_factor = 1.2
 
@@ -1791,17 +1908,17 @@ class Fitter:
         :return: None
         """
 
-        testdata = self.calculate_Z(param_set, self.frequency_vector, 2, order, main_res, 2)
+        testdata = self.calculate_Z(param_set, self.freq, 2, order, main_res, 2)
         if angle:
             plt.figure()
-            plt.semilogx(self.frequency_vector, np.rad2deg(np.angle(self.z21_data)))
-            plt.semilogx(self.frequency_vector, np.rad2deg(np.angle(testdata)))
+            plt.semilogx(self.freq, np.rad2deg(np.angle(self.z21_data)))
+            plt.semilogx(self.freq, np.rad2deg(np.angle(testdata)))
             if title is not None:
                 plt.title(title)
         else:
             plt.figure()
-            plt.loglog(self.frequency_vector, abs(self.z21_data))
-            plt.loglog(self.frequency_vector, abs(testdata))
+            plt.loglog(self.freq, abs(self.z21_data))
+            plt.loglog(self.freq, abs(testdata))
             if title is not None:
                 plt.title(title)
 

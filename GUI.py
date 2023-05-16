@@ -508,19 +508,13 @@ class GUI:
             parameter_list = []
 
             for it, file in enumerate(files):
-                #instanciate a fitter and pass it the file and the logger instance
-                fitter_instance = Fitter(self.logger)
-                fitter_instance.set_file(file)
 
-                #calculate the impedance data for the fitter
-                match shunt_series:
-                    case GUI_config.SHUNT_THROUGH:
-                        fitter_instance.calc_shunt_thru(GUI_config.Z0)
-                    case GUI_config.SERIES_THROUGH:
-                        fitter_instance.calc_series_thru(GUI_config.Z0)
+                fitter_instance = Fitter(file=file, fit_type=El.INDUCTOR, shunt_series=SERIES_THROUGH, logger_instance=self.logger)
 
                 #smooth the impedance data and pass the specification
                 fitter_instance.smooth_data()
+                # fitter_instance.calculate_linear_range_offset()
+
                 fitter_instance.set_specification(passive_nom, res, prom, fit_type, captype)
 
                 #write instance to list
@@ -712,11 +706,11 @@ class GUI:
                 fitter.write_model_data(parameter_list[it], order)
 
                 self.iohandler.output_plot(
-                    fitter.frequency_vector[fitter.frequency_vector < upper_frq_lim],
-                    fitter.z21_data[fitter.frequency_vector < upper_frq_lim],
-                    fitter.data_mag[fitter.frequency_vector < upper_frq_lim],
-                    fitter.data_ang[fitter.frequency_vector < upper_frq_lim],
-                    fitter.model_data[fitter.frequency_vector < upper_frq_lim],
+                    fitter.freq[fitter.freq < upper_frq_lim],
+                    fitter.z21_data[fitter.freq < upper_frq_lim],
+                    fitter.data_mag[fitter.freq < upper_frq_lim],
+                    fitter.data_ang[fitter.freq < upper_frq_lim],
+                    fitter.model_data[fitter.freq < upper_frq_lim],
                     fitter.file.name)
 
 
@@ -738,6 +732,8 @@ class GUI:
         # fit type is capacitor for this method
         fit_type = constants.El.CAPACITOR
 
+
+
         self.logger.info("----------Run----------\n")
 
         [passive_nom, res, prom, shunt_series, files, dc_bias] = self.read_from_GUI(captype)
@@ -755,8 +751,10 @@ class GUI:
 
             for it, file in enumerate(files):
                 #instanciate a fitter and pass it the file and the logger instance
+
                 fitter_instance = Fitter(self.logger)
                 fitter_instance.set_file(file)
+
 
                 #calculate the impedance data for the fitter
                 match shunt_series:
@@ -766,7 +764,17 @@ class GUI:
                         fitter_instance.calc_series_thru(GUI_config.Z0)
 
                 #smooth the impedance data and pass the specification
+                fitter_instance.fit_type = El.CAPACITOR
                 fitter_instance.smooth_data()
+
+                #TODO: testcase, delete next 1 line(s)
+                fitter_instance.get_main_resonance()
+
+                if captype != captype.HIGH_C:
+                    fitter_instance._calculate_linear_range_offset()
+
+                #TODO: I do not like the early occurrence of this mega parsing function
+                # the set_spec should be handeled via class attributes and is in its current state rather cumbersome
                 fitter_instance.set_specification(passive_nom, res, prom, fit_type, captype)
 
                 #write instance to list
@@ -780,7 +788,7 @@ class GUI:
                 # yet the f0 is required for some routines, hence we set it to an arbitrary value lower than the first resonance
                 for it, fitter in enumerate(fitters):
                     fitter.f0 = 0
-                    freq = fitter.frequency_vector
+                    freq = fitter.freq
                     fitter.get_resonances()
                     try:
                         lowest_res = fitter.bandwidths[0][1]
@@ -883,7 +891,7 @@ class GUI:
                         self.logger.info("WARNING: MLCCs captype selected, but only one file is present. Switching to generic captype")
                         captype = constants.captype.GENERIC
                         for fitter in fitters:
-                            fitter.set_captype(captype)
+                            fitter.captype = captype
 
                 ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
                 '''
@@ -1041,11 +1049,11 @@ class GUI:
                 fitter.write_model_data(parameter_list[it], order)
 
                 self.iohandler.output_plot(
-                    fitter.frequency_vector[fitter.frequency_vector < upper_frq_lim],
-                    fitter.z21_data[fitter.frequency_vector < upper_frq_lim],
-                    fitter.data_mag[fitter.frequency_vector < upper_frq_lim],
-                    fitter.data_ang[fitter.frequency_vector < upper_frq_lim],
-                    fitter.model_data[fitter.frequency_vector < upper_frq_lim],
+                    fitter.freq[fitter.freq < upper_frq_lim],
+                    fitter.z21_data[fitter.freq < upper_frq_lim],
+                    fitter.data_mag[fitter.freq < upper_frq_lim],
+                    fitter.data_ang[fitter.freq < upper_frq_lim],
+                    fitter.model_data[fitter.freq < upper_frq_lim],
                     fitter.file.name)
 
 

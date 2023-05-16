@@ -21,7 +21,7 @@ class CMC_Fitter(Fitter):
 
     def plot_plateau_model(self, params,N=0):
 
-        freq = self.frequency_vector
+        freq = self.freq
         omega = freq*2*np.pi
 
         L= params['L'].value
@@ -32,8 +32,8 @@ class CMC_Fitter(Fitter):
         Z = 1/(1/ZL+1/R)
 
         plt.figure()
-        plt.loglog(self.frequency_vector, abs(self.z21_data))
-        plt.loglog(self.frequency_vector, abs(Z))
+        plt.loglog(self.freq, abs(self.z21_data))
+        plt.loglog(self.freq, abs(Z))
 
     def create_nominal_parameters_CM(self):
 
@@ -84,7 +84,7 @@ class CMC_Fitter(Fitter):
 
             self.nominal_value = self.nominals_dict[key]
 
-            freq = self.frequency_vector
+            freq = self.freq
             data = self.data_dict[key]
 
             #frequency limit data

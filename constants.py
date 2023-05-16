@@ -23,6 +23,8 @@ MIN_R_ISO = 1e5
 MAX_R_ISO = 1e9
 R_ISO_VALUE = 10e6
 
+SERIES_THROUGH = 1
+SHUNT_THROUGH = 2
 
 
 
@@ -48,7 +50,7 @@ FULL_FIT = 1
 
 #parameters for the smoothing filter
 SAVGOL_WIN_LENGTH = 52 #window length(samples) default:52
-SAVGOL_POL_ORDER = 2 #polynomial order default:2
+SAVGOL_POLY_ORDER = 2 #polynomial order default:2
 
 
 #multiplication factor for statistical evaluation of the nominal values; this value will be multiplied to the .50 quanti

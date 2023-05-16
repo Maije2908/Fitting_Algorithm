@@ -36,8 +36,8 @@ LOG_HEIGHT  :           int = 20
 LOG_WIDTH   :           int = 100
 
 #Shunt or series through
-SHUNT_THROUGH   :       int = 1
-SERIES_THROUGH  :       int = 2
+SHUNT_THROUGH   :       int = 2
+SERIES_THROUGH  :       int = 1
 
 #Measurement System Z0
 Z0              :       int = 50

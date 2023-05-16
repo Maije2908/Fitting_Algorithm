@@ -3,7 +3,7 @@ import constants
 
 FULL_FIT = 1
 MULTIPROCESSING_COUNT = 16
-FREQ_UPPER_LIMIT = 2e9
+FREQ_UPPER_LIMIT = 1e9
 
 CAPUNIT = constants.capunits.NANOFARADS
 INDUNIT = constants.indunits.MICROHENRIES
