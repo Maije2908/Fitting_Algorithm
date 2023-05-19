@@ -41,6 +41,7 @@ class GUI:
         self.iohandler = None
         self.fitter = None
         self.logger = None
+        self.gui_layout = self.gui_layout = GUI_config.DROP_DOWN_ELEMENTS[0] # Inductor
         # variables for the file list
         self.filelist_frame = None
         self.filename_label = []
@@ -104,25 +105,36 @@ class GUI:
         :return:
         """
         selected_element = self.drop_down_var.get()
-        if selected_element == GUI_config.DROP_DOWN_ELEMENTS[2]:
-            #change GUI to CMC
-            self.filelist_frame.destroy()
-            self.browse_button.destroy()
-            self.callback_clear_files()
-            self.create_cmc_frame()
-            self.iohandler.files = []
+
+        if selected_element == GUI_config.DROP_DOWN_ELEMENTS[2]: #cmc
+            #change GUI to CMC if the previous element was not a CMC
+            if self.gui_layout != selected_element:
+                self.filelist_frame.destroy()
+                self.callback_clear_files()
+                self.browse_button.destroy()
+                self.create_cmc_frame()
+                self.iohandler.files = []
+                self.gui_layout = GUI_config.DROP_DOWN_ELEMENTS[2] #CMC
+
         else:
-            if selected_element == GUI_config.DROP_DOWN_ELEMENTS[1]: #capacitor
-                self.create_captype_dropdown()
-            elif selected_element == GUI_config.DROP_DOWN_ELEMENTS[0]: #inductor
-                self.captype_menu.destroy()
-            #rebuild GUI for coil/cap config
-            self.filelist_frame.destroy()
-            self.create_browse_button()
-            self.create_filelist_frame()
-            self.callback_clear_files() #TODO: idk if we should remove all files when selecting a different element
-            self.cmc_files = {}
-            self.iohandler.files = []
+            if self.gui_layout != selected_element:
+                if selected_element == GUI_config.DROP_DOWN_ELEMENTS[1]: #capacitor
+                    self.create_captype_dropdown()
+                elif selected_element == GUI_config.DROP_DOWN_ELEMENTS[0]: #inductor
+                    self.captype_menu.destroy()
+
+                # Rebuild GUI for coil/cap config if the previous element was a CMC
+                if self.gui_layout == GUI_config.DROP_DOWN_ELEMENTS[2]:
+                    self.filelist_frame.destroy()
+                    self.callback_clear_files()
+                    self.cmc_files = {}
+                    self.iohandler.files = []
+                    self.create_filelist_frame()
+                    self.create_browse_button()
+
+                self.gui_layout = selected_element
+
+
 
     def create_captype_dropdown(self):
         """
@@ -767,7 +779,9 @@ class GUI:
                         lowest_res = fitter.bandwidths[0][1]
                         fitter.f0 = lowest_res / 8
                     except:
-                        # if we didn't find anything, we just set it to 10e5... why not I guess
+                        #TODO: this seems arbitrary, we should find some measure on the data to set the main resonance
+                        # approximately in the middle of the bathtub
+                        #if we didn't find anything, we just set it to 10e5... why not I guess
                         fitter.f0 = 10e5
 
                     #TODO: this can lead to trouble if the resonant frequency is set to such a low value that there are
@@ -833,8 +847,20 @@ class GUI:
 
                 ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
 
+                # Check if we have at least two files present for MLCC type cap, otherwise switch back to generic
+                if captype == constants.captype.MLCC:
+                    try:
+                        fitters[1]
+                    except:
+                        self.logger.info("At least two files need to be present for MLCC acoustic resonance detection."
+                                         " Switching to \"generic\" capacitor type")
+                        captype = constants.captype.GENERIC
+                        for fitter in fitters:
+                            fitter.captype = captype
+
                 # get acoustic resonance frequency for all files, if not found write "None" to list
                 if captype == constants.captype.MLCC and fit_type == constants.El.CAPACITOR and len(fitters) > 1:
+
                     acoustic_res_frqs = []
                     #append None for first file
                     acoustic_res_frqs.append(None)
@@ -844,27 +870,27 @@ class GUI:
                         except:
                             acoustic_res_frqs.append(None)
 
+                    if all(acoustic_res_frqs) is None:
+                        pass
+
+                    #TODO: handle case where all ac res fqs are None
+
                     # iterate through the fitters in reversed order and fit the acoustic resonance
                     if len(fitters) > 1:
                         for it, fitter in reversed(list(enumerate(fitters))):
                             if acoustic_res_frqs[it] is not None:
-                                fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
+                                fitter.acoustic_resonance_frequency = acoustic_res_frqs[it]
                                 parameter_list[it] = fitter.fit_acoustic_resonance(parameter_list[it])
                             else:
                                 # if there is no frequency for the actual resonance take the previous frequency
                                 # (NOTE): this might even be obsolete
                                 acoustic_res_frqs[it] = acoustic_res_frqs[it - 1]
-                                fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
+                                fitter.acoustic_resonance_frequency = acoustic_res_frqs[it]
                                 # manually write the parameters of the previous fit to the dataset
                                 hi_R = parameter_list[it - 1]['R_A'].value * 1e4
                                 parameter_list[it].add('L_A', value=parameter_list[it - 1]['L_A'].value)
                                 parameter_list[it].add('C_A', value=parameter_list[it - 1]['C_A'].value)
                                 parameter_list[it].add('R_A', value=hi_R)
-                    else:
-                        self.logger.info("WARNING: MLCCs captype selected, but only one file is present. Switching to generic captype")
-                        captype = constants.captype.GENERIC
-                        for fitter in fitters:
-                            fitter.captype = captype
 
                 ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
                 '''
@@ -1036,6 +1062,7 @@ class GUI:
         except Exception as e:
             self.logger.error("ERROR: An Exception occurred during execution:")
             self.logger.error(str(e) + '\n')
+            raise
 
         finally:
             plt.show()
