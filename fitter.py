@@ -492,6 +492,10 @@ class Fitter:
         freq = self.freq
         data = self.z21_data
 
+        if param_set is None:
+            param_set = self.parameters
+
+
         try:
             self.acoustic_resonance_frequency
         except AttributeError as e:
@@ -536,7 +540,7 @@ class Fitter:
 
         # correct the effect the main resonance has on the peak height
         main_res_here = self._calculate_Z(param_set, res_fq, 2, 0, 1, constants.fcnmode.OUTPUT)
-        data_here = data[freq==res_fq]
+        data_here = data[freq<=res_fq][0]
         w_c = res_fq * 2 * np.pi
         Q = res_fq / (bu - bl)
 
@@ -568,7 +572,7 @@ class Fitter:
                         method='powell', options={'xtol': 1e-18, 'disp': True})
 
         # copy the parameters of the fit result
-        params = copy.copy(out1.params)
+        params = out1.params
 
         # finally set the parameters to not vary anymore
         self.change_parameter(params,'R_A',vary=False)
@@ -577,16 +581,16 @@ class Fitter:
         self.change_parameter(params,'w_A',vary=False)
 
         # write to instance variable and return obtained parameters
-        self.parameters = copy.copy(params)
+        self.parameters = params
         return params
 
-    def get_acoustic_resonance(self, offset = 20000.0) -> float:
+    def get_acoustic_resonance(self, offset = 100000.0) -> float:
         """
         Method to detect an acoustic resonance.
         Finds a peak in the data that has lower frequency than the main resonance.
 
         :param offset: Frequency offset from the main resonance. This can help avoid misdetection of the main resonance
-            as the acoustic resonance. Default is 20 kHz.
+            as the acoustic resonance. Default is 100 kHz.
 
         :return: Obtained resonant frequency in Hz; can be None, if no acoustic resonance has been found; also sets the
                 instance variable *acoustic_resonance_frequency*

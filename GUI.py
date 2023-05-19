@@ -845,7 +845,7 @@ class GUI:
 
                 ################ END MAIN RESONANCE FIT ####################################################################
 
-                ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
+                ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
 
                 # Check if we have at least two files present for MLCC type cap, otherwise switch back to generic
                 if captype == constants.captype.MLCC:
@@ -858,11 +858,11 @@ class GUI:
                         for fitter in fitters:
                             fitter.captype = captype
 
-                # get acoustic resonance frequency for all files, if not found write "None" to list
+                # Get acoustic resonance frequency for all files, if not found write "None" to list
                 if captype == constants.captype.MLCC and fit_type == constants.El.CAPACITOR and len(fitters) > 1:
-
+                    # Create empty list to hold the acoustic resonance frequencies
                     acoustic_res_frqs = []
-                    #append None for first file
+                    # Append None for first file since at 0 DC bias there shouldn't be an acoustic resonance
                     acoustic_res_frqs.append(None)
                     for fitter in fitters[1:]:
                         try:
@@ -870,29 +870,36 @@ class GUI:
                         except:
                             acoustic_res_frqs.append(None)
 
-                    if all(acoustic_res_frqs) is None:
-                        pass
+                    # Check if all acoustic resonance frequencies are None
+                    if not any(acoustic_res_frqs):
+                        self.logger.info("No acoustic resonance found for any of the provided measurement files."
+                                        " Switching to \"generic\" capacitor type")
+                        captype = constants.captype.GENERIC
+                        for fitter in fitters:
+                            fitter.captype = captype
 
-                    #TODO: handle case where all ac res fqs are None
+                ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ############################################
 
-                    # iterate through the fitters in reversed order and fit the acoustic resonance
-                    if len(fitters) > 1:
-                        for it, fitter in reversed(list(enumerate(fitters))):
-                            if acoustic_res_frqs[it] is not None:
-                                fitter.acoustic_resonance_frequency = acoustic_res_frqs[it]
-                                parameter_list[it] = fitter.fit_acoustic_resonance(parameter_list[it])
-                            else:
-                                # if there is no frequency for the actual resonance take the previous frequency
-                                # (NOTE): this might even be obsolete
-                                acoustic_res_frqs[it] = acoustic_res_frqs[it - 1]
-                                fitter.acoustic_resonance_frequency = acoustic_res_frqs[it]
-                                # manually write the parameters of the previous fit to the dataset
-                                hi_R = parameter_list[it - 1]['R_A'].value * 1e4
-                                parameter_list[it].add('L_A', value=parameter_list[it - 1]['L_A'].value)
-                                parameter_list[it].add('C_A', value=parameter_list[it - 1]['C_A'].value)
-                                parameter_list[it].add('R_A', value=hi_R)
+                ################ ACOUSTIC RESONANCE FIT FOR MLCC #######################################################
+                    # Now do the fit, given that our captype is still MLCC and not been switched back to generic by the
+                    # detection methods
+                    if captype == constants.captype.MLCC:
+                        # iterate through the fitters in reversed order and fit the acoustic resonance
+                        if len(fitters) > 1:
+                            for it, fitter in reversed(list(enumerate(fitters))):
+                                if acoustic_res_frqs[it] is not None:
+                                    fitter.acoustic_resonance_frequency = acoustic_res_frqs[it]
+                                    parameter_list[it] = fitter.fit_acoustic_resonance(parameter_list[it])
+                                else:
+                                    # If we have no frequency (i.e. no acoustic resonance), manually write the
+                                    # parameters of the previous fit to the dataset and add a high impedance resistor
+                                    # so the resonance does not affect the model
+                                    hi_R = parameter_list[it - 1]['R_A'].value * 1e4
+                                    parameter_list[it].add('L_A', value=parameter_list[it - 1]['L_A'].value)
+                                    parameter_list[it].add('C_A', value=parameter_list[it - 1]['C_A'].value)
+                                    parameter_list[it].add('R_A', value=hi_R)
+                ################ END ACOUSTIC RESONANCE FIT FOR MLCC ###################################################
 
-                ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
                 '''
                 ################ HIGHER ORDER RESONANCES - SINGLE PROCESS ##################################################
     
