@@ -616,56 +616,58 @@ class Fitter:
         self.acoustic_resonance_frequency = res_fq
         return res_fq
 
-    def calculate_hi_C_Rs(self):
-        pass
+    def create_hi_C_parameters(self, param_set: lmfit.Parameters = None) -> lmfit.Parameters:
+        """
+        Function to create the parameter set for the bathtub model (electrolytic capacitor model).
+        Note: if an additional resonance is present, this method will try to find estimates for the parameters of that
+        resonance as well. If it is not pronounced enough, it will only create parameters for the base bathtub model
 
-    def create_hi_C_parameters(self, param_set):
+        :param param_set: (optional) if you want to provide a custom parameter set, parameters will be added to that;
+            should be an empty set. If not provided instance variable 'self.parameters' will be used
 
-        freq = self.freq
+        :return: parameter set with the parameters for the bathtub model. Also writes parameter set to instance variable
+            'self.parameters
+
+        """
+        # If no custom parameter set has been supplied, take the instances parameters
+        if param_set is None:
+            param_set = self.parameters
 
         C = self.nominal_value / config.CAPUNIT
         param_set.add('C', value = C, min = C*1e-1, max = C*1e1, vary = False)
         param_set.add('R_iso', value = constants.R_ISO_VALUE, min = constants.MIN_R_ISO, max = constants.MAX_R_ISO, vary = False)
         param_set.add('R_s', value = self.series_resistance, min = self.series_resistance*1e-1, max = self.series_resistance*1e1, vary = False)
 
-        # if a resonance has been detected, calculate the value of the inductance of the main resonant circuit to not
+        # If a resonance has been detected, calculate the value of the inductance of the main resonant circuit to not
         # get lower than 10 times the impedance of the first resonance
         if any(self.bandwidths):
             R1 = self.peak_heights[0]
             f1 = self.bandwidths[0][1]
             w1 = 2 * np.pi * f1
             Z_min = R1 * 1.0
-            #values for the main resonance
+
+            # Values for the main resonance
             L_min = (Z_min/w1) / config.INDUNIT
             L_value = L_min * 1e1
             L_max = L_min * 1e2
             param_set.add('L', value = L_value, min = L_min, max = L_max)
 
 
-            # find estimates for the first resonance
+            # Find estimates for the first resonance
 
-            stretch_factor = 1.5
-            # get indices of the band
+            # Get indices of the band
             b_l = self.bandwidths[0][0]
             b_u = self.bandwidths[0][2]
-
             f_l_index = np.argwhere(self.freq >= b_l)[0][0]
             f_u_index = np.argwhere(self.freq <= b_u)[-1][0]
 
-            # calculate difference between upper and lower, so the number of points is relative to where we are in
-            # the data, since the measurement points are not equally spaced
-            # n_pts_offset = ((f_u_index - f_l_index) / 2) * stretch_factor
-
-            # recalc lower and upper bound
-            # f_l_index = f_c_index - int(np.floor(n_pts_offset))
-            # f_u_index = f_c_index + int(np.floor(n_pts_offset))
-            # get data for bandwidth model
+            # Get data for bandwidth model
             freq_BW_mdl = self.freq[f_l_index:f_u_index]
             data_BW_mdl = self.data_mag[f_l_index:f_u_index] * np.exp(1j * np.radians(self.data_ang[f_l_index:f_u_index]))
 
-            # try to estimate the values for the resonance via the bandwidth model;
+            # Try to estimate the values for the additional resonance via the bandwidth model;
             # sometimes this procedure fails because the resonance is not pronounced enough, in this case we skip it
-            # because the bathtub model will suffice for modeling
+            # because the basic bathtub model will suffice for modeling
             try:
                 [bl, bu, R1, L1, C1] = self.model_bandwidth(freq_BW_mdl,data_BW_mdl, f1)
 
@@ -677,171 +679,65 @@ class Fitter:
                 param_set.add('C1', value=C1, min=C1 * 0.3, max=C1 * 3, vary = True)
                 param_set.add('w1', value=w1, vary = False)
                 param_set.add('BW1', value=((bu-bl))/config.FUNIT, vary = False)
-                # param_set.add('L1', value=L1, min=L1 * 0.5, max=L1 * 2, vary = True)
                 param_set.add('L1', expr = '(1/( '+ '((w1 * '+str(config.FUNIT)+') ** 2)' + '*(C1*' + str(config.CAPUNIT) + ')) )/'+str(config.INDUNIT)  )
 
                 self.order = 1
+
+            # If the bandwidth model failed, it is very likely that the detected resonance was in fact not a resonance
+            # but rather a misdetection, need to determine inductance via dataset
             except:
-                # if we skip the resonance, we need to reset the order
+                # Reset order to 0, so we don't get problems later and calculate the value of the inductance
                 self.order = 0
+                L = self.calc_L_electrolytic_cap(self.freq, self.z21_data)
 
-                # also we can try the slope approach here for improved accuracy
-                slope_data = scipy.signal.savgol_filter(np.gradient(self.data_mag), 52, 3)
-                maxslope_index = np.argwhere(slope_data == max(slope_data))[0][0]
-                lr_offset = int(len(self.freq) * 0.025)
-                l_index = maxslope_index - lr_offset
-                r_index = maxslope_index + lr_offset
-                data = abs(self.z21_data[l_index:r_index])
-                freq = self.freq[l_index:r_index]
-                w = freq * 2 * np.pi
-                L_values = data / w
-                L_val = np.mean(L_values) / config.INDUNIT
-                param_set.add('L', value=L_val, min=L_val * 1e-1, max=L_val * 1e1)
+                # Write to parameter set with scaling
+                L_scaled = L / config.INDUNIT
+                param_set.add('L', value=L_scaled, min=L_scaled * 1e-1, max=L_scaled * 1e1)
 
-            # # add another resonance as point of support between the bathtub model and the first resonance
-            # f_A = f1/1.2
-            # w_A = f_A*2*np.pi
-            # Q_A = .8
-            # R_A = 2 * self.series_resistance
-            # C_A = 1 / (Q_A * R_A * w_A)
-            # L_A = 1/((w_A**2)*C_A)
-            #
-            # C_A = C_A/config.CAPUNIT
-            # L_A = L_A/config.INDUNIT
-            # w_A = w_A/config.FUNIT
-            # param_set.add('w_A', value = w_A, min = w_A*0.9, max = w_A*1.3)
-            # param_set.add('R_A', value = R_A, min = R_A*0.1, max = R_A*1e1)
-            # param_set.add('C_A', value = C_A, min = C_A*1e-1, max = C_A*1e1)
-            # # param_set.add('L_A', value = L_A, min = L_A*1e-1, max = L_A*1e1)
-            #
-            # param_set.add('L_A', expr='(1/( ' + '((w_A * ' + str(config.FUNIT) + ') ** 2)' + '*(C_A*' + str(
-            #     config.CAPUNIT) + ')) )/' + str(config.INDUNIT))
-
-
-            #TODO: for testing purposes
-
-            # f2 = f1/1.4
-            # w2 = f2*2*np.pi
-            # Q2 = Q_A
-            # R2 = 2*self.series_resistance
-            # C2 = 1/(Q2*R2*w2)
-            # L2 = 1/((w2**2)*C2)
-            #
-            # C2 = C2 / config.CAPUNIT
-            # L2 = L2 / config.INDUNIT
-            # w2 = w2 / config.FUNIT
-            # param_set.add('w2', value=w2, min=w2 * 0.9, max=w2 * 1.3)
-            # param_set.add('BW2', value=0, vary = False)
-            # param_set.add('R2', value=R2, min=R2 * 0.1, max=R2 * 1e1)
-            # param_set.add('C2', value=C2, min=C2 * 1e-1, max=C2 * 1e1)
-            # # param_set.add('L_A', value = L_A, min = L_A*1e-1, max = L_A*1e1)
-            #
-            # param_set.add('L2', expr='(1/( ' + '((w2 * ' + str(config.FUNIT) + ') ** 2)' + '*(C2*' + str(
-            #     config.CAPUNIT) + ')) )/' + str(config.INDUNIT))
-            #
-            # f3 = f1 / 1.6
-            # w3 = f3 * 2 * np.pi
-            # Q3 = Q_A
-            # R3 = 2 * self.series_resistance
-            # C3 = 1 / (Q3 * R3 * w3)
-            # L3 = 1 / ((w3 ** 2) * C3)
-            #
-            # C3 = C3 / config.CAPUNIT
-            # L3 = L3 / config.INDUNIT
-            # w3 = w3 / config.FUNIT
-            # param_set.add('w3', value=w3, min=w3 * 0.9, max=w3 * 1.3)
-            # param_set.add('BW3', value=0, vary=False)
-            # param_set.add('R3', value=R3, min=R3 * 0.1, max=R3 * 1e1)
-            # param_set.add('C3', value=C3, min=C3 * 1e-1, max=C3 * 1e1)
-            # # param_set.add('L_A', value = L_A, min = L_A*1e-1, max = L_A*1e1)
-            #
-            # param_set.add('L3', expr='(1/( ' + '((w3 * ' + str(config.FUNIT) + ') ** 2)' + '*(C3*' + str(
-            #     config.CAPUNIT) + ')) )/' + str(config.INDUNIT))
-
-            # f4 = f1 / 1.8
-            # w4 = f4 * 2 * np.pi
-            # Q4 = Q_A
-            # R4 = 2 * self.series_resistance
-            # C4 = 1 / (Q4 * R4 * w4)
-            # L4 = 1 / ((w4 ** 2) * C4)
-            #
-            # C4 = C4 / config.CAPUNIT
-            # L4 = L4 / config.INDUNIT
-            # w4 = w4 / config.FUNIT
-            # param_set.add('w4', value=w4, min=w4 * 0.9, max=w4 * 1.3)
-            # param_set.add('R4', value=R4, min=R4 * 0.1, max=R4 * 1e1)
-            # param_set.add('C4', value=C4, min=C4 * 1e-1, max=C4 * 1e1)
-            # # param_set.add('L_A', value = L_A, min = L_A*1e-1, max = L_A*1e1)
-            #
-            # param_set.add('L4', expr='(1/( ' + '((w3 * ' + str(config.FUNIT) + ') ** 2)' + '*(C3*' + str(
-            #     config.CAPUNIT) + ')) )/' + str(config.INDUNIT))
-            #
-            # f3 = f1 / 2
-            # w3 = f2 * 2 * np.pi
-            # Q3 = Q_A
-            # R3 = 2 * self.series_resistance
-            # C3 = 1 / (Q3 * R3 * w3)
-            # L3 = 1 / ((w3 ** 2) * C3)
-            #
-            # C3 = C3 / config.CAPUNIT
-            # L3 = L3 / config.INDUNIT
-            # w3 = w3 / config.FUNIT
-            # param_set.add('w3', value=w3, min=w3 * 0.9, max=w3 * 1.3)
-            # param_set.add('R3', value=R3, min=R3 * 0.1, max=R3 * 1e1)
-            # param_set.add('C3', value=C3, min=C3 * 1e-1, max=C3 * 1e1)
-            # # param_set.add('L_A', value = L_A, min = L_A*1e-1, max = L_A*1e1)
-            #
-            # param_set.add('L3', expr='(1/( ' + '((w3 * ' + str(config.FUNIT) + ') ** 2)' + '*(C3*' + str(
-            #     config.CAPUNIT) + ')) )/' + str(config.INDUNIT))
-
-
-            # self.order = 3
-
-
-
-
-
-            #TODO: END for testing purposes
-
-
-
-
-        #if there is no resonance present, we need to determine the value of the inductance via the slope of the dataset
+        # If there is no resonance present, we need to determine the value of the inductance via the dataset
         else:
+            # Calculate parasitic inductance, scale and write to parameter set
+            L = self.calc_L_electrolytic_cap(self.freq, self.z21_data)
+            L_scaled = np.mean(L)/config.INDUNIT
+            param_set.add('L', value=L_scaled, min=L_scaled*1e-1, max = L_scaled*1e1)
 
-            #TODO: detection of valid slope region could be bugged in cases where there is noisy data, this could use
-            # a rework sometime
-
-            slope_data = scipy.signal.savgol_filter(np.gradient(self.data_mag), 52, 3)
-            maxslope_index = np.argwhere(slope_data == max(slope_data))[0][0]
-            lr_offset = int(len(self.freq) * 0.025)
-            l_index = maxslope_index-lr_offset
-            r_index = maxslope_index+lr_offset
-            data = abs(self.z21_data[l_index:r_index])
-            freq = self.freq[l_index:r_index]
-            w = freq*2*np.pi
-            L_values = data/w
-            L_val = np.mean(L_values)/config.INDUNIT
-            param_set.add('L', value=L_val, min=L_val*1e-1, max = L_val*1e1)
-
-
-
-
-
-        # self.plot_curve(param_set, 0, 1)
-
-
+        self.parameters = param_set
         return param_set
 
-    def fit_hi_C_model(self, param_set):
+    @staticmethod
+    def calc_L_electrolytic_cap(freq, data) -> float:
+        """
+        Function to calculate the parasitic inductance of an electrolytic capacitor
+
+        :param freq: Frequency vector
+        :param data: Complex impedance data (needs to be same length as freq)
+
+        :return: The calculated value of the parasitic inductance
+
+        """
+
+        # Calculate omega and the theoretical values for L, assuming that the inductance is present in the entire data
+        w = 2*np.pi*freq
+        L_test = np.imag(data)/w
+
+        # Reject values smaller than zero (for apparent reasons)
+        L_test_valid = L_test[L_test > 0]
+
+        # Now simply take the median, this has shown to perform well on electrolytic caps
+        return np.median(L_test_valid)
+
+    def fit_hi_C_model(self, param_set: lmfit.Parameters = None) -> lmfit.Parameters:
         #TODO: docstring
-        freq = self.freq
+
+        if param_set is None:
+            param_set = self.parameters
+
         data = self.z21_data
         fit_order = self.order
         mode = constants.fcnmode.FIT_LOG
 
-        modelfreq = freq[freq<=config.FREQ_UPPER_LIMIT]
-        modeldata = data[freq<=config.FREQ_UPPER_LIMIT]
+        modelfreq = self.freq[self.freq<=config.FREQ_UPPER_LIMIT]
+        modeldata = data[self.freq<=config.FREQ_UPPER_LIMIT]
 
         if self.order:
             fit_main_resonance = 0
@@ -853,6 +749,8 @@ class Fitter:
             out = minimize(self._calculate_Z, param_set,
                            args=(modelfreq, modeldata, fit_order, fit_main_resonance, mode,),
                            method='powell', options={'xtol': 1e-18, 'disp': True})
+
+        self.parameters = out.params
         return out.params
 
     def create_nominal_parameters(self, param_set):
