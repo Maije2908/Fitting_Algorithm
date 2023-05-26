@@ -1051,7 +1051,8 @@ class Fitter:
         self.free_parameters_higher_order(param_set)
         return param_set
 
-    def correct_parameters(self, param_set, change_main, num_it = 2):
+    #TODO: change parameter_set to optional parameter and update callers
+    def correct_parameters(self, param_set: lmfit.Parameters = None, change_main = False, num_it = 2) -> lmfit.Parameters:
         """
         Method to correct the parameters of the set. Corrects higher order resonances, but can also correct the main
         resonance parameters if needed.
@@ -1073,8 +1074,11 @@ class Fitter:
         freq = self.freq
         order = self.order
         data = self.z21_data
-        params = copy.copy(param_set)
 
+        if param_set is None:
+            param_set = self.parameters
+
+        params = param_set
 
         #TODO: method does not really go by DRY paradigm, maybe overhaul
 

@@ -736,9 +736,6 @@ class GUI:
         # TODO: consider some entry box or something
 
 
-
-
-
         self.logger.info("----------Run----------\n")
 
         # This variable is redundant
