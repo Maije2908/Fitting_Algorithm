@@ -515,16 +515,13 @@ class GUI:
 
             ################ PARSING AND PRE-PROCESSING ################################################################
 
-            #create an array for the fitter instances and one for the parameters
+            # Create an array for the fitter instances and
             fitters = []
-            parameter_list = []
-
             for it, file in enumerate(files):
-
-                fitter_instance = Fitter(file=file, fit_type=El.INDUCTOR, shunt_series=shunt_series,
+                fitter_instance = Fitter.from_s2p_file(file=file, fit_type=El.INDUCTOR, shunt_series=shunt_series,
                                          series_resistance=res,peak_detection_prominence=prom, nominal_value=passive_nom,
                                          logger_instance=self.logger)
-                #write instance to list
+                # Write instance to list
                 fitters.append(fitter_instance)
 
             ################ END PARSING AND PRE-PROCESSING ############################################################
@@ -533,26 +530,24 @@ class GUI:
 
             for it, fitter in enumerate(fitters):
 
-                params = Parameters()
-                f0  = fitter.get_main_resonance()
-
                 #create the main resonance parameters
                 try:
-                    main_res_params = fitter.create_nominal_parameters(params)
+                    fitter.create_nominal_parameters()
                 except Exception:
                     raise Exception("Error: Something went wrong while trying to create nominal parameters; "
                                     "check if the element type is correct")
 
                 if it == 0:
                     #fit the main resonance for the first file
-                     fitted_main_res_params = fitter.fit_main_res_inductor_file_1(main_res_params)
+                     ref_set = fitter.fit_main_res_inductor_file_1()
                 else:
                     #fit the main resonance for every other file (we have to overwrite some parameters here, since the
                     # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
-                    main_res_params = fitter.overwrite_main_res_params_file_n(main_res_params, parameter_list[0])
-                    fitted_main_res_params = fitter.fit_main_res_inductor_file_n(main_res_params)
+                    #TODO: don't know if this overwrite routine is all that smart... maybe let the biased fitters have
+                    # their own param sets since we might bump into the constraints with this approach
+                    fitter.overwrite_main_res_params_file_n(ref_set)
+                    fitter.fit_main_res_inductor_file_n()
                 #finally write the fitted main resonance parameters to the list
-                parameter_list.append(fitted_main_res_params)
 
             ################ END MAIN RESONANCE FIT ####################################################################
 
@@ -611,47 +606,49 @@ class GUI:
 
             correct_main_res = False
             num_iterations = 4
-            temp_param_list = []
             for it, fitter in enumerate(fitters):
-                params1 = copy.copy(fitter.create_higher_order_parameters(2, parameter_list[it]))
-                temp_param_list.append(fitter.correct_parameters(params1, correct_main_res, num_iterations))
+                fitter.create_higher_order_parameters()
+                fitter.correct_parameters(change_main=correct_main_res, num_it=num_iterations)
 
             #apply pre-fitting tasks to the multiprocessing pool
             pre_fit_results = []
             for it, fitter in enumerate(fitters):
-                pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands, args = (temp_param_list[it],)))
+                pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands))
 
             #wait for all pre-fits to finish
             [result.wait() for result in pre_fit_results]
 
-            #write back to parameter list
+            #write back to parameters of fitters
             for it, pre_fit_result in enumerate(pre_fit_results):
-                temp_param_list[it] = copy.copy(pre_fit_result.get())
+                # we need to rewrite the obtained parameters to the fitters, since the address space for the subprocess
+                # is different from the main
+                param_set = (pre_fit_result.get())
+                fitters[it].parameters = param_set
 
             #CURVE FIT
-            #create array for fit results
+            # Create array for fit results
             fit_results = []
             for it, fitter in enumerate(fitters):
-                fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order, args = (temp_param_list[it],)))
+                fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order))
 
-            # wait for all pre-fits to finish
+            # Wait for all fits to finish
             [result.wait() for result in fit_results]
 
-            # write back to parameter list
+            # Write back to instance parameters (mp results are in a different namespace)
             for it, result in enumerate(fit_results):
-                parameter_list[it] = copy.copy(result.get())
+                param_set = (result.get())
+                fitters[it].parameters = param_set
 
-            for it, fitter in enumerate(fitters):
-                if DEBUG_FIT:
-                    fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
-
-            #fit done
+            # Fit done
             self.mp_pool.close()
 
             ################ END HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ########################################
 
 
             ############### MATCH PARAMETERS ###########################################################################
+            parameter_list = []
+            for fitter in fitters:
+                parameter_list.append(fitter.parameters)
 
             parameter_list = self.match_parameters(parameter_list, fitters, captype)
 
@@ -718,7 +715,7 @@ class GUI:
                     fitter.data_mag[fitter.freq < upper_frq_lim],
                     fitter.data_ang[fitter.freq < upper_frq_lim],
                     fitter.model_data[fitter.freq < upper_frq_lim],
-                    fitter.file.name)
+                    fitter.name)
 
 
 
@@ -756,7 +753,7 @@ class GUI:
 
             for it, file in enumerate(files):
                 #instanciate a fitter
-                fitter_instance = Fitter(file=file, fit_type=El.CAPACITOR, shunt_series=shunt_series, captype=captype,
+                fitter_instance = Fitter.from_s2p_file(file=file, fit_type=El.CAPACITOR, shunt_series=shunt_series, captype=captype,
                                          series_resistance=res,peak_detection_prominence=prom, nominal_value=passive_nom,
                                          logger_instance=self.logger)
                 #write instance to list
@@ -982,7 +979,7 @@ class GUI:
 
                 for it, fitter in enumerate(fitters):
                     if DEBUG_FIT:
-                        fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
+                        fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.name) + ' fitted higher order resonances')
 
                 #fit done
                 self.mp_pool.close()
@@ -1057,7 +1054,7 @@ class GUI:
                     fitter.data_mag[fitter.freq < upper_frq_lim],
                     fitter.data_ang[fitter.freq < upper_frq_lim],
                     fitter.model_data[fitter.freq < upper_frq_lim],
-                    fitter.file.name)
+                    fitter.name)
 
 
 

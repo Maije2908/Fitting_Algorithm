@@ -1,7 +1,7 @@
 
 import constants
 
-FULL_FIT = 1
+FULL_FIT = True
 MULTIPROCESSING_COUNT = 16
 FREQ_UPPER_LIMIT = 1e9
 
