@@ -29,7 +29,7 @@ class Fitter:
     """
 
     def __init__(self, name, freq, data, fit_type, shunt_series = SERIES_THROUGH, captype = captype.GENERIC,
-                 logger_instance = logging.getLogger(), Z0=50, nominal_value = None, series_resistance = None,
+                 logger_instance = logging.getLogger(), nominal_value = None, series_resistance = None,
                  peak_detection_prominence = PROMINENCE_DEFAULT):
 
         #TODO: paradigmatically the whole class needs some refactoring
@@ -44,7 +44,10 @@ class Fitter:
         self.fit_type = fit_type
         self.captype = captype
         self.logger = logger_instance
-        self.prominence = peak_detection_prominence
+        if peak_detection_prominence is None:
+            self.prominence = PROMINENCE_DEFAULT
+        else:
+            self.prominence = peak_detection_prominence
 
         self.name = name
 
@@ -100,8 +103,8 @@ class Fitter:
         # Get name of file
         name = file.name
 
-        return cls(name, freq, data, fit_type, shunt_series = SERIES_THROUGH, captype = captype,
-                   logger_instance = logger_instance, Z0=50, nominal_value = nominal_value,
+        return cls(name, freq, data, fit_type, shunt_series = shunt_series, captype = captype,
+                   logger_instance = logger_instance, nominal_value = nominal_value,
                    series_resistance = series_resistance,peak_detection_prominence = peak_detection_prominence)
 
     ####################################################################################################################
@@ -384,12 +387,10 @@ class Fitter:
 
         # frequency limit the data
         magnitude_data = magnitude_data[freq < config.FREQ_UPPER_LIMIT]
-        phase_data = phase_data[freq < config.FREQ_UPPER_LIMIT]
         freq = freq[freq < config.FREQ_UPPER_LIMIT]
 
         # get prominence
         prominence_mag = self.prominence
-        prominence_phase = self.prominence
 
         # find peaks of Magnitude Impedance curve (using scipy.signal.find_peaks)
         # using dB here in order to match the prominence values
@@ -562,7 +563,7 @@ class Fitter:
         w_c = res_fq * 2 * np.pi
         Q = res_fq / (bu - bl)
 
-        R_new = abs(1 / (1 / data_here[0] - 1 / main_res_here))
+        R_new = abs(1 / (1 / data_here - 1 / main_res_here))
         C_new = 1/(R_new*w_c*Q)
 
         C=C_new
@@ -619,7 +620,7 @@ class Fitter:
         freq_lim = self.freq[self.freq < self.f0-offset]
 
         # Find any peaks in the data
-        mag_maxima = find_peaks(-20 * np.log10(mag_data_lim), height=-200, prominence=0)
+        mag_maxima = find_peaks(-20 * np.log10(mag_data_lim), height=-200, prominence=ACOUSTIC_RESONANCE_PROMINENCE)
 
         # Find the peak with the highest prominence
         index_ac_res = np.argwhere(mag_maxima[1]['prominences'] == max(mag_maxima[1]['prominences']))[0][0]
@@ -1477,6 +1478,9 @@ class Fitter:
         :return: A Parameters() object containing the fitted parameters of the main resonance
         """
 
+        if param_set is None:
+            param_set = self.parameters
+
         mode = constants.fcnmode.FIT
         fit_main_resonance = 1
 
@@ -1530,7 +1534,8 @@ class Fitter:
 
         return params[least_norm_mdl_index]
 
-    def overwrite_main_res_params_file_n(self, param_set0, param_set: lmfit.Parameters = None) -> lmfit.Parameters:
+    def overwrite_main_res_params_file_n(self, param_set0: lmfit.Parameters, param_set: lmfit.Parameters = None)\
+            -> lmfit.Parameters:
         """
         Function to overwrite and recalculate the main resonance parameters for a file that is not the reference file.
 
@@ -1714,6 +1719,7 @@ class Fitter:
             values for a circuit that models the band
         """
 
+        #TODO: IMPORTANT RESCALE PARAMETERS!!!!
 
         #get the height of the peak and the index(will be used later)
         peakindex = np.argwhere(freqdata >= peakfreq)[0][0]
