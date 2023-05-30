@@ -32,18 +32,15 @@ class Fitter:
                  logger_instance = logging.getLogger(), nominal_value = None, series_resistance = None,
                  peak_detection_prominence = PROMINENCE_DEFAULT):
 
-        #TODO: paradigmatically the whole class needs some refactoring
-        # 2) the fitter has a lot of dependency on the caller, it should be more self sufficient
-        # 4) do not put the bandwidth list as NoneType in the constructor, rather let it blank and add the bandwidths
-        #   as soon as they are detected
-        # 5) might be an idea to pass the DC bias to the constructor?
-        # 6)
+        if len(freq) != len(data):
+            raise Exception("Frequency vector and data vector do not have the same size")
 
         # Set arguments that need to be passed directly
         self.ser_shunt = shunt_series
         self.fit_type = fit_type
         self.captype = captype
         self.logger = logger_instance
+
         if peak_detection_prominence is None:
             self.prominence = PROMINENCE_DEFAULT
         else:
