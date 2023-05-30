@@ -41,6 +41,7 @@ class GUI:
         self.iohandler = None
         self.fitter = None
         self.logger = None
+        self.gui_layout = self.gui_layout = GUI_config.DROP_DOWN_ELEMENTS[0] # Inductor
         # variables for the file list
         self.filelist_frame = None
         self.filename_label = []
@@ -104,25 +105,36 @@ class GUI:
         :return:
         """
         selected_element = self.drop_down_var.get()
-        if selected_element == GUI_config.DROP_DOWN_ELEMENTS[2]:
-            #change GUI to CMC
-            self.filelist_frame.destroy()
-            self.browse_button.destroy()
-            self.callback_clear_files()
-            self.create_cmc_frame()
-            self.iohandler.files = []
+
+        if selected_element == GUI_config.DROP_DOWN_ELEMENTS[2]: #cmc
+            #change GUI to CMC if the previous element was not a CMC
+            if self.gui_layout != selected_element:
+                self.filelist_frame.destroy()
+                self.callback_clear_files()
+                self.browse_button.destroy()
+                self.create_cmc_frame()
+                self.iohandler.files = []
+                self.gui_layout = GUI_config.DROP_DOWN_ELEMENTS[2] #CMC
+
         else:
-            if selected_element == GUI_config.DROP_DOWN_ELEMENTS[1]: #capacitor
-                self.create_captype_dropdown()
-            elif selected_element == GUI_config.DROP_DOWN_ELEMENTS[0]: #inductor
-                self.captype_menu.destroy()
-            #rebuild GUI for coil/cap config
-            self.filelist_frame.destroy()
-            self.create_browse_button()
-            self.create_filelist_frame()
-            self.callback_clear_files() #TODO: idk if we should remove all files when selecting a different element
-            self.cmc_files = {}
-            self.iohandler.files = []
+            if self.gui_layout != selected_element:
+                if selected_element == GUI_config.DROP_DOWN_ELEMENTS[1]: #capacitor
+                    self.create_captype_dropdown()
+                elif selected_element == GUI_config.DROP_DOWN_ELEMENTS[0]: #inductor
+                    self.captype_menu.destroy()
+
+                # Rebuild GUI for coil/cap config if the previous element was a CMC
+                if self.gui_layout == GUI_config.DROP_DOWN_ELEMENTS[2]:
+                    self.filelist_frame.destroy()
+                    self.callback_clear_files()
+                    self.cmc_files = {}
+                    self.iohandler.files = []
+                    self.create_filelist_frame()
+                    self.create_browse_button()
+
+                self.gui_layout = selected_element
+
+
 
     def create_captype_dropdown(self):
         """
@@ -467,7 +479,7 @@ class GUI:
 
 
         fitter_instance.calc_series_thru(Z0)
-        fitter_instance.smooth_data()
+        fitter_instance._smooth_data()
         fitter_instance.get_main_resonance()
         fitter_instance.calculate_nominal_value()
         fitter_instance.get_resonances()
@@ -503,27 +515,13 @@ class GUI:
 
             ################ PARSING AND PRE-PROCESSING ################################################################
 
-            #create an array for the fitter instances and one for the parameters
+            # Create an array for the fitter instances and
             fitters = []
-            parameter_list = []
-
             for it, file in enumerate(files):
-                #instanciate a fitter and pass it the file and the logger instance
-                fitter_instance = Fitter(self.logger)
-                fitter_instance.set_file(file)
-
-                #calculate the impedance data for the fitter
-                match shunt_series:
-                    case GUI_config.SHUNT_THROUGH:
-                        fitter_instance.calc_shunt_thru(GUI_config.Z0)
-                    case GUI_config.SERIES_THROUGH:
-                        fitter_instance.calc_series_thru(GUI_config.Z0)
-
-                #smooth the impedance data and pass the specification
-                fitter_instance.smooth_data()
-                fitter_instance.set_specification(passive_nom, res, prom, fit_type, captype)
-
-                #write instance to list
+                fitter_instance = Fitter.from_s2p_file(file=file, fit_type=El.INDUCTOR, shunt_series=shunt_series,
+                                         series_resistance=res,peak_detection_prominence=prom, nominal_value=passive_nom,
+                                         logger_instance=self.logger)
+                # Write instance to list
                 fitters.append(fitter_instance)
 
             ################ END PARSING AND PRE-PROCESSING ############################################################
@@ -532,26 +530,24 @@ class GUI:
 
             for it, fitter in enumerate(fitters):
 
-                params = Parameters()
-                f0  = fitter.get_main_resonance()
-
                 #create the main resonance parameters
                 try:
-                    main_res_params = fitter.create_nominal_parameters(params)
+                    fitter.create_nominal_parameters()
                 except Exception:
                     raise Exception("Error: Something went wrong while trying to create nominal parameters; "
                                     "check if the element type is correct")
 
                 if it == 0:
                     #fit the main resonance for the first file
-                     fitted_main_res_params = fitter.fit_main_res_inductor_file_1(main_res_params)
+                     ref_set = fitter.fit_main_res_inductor_file_1()
                 else:
                     #fit the main resonance for every other file (we have to overwrite some parameters here, since the
                     # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
-                    main_res_params = fitter.overwrite_main_res_params_file_n(main_res_params, parameter_list[0])
-                    fitted_main_res_params = fitter.fit_main_res_inductor_file_n(main_res_params)
+                    #TODO: don't know if this overwrite routine is all that smart... maybe let the biased fitters have
+                    # their own param sets since we might bump into the constraints with this approach
+                    fitter.overwrite_main_res_params_file_n(ref_set)
+                    fitter.fit_main_res_inductor_file_n()
                 #finally write the fitted main resonance parameters to the list
-                parameter_list.append(fitted_main_res_params)
 
             ################ END MAIN RESONANCE FIT ####################################################################
 
@@ -610,47 +606,49 @@ class GUI:
 
             correct_main_res = False
             num_iterations = 4
-            temp_param_list = []
             for it, fitter in enumerate(fitters):
-                params1 = copy.copy(fitter.create_higher_order_parameters(2, parameter_list[it]))
-                temp_param_list.append(fitter.correct_parameters(params1, correct_main_res, num_iterations))
+                fitter.create_higher_order_parameters()
+                fitter.correct_parameters(change_main=correct_main_res, num_it=num_iterations)
 
             #apply pre-fitting tasks to the multiprocessing pool
             pre_fit_results = []
             for it, fitter in enumerate(fitters):
-                pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands, args = (temp_param_list[it],)))
+                pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands))
 
             #wait for all pre-fits to finish
             [result.wait() for result in pre_fit_results]
 
-            #write back to parameter list
+            #write back to parameters of fitters
             for it, pre_fit_result in enumerate(pre_fit_results):
-                temp_param_list[it] = copy.copy(pre_fit_result.get())
+                # we need to rewrite the obtained parameters to the fitters, since the address space for the subprocess
+                # is different from the main
+                param_set = (pre_fit_result.get())
+                fitters[it].parameters = param_set
 
             #CURVE FIT
-            #create array for fit results
+            # Create array for fit results
             fit_results = []
             for it, fitter in enumerate(fitters):
-                fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order, args = (temp_param_list[it],)))
+                fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order))
 
-            # wait for all pre-fits to finish
+            # Wait for all fits to finish
             [result.wait() for result in fit_results]
 
-            # write back to parameter list
+            # Write back to instance parameters (mp results are in a different namespace)
             for it, result in enumerate(fit_results):
-                parameter_list[it] = copy.copy(result.get())
+                param_set = (result.get())
+                fitters[it].parameters = param_set
 
-            for it, fitter in enumerate(fitters):
-                if DEBUG_FIT:
-                    fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
-
-            #fit done
+            # Fit done
             self.mp_pool.close()
 
             ################ END HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ########################################
 
 
             ############### MATCH PARAMETERS ###########################################################################
+            parameter_list = []
+            for fitter in fitters:
+                parameter_list.append(fitter.parameters)
 
             parameter_list = self.match_parameters(parameter_list, fitters, captype)
 
@@ -712,12 +710,12 @@ class GUI:
                 fitter.write_model_data(parameter_list[it], order)
 
                 self.iohandler.output_plot(
-                    fitter.frequency_vector[fitter.frequency_vector < upper_frq_lim],
-                    fitter.z21_data[fitter.frequency_vector < upper_frq_lim],
-                    fitter.data_mag[fitter.frequency_vector < upper_frq_lim],
-                    fitter.data_ang[fitter.frequency_vector < upper_frq_lim],
-                    fitter.model_data[fitter.frequency_vector < upper_frq_lim],
-                    fitter.file.name)
+                    fitter.freq[fitter.freq < upper_frq_lim],
+                    fitter.z21_data[fitter.freq < upper_frq_lim],
+                    fitter.data_mag[fitter.freq < upper_frq_lim],
+                    fitter.data_ang[fitter.freq < upper_frq_lim],
+                    fitter.model_data[fitter.freq < upper_frq_lim],
+                    fitter.name)
 
 
 
@@ -732,14 +730,12 @@ class GUI:
 
     def fit_cap(self):
 
-        # TODO: consider some entry box or something
-        captype = self.return_captype()
-
-        # fit type is capacitor for this method
-        fit_type = constants.El.CAPACITOR
-
         self.logger.info("----------Run----------\n")
 
+        # This variable is redundant
+        fit_type = El.CAPACITOR
+
+        captype = self.return_captype()
         [passive_nom, res, prom, shunt_series, files, dc_bias] = self.read_from_GUI(captype)
 
         #set prominence to 3dB in case of High C model, because we need to avoid misdetection of resonances here
@@ -749,74 +745,44 @@ class GUI:
         try:
             ################ PARSING AND PRE-PROCESSING ################################################################
 
-            #create an array for the fitter instances and one for the parameters
+            # Create an array for the fitter instances
             fitters = []
-            parameter_list = []
 
             for it, file in enumerate(files):
-                #instanciate a fitter and pass it the file and the logger instance
-                fitter_instance = Fitter(self.logger)
-                fitter_instance.set_file(file)
-
-                #calculate the impedance data for the fitter
-                match shunt_series:
-                    case GUI_config.SHUNT_THROUGH:
-                        fitter_instance.calc_shunt_thru(GUI_config.Z0)
-                    case GUI_config.SERIES_THROUGH:
-                        fitter_instance.calc_series_thru(GUI_config.Z0)
-
-                #smooth the impedance data and pass the specification
-                fitter_instance.smooth_data()
-                fitter_instance.set_specification(passive_nom, res, prom, fit_type, captype)
-
-                #write instance to list
+                fitter_instance = Fitter.from_s2p_file(file=file, fit_type=El.CAPACITOR, shunt_series=shunt_series, captype=captype,
+                                         series_resistance=res,peak_detection_prominence=prom, nominal_value=passive_nom,
+                                         logger_instance=self.logger)
+                # Write instance to list
                 fitters.append(fitter_instance)
 
             ################ END PARSING AND PRE-PROCESSING ############################################################
 
-            ################ HIGH C RESONANCE DETECTION ################################################################
+            ################ HIGH C MODEL ##############################################################################
             if captype == constants.captype.HIGH_C:
                 #we need to specify some resonance frequency even if there is no detectable resonant frequency
                 # yet the f0 is required for some routines, hence we set it to an arbitrary value lower than the first resonance
                 for it, fitter in enumerate(fitters):
                     fitter.f0 = 0
-                    freq = fitter.frequency_vector
+                    freq = fitter.freq
                     fitter.get_resonances()
                     try:
                         lowest_res = fitter.bandwidths[0][1]
                         fitter.f0 = lowest_res / 8
                     except:
-                        # if we didn't find anything, we just set it to 10e5... why not I guess
-                        fitter.f0 = 10e5
+                        # If no resonance has been found calculate f0 via parasitic inductance
+                        L = fitter.calc_L_electrolytic_cap(fitter.freq, fitter.z21_data)
+                        C = fitter.nominal_value
+                        fitter.f0 = 1/(2*np.pi*np.sqrt(L*C))
 
-                    #TODO: this can lead to trouble if the resonant frequency is set to such a low value that there are
-                    # no values at frequencies lower than f0
-                    #also we need to account for R_s
+                    # Also we need R_s
                     R_s = abs(np.mean(fitter.z21_data[freq < fitter.f0]))
                     fitter.series_resistance = R_s
 
-
-            ################ END HIGH C RESONANCE DETECTION ############################################################
-
-            ################ HIGH C MODEL ##############################################################################
+            # Create parameters and fit high C model
             if captype == constants.captype.HIGH_C:
-
                 for it, fitter in enumerate(fitters):
-                    params = Parameters()
-                    main_res_params = fitter.create_hi_C_parameters(params)
-                    fitted_model_params = fitter.fit_hi_C_model(main_res_params)
-                    parameter_list.append(fitted_model_params)
-
-                # angleplot = False
-                #
-                # fitter.plot_curve(main_res_params, 0, 1, "onlyMR nonfit", angle = angleplot)
-                #
-                # fitter.plot_curve(fitted_model_params, 0, 1,"onlyMR fit", angle = angleplot)
-                # if fitter.order:
-                #     fitter.plot_curve(fitted_model_params, 1, 0,"fit", angle = angleplot)
-                #     fitter.plot_curve(main_res_params, 1, 0, "nonfit", angle = angleplot)
-
-
+                    fitter.create_hi_C_parameters()
+                    fitter.fit_hi_C_model()
 
             ################ END HIGH C MODEL ##########################################################################
 
@@ -824,38 +790,42 @@ class GUI:
             if captype != constants.captype.HIGH_C:
                 for it, fitter in enumerate(fitters):
 
-                    params = Parameters()
-
-                    f0  = fitter.get_main_resonance()
-
-                    #create the main resonance parameters
+                    # Create the main resonance parameters
                     try:
-                        main_res_params = fitter.create_nominal_parameters(params)
+                        fitter.create_nominal_parameters()
                     except Exception:
                         raise Exception("Error: Something went wrong while trying to create nominal parameters; "
                                         "check if the element type is correct")
 
-
                     if it == 0:
-                        #fit the main resonance for the first file
-                        fitted_main_res_params = fitter.fit_main_res_capacitor_file_1(main_res_params)
+                        # Fit the main resonance for the first file
+                        param_set_0 = fitter.fit_main_res_capacitor_file_1()
                     else:
-                        #fit the main resonance for every other file (we have to overwrite some parameters here, since the
-                        # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
-                        main_res_params = fitter.overwrite_main_res_params_file_n(main_res_params, parameter_list[0])
-                        fitted_main_res_params = fitter.fit_main_res_capacitor_file_n(main_res_params)
+                        # Fit the main resonance for every other file (first we overwrite some parameters for the dc
+                        # bias files)
+                        fitter.overwrite_main_res_params_file_n(param_set_0)
+                        fitter.fit_main_res_capacitor_file_n()
 
-                    #finally write the fitted main resonance parameters to the list
-                    parameter_list.append(fitted_main_res_params)
+            #################### END MAIN RESONANCE FIT ################################################################
 
-                ################ END MAIN RESONANCE FIT ####################################################################
+            ################ ACOUSITC RESONANCE FIT FOR MLCCs ##########################################################
 
-                ################ ACOUSITC RESONANCE DETECTION FOR MLCCs ####################################################
+                # Check if we have at least two files present for MLCC type cap, otherwise switch back to generic
+                if captype == constants.captype.MLCC:
+                    try:
+                        fitters[1]
+                    except:
+                        self.logger.info("At least two files need to be present for MLCC acoustic resonance detection."
+                                         " Switching to \"generic\" capacitor type")
+                        captype = constants.captype.GENERIC
+                        for fitter in fitters:
+                            fitter.captype = captype
 
-                # get acoustic resonance frequency for all files, if not found write "None" to list
+                # Get acoustic resonance frequency for all files, if not found write "None" to list
                 if captype == constants.captype.MLCC and fit_type == constants.El.CAPACITOR and len(fitters) > 1:
+                    # Create empty list to hold the acoustic resonance frequencies
                     acoustic_res_frqs = []
-                    #append None for first file
+                    # Append None for first file since at 0 DC bias there shouldn't be an acoustic resonance
                     acoustic_res_frqs.append(None)
                     for fitter in fitters[1:]:
                         try:
@@ -863,115 +833,72 @@ class GUI:
                         except:
                             acoustic_res_frqs.append(None)
 
-                    # iterate through the fitters in reversed order and fit the acoustic resonance
-                    if len(fitters) > 1:
-                        for it, fitter in reversed(list(enumerate(fitters))):
-                            if acoustic_res_frqs[it] is not None:
-                                fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
-                                parameter_list[it] = fitter.fit_acoustic_resonance(parameter_list[it])
-                            else:
-                                # if there is no frequency for the actual resonance take the previous frequency
-                                # (NOTE): this might even be obsolete
-                                acoustic_res_frqs[it] = acoustic_res_frqs[it - 1]
-                                fitter.set_acoustic_resonance_frequency(acoustic_res_frqs[it])
-                                # manually write the parameters of the previous fit to the dataset
-                                hi_R = parameter_list[it - 1]['R_A'].value * 1e4
-                                parameter_list[it].add('L_A', value=parameter_list[it - 1]['L_A'].value)
-                                parameter_list[it].add('C_A', value=parameter_list[it - 1]['C_A'].value)
-                                parameter_list[it].add('R_A', value=hi_R)
-                    else:
-                        self.logger.info("WARNING: MLCCs captype selected, but only one file is present. Switching to generic captype")
+                    # Check if all acoustic resonance frequencies are None
+                    if not any(acoustic_res_frqs):
+                        self.logger.info("No acoustic resonance found for any of the provided measurement files."
+                                        " Switching to \"generic\" capacitor type")
                         captype = constants.captype.GENERIC
                         for fitter in fitters:
-                            fitter.set_captype(captype)
+                            fitter.captype = captype
 
-                ################ END ACOUSITC RESONANCE DETECTION FOR MLCCs ################################################
-                '''
-                ################ HIGHER ORDER RESONANCES - SINGLE PROCESS ##################################################
-    
-                test_pre_fit = []
-                for it, fitter in enumerate(fitters):
-    
-                    fitter.get_resonances()
-    
-                    if fitter.order:
-                        #generate parameter sets in two configurations 1=Q constrained; 2=free R and C
-                        params1 = copy.copy(fitter.create_higher_order_parameters(1, parameter_list[it]))
-                        params2 = copy.copy(fitter.create_higher_order_parameters(2, parameter_list[it]))
-    
-                        #correct obtained parameters
-                        correct_main_res = False
-                        num_iterations = 4
-    
-                        params1 = fitter.correct_parameters(params1, correct_main_res, num_iterations)
-                        params2 = fitter.correct_parameters(params2, correct_main_res, num_iterations)
-    
-    
-                        params1 = fitter.pre_fit_bands(params1)
-                        params2 = fitter.pre_fit_bands(params2)
-    
-                        #TODO: delme
-                        test_pre_fit.append(params1)
-    
-                        #fit the whole curve
-                        fit_params1 = fitter.fit_curve_higher_order(params1)
-                        fit_params2 = fitter.fit_curve_higher_order(params2)
-    
-                        #check wich model fits best
-                        out_params = fitter.select_param_set([fit_params1, fit_params2], debug=True)
-                        parameter_list[it] = out_params
-    
-                        #write the model data to the fitter instance
-                        # fitter.write_model_data(out_params)
-    
-                        if DEBUG_FIT:
-                            fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
-    
-    
-                ################ END HIGHER ORDER RESONANCES - SINGLE PROCESS ##############################################
-                '''
+                    # Now do the fit, given that our captype is still MLCC and not been switched back to generic by the
+                    # detection methods
+                    if captype == constants.captype.MLCC:
+                        # iterate through the fitters in reversed order and fit the acoustic resonance
+                        if len(fitters) > 1:
+                            for it, fitter in reversed(list(enumerate(fitters))):
+                                if acoustic_res_frqs[it] is not None:
+                                    fitter.acoustic_resonance_frequency = acoustic_res_frqs[it]
+                                    fitter.fit_acoustic_resonance()
+                                else:
+                                    # If we have no frequency (i.e. no acoustic resonance), manually write the
+                                    # parameters of the previous fit to the dataset and add a high impedance resistor
+                                    # so the resonance does not affect the model
+                                    hi_R = fitters[it + 1].parameters['R_A'].value * 1e4
+                                    fitters[it].parameters.add('L_A', value=fitters[it + 1].parameters['L_A'].value)
+                                    fitters[it].parameters.add('C_A', value=fitters[it + 1].parameters['C_A'].value)
+                                    fitters[it].parameters.add('R_A', value=hi_R)
 
-                ################ HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ############################################
+                ################ END ACOUSTIC RESONANCE FIT FOR MLCC ###################################################
+
+                ################ HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ########################################
                 self.mp_pool = mp.Pool(config.MULTIPROCESSING_COUNT)
 
-                for it, fitter in enumerate(fitters):
+                for fitter in fitters:
                     fitter.get_resonances()
 
                 correct_main_res = False
                 num_iterations = 4
-                temp_param_list = []
-                for it, fitter in enumerate(fitters):
-                    params1 = copy.copy(fitter.create_higher_order_parameters(2, parameter_list[it]))
-                    temp_param_list.append(fitter.correct_parameters(params1, correct_main_res, num_iterations))
+                for fitter in fitters:
+                    fitter.create_higher_order_parameters()
+                    fitter.correct_parameters(change_main=correct_main_res, num_it=num_iterations)
 
                 #apply pre-fitting tasks to the multiprocessing pool
                 pre_fit_results = []
-                for it, fitter in enumerate(fitters):
-                    pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands, args = (temp_param_list[it],)))
+                for fitter in fitters:
+                    pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands))
 
                 #wait for all pre-fits to finish
                 [result.wait() for result in pre_fit_results]
 
                 #write back to parameter list
                 for it, pre_fit_result in enumerate(pre_fit_results):
-                    temp_param_list[it] = copy.copy(pre_fit_result.get())
+                    param_set = pre_fit_result.get()
+                    fitters[it].parameters = param_set
 
                 #CURVE FIT
                 #create array for fit results
                 fit_results = []
-                for it, fitter in enumerate(fitters):
-                    fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order, args = (temp_param_list[it],)))
+                for fitter in fitters:
+                    fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order))
 
                 # wait for all pre-fits to finish
                 [result.wait() for result in fit_results]
 
                 # write back to parameter list
                 for it, result in enumerate(fit_results):
-                    parameter_list[it] = copy.copy(result.get())
-
-                for it, fitter in enumerate(fitters):
-                    if DEBUG_FIT:
-                        fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
+                    param_set = result.get()
+                    fitters[it].parameters = param_set
 
                 #fit done
                 self.mp_pool.close()
@@ -980,6 +907,9 @@ class GUI:
 
 
             ############### MATCH PARAMETERS ###########################################################################
+            parameter_list = []
+            for fitter in fitters:
+                parameter_list.append(fitter.parameters)
 
             parameter_list = self.match_parameters(parameter_list, fitters, captype)
 
@@ -1041,12 +971,12 @@ class GUI:
                 fitter.write_model_data(parameter_list[it], order)
 
                 self.iohandler.output_plot(
-                    fitter.frequency_vector[fitter.frequency_vector < upper_frq_lim],
-                    fitter.z21_data[fitter.frequency_vector < upper_frq_lim],
-                    fitter.data_mag[fitter.frequency_vector < upper_frq_lim],
-                    fitter.data_ang[fitter.frequency_vector < upper_frq_lim],
-                    fitter.model_data[fitter.frequency_vector < upper_frq_lim],
-                    fitter.file.name)
+                    fitter.freq[fitter.freq < upper_frq_lim],
+                    fitter.z21_data[fitter.freq < upper_frq_lim],
+                    fitter.data_mag[fitter.freq < upper_frq_lim],
+                    fitter.data_ang[fitter.freq < upper_frq_lim],
+                    fitter.model_data[fitter.freq < upper_frq_lim],
+                    fitter.name)
 
 
 
@@ -1055,6 +985,7 @@ class GUI:
         except Exception as e:
             self.logger.error("ERROR: An Exception occurred during execution:")
             self.logger.error(str(e) + '\n')
+            raise
 
         finally:
             plt.show()

@@ -4,7 +4,8 @@ class El:
     INDUCTOR: int = 1
     CAPACITOR: int = 2
 
-PROMINENCE_DEFAULT = .5
+PROMINENCE_DEFAULT = .5 #dB
+ACOUSTIC_RESONANCE_PROMINENCE = 1.0 #dB
 MAIN_RESONANCE_OFFSET = 50 #obsolete
 MAX_ORDER = 15
 
@@ -23,15 +24,9 @@ MIN_R_ISO = 1e5
 MAX_R_ISO = 1e9
 R_ISO_VALUE = 10e6
 
+SERIES_THROUGH = 1
+SHUNT_THROUGH = 2
 
-#max/min values for the higher order circuits
-RMAX = 1e5 #was 1e4
-RMIN = 1e-3
-LMIN = 1e-20
-LOG_FACTOR = 1.04 #multiplication factor for the min bandwidth #OBSOLETE
-
-MIN_CAP = 1e-20 #minimum capacitor
-MAX_CAP_FACTOR = 1e5 #was 1e3
 
 
 MAX_W_FACTOR = 1.0001
@@ -56,7 +51,7 @@ FULL_FIT = 1
 
 #parameters for the smoothing filter
 SAVGOL_WIN_LENGTH = 52 #window length(samples) default:52
-SAVGOL_POL_ORDER = 2 #polynomial order default:2
+SAVGOL_POLY_ORDER = 2 #polynomial order default:2
 
 
 #multiplication factor for statistical evaluation of the nominal values; this value will be multiplied to the .50 quanti
@@ -66,6 +61,34 @@ QUANTILE_MULTIPLICATION_FACTOR = 5
 MINIMUM_PRECISION = 1e-12 #if we encounter values that get singular, here is the threshold
 
 DEFAULT_OFFSET_PEAK = 40 #samples; this specifies the default offset for a resonance peak if the 3dB point can't be found
+
+# The relative offset of the data that will be passed to the bandwidth model
+BW_MODEL_DATA_OFFSET_STRETCH = 1.5 # (-)
+
+############################## RANGE VARIABLES FOR HIGHER ORDER RESONANCES #############################################
+
+# These variables define how much the higher order resonance parameters are allowed to deviate from the initial guess
+# The variables are *factors*, i.e. multiplicative constants. This means a value of RMAX = 2 allows the maximum value of
+# a resistor to be two times its initial guess
+
+# resistor ranges for CAPACITORS
+RMINFACTOR_CAP = .2
+RMAXFACTOR_CAP = 5
+
+# resistor ranges for INDUCTORS
+RMINFACTOR_COIL = .5
+RMAXFACTOR_COIL = 2
+
+# capacitor ranges for CAPACITORS
+CMINFACTOR_CAP = 1e-1
+CMAXFACTOR_CAP = 1e1
+
+# capacitor ranges for INDUCTORS
+CMINFACTOR_COIL = 1e-1
+CMAXFACTOR_COIL = 1e1
+
+############################## ENDS RANGE VARIABLES FOR HIGHER ORDER RESONANCES ########################################
+
 
 
 #mode flags
