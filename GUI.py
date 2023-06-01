@@ -2,7 +2,6 @@
 import tkinter as tk
 from tkinter import filedialog
 
-import constants
 
 
 from fitter import *
@@ -507,7 +506,6 @@ class GUI:
 
         fit_type = constants.El.INDUCTOR
 
-
         self.logger.info("----------Run----------\n")
         [passive_nom, res, prom, shunt_series, files, dc_bias] = self.read_from_GUI()
 
@@ -551,96 +549,72 @@ class GUI:
 
             ################ END MAIN RESONANCE FIT ####################################################################
 
-            '''
-            ################ HIGHER ORDER RESONANCES - SINGLE PROCESS ##################################################
+            ################ HIGHER ORDER RESONANCES - MULTIPROCESSING #################################################
 
-            test_pre_fit = []
-            for it, fitter in enumerate(fitters):
+            # Start multiprocessing only if full fit is selected, otherwise use single process fitting
+            if config.FULL_FIT:
+                # Start multiprocessing pool
+                self.mp_pool = mp.Pool(config.MULTIPROCESSING_COUNT)
 
-                fitter.get_resonances()
+                for it, fitter in enumerate(fitters):
+                    fitter.get_resonances()
 
-                if fitter.order:
-                    #generate parameter sets in two configurations 1=Q constrained; 2=free R and C
-                    params1 = copy.copy(fitter.create_higher_order_parameters(1, parameter_list[it]))
-                    params2 = copy.copy(fitter.create_higher_order_parameters(2, parameter_list[it]))
+                correct_main_res = False
+                num_iterations = 4
+                # Create parameters for higher order resonances
 
-                    #correct obtained parameters
-                    correct_main_res = False
-                    num_iterations = 4
+                for fitter in fitters:
+                    fitter.create_higher_order_parameters()
 
-                    params1 = fitter.correct_parameters(params1, correct_main_res, num_iterations)
-                    params2 = fitter.correct_parameters(params2, correct_main_res, num_iterations)
+                # Correct parameters based on magnitude
+
+                for fitter in fitters:
+                    fitter.correct_parameters(change_main=correct_main_res, num_it=num_iterations)
+
+                #apply pre-fitting tasks to the multiprocessing pool
+                pre_fit_results = []
+                for it, fitter in enumerate(fitters):
+                    pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands))
+
+                #wait for all pre-fits to finish
+                [result.wait() for result in pre_fit_results]
+
+                #write back to parameters of fitters
+                for it, pre_fit_result in enumerate(pre_fit_results):
+                    # we need to rewrite the obtained parameters to the fitters, since the address space for the subprocess
+                    # is different from the main
+                    param_set = (pre_fit_result.get())
+                    fitters[it].parameters = param_set
+
+                #CURVE FIT
+                # Create array for fit results
+                fit_results = []
+                for it, fitter in enumerate(fitters):
+                    fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order))
+
+                # Wait for all fits to finish
+                [result.wait() for result in fit_results]
+
+                # Write back to instance parameters (mp results are in a different namespace)
+                for it, result in enumerate(fit_results):
+                    param_set = (result.get())
+                    fitters[it].parameters = param_set
+
+                # Fit done
+                self.mp_pool.close()
+            else:
+                # Run the higher order fitting process only for the first file
+                fitters[0].get_resonances()
+                fitters[0].create_higher_order_parameters()
+                correct_main_res = 0
+                num_iterations = 4
+                fitters[0].correct_parameters(change_main=correct_main_res, num_it=num_iterations)
+                fitters[0].pre_fit_bands()
+                higher_order_params = fitters[0].fit_curve_higher_order()
+                for fitter in fitters[1:]:
+                    fitter.add_higher_order_resonances_MR_fit(order = fitters[0].order, param_set0=higher_order_params)
 
 
-                    params1 = fitter.pre_fit_bands(params1)
-                    params2 = fitter.pre_fit_bands(params2)
-
-                    #TODO: delme
-                    test_pre_fit.append(params1)
-
-                    #fit the whole curve
-                    fit_params1 = fitter.fit_curve_higher_order(params1)
-                    fit_params2 = fitter.fit_curve_higher_order(params2)
-
-                    #check wich model fits best
-                    out_params = fitter.select_param_set([fit_params1, fit_params2], debug=True)
-                    parameter_list[it] = out_params
-
-                    #write the model data to the fitter instance
-                    # fitter.write_model_data(out_params)
-
-                    if DEBUG_FIT:
-                        fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
-
-
-            ################ END HIGHER ORDER RESONANCES - SINGLE PROCESS ##############################################
-            '''
-
-            ################ HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ############################################
-            # mp.freeze_support()
-            self.mp_pool = mp.Pool(config.MULTIPROCESSING_COUNT)
-
-
-            for it, fitter in enumerate(fitters):
-                fitter.get_resonances()
-
-            correct_main_res = False
-            num_iterations = 4
-            for it, fitter in enumerate(fitters):
-                fitter.create_higher_order_parameters()
-                fitter.correct_parameters(change_main=correct_main_res, num_it=num_iterations)
-
-            #apply pre-fitting tasks to the multiprocessing pool
-            pre_fit_results = []
-            for it, fitter in enumerate(fitters):
-                pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands))
-
-            #wait for all pre-fits to finish
-            [result.wait() for result in pre_fit_results]
-
-            #write back to parameters of fitters
-            for it, pre_fit_result in enumerate(pre_fit_results):
-                # we need to rewrite the obtained parameters to the fitters, since the address space for the subprocess
-                # is different from the main
-                param_set = (pre_fit_result.get())
-                fitters[it].parameters = param_set
-
-            #CURVE FIT
-            # Create array for fit results
-            fit_results = []
-            for it, fitter in enumerate(fitters):
-                fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order))
-
-            # Wait for all fits to finish
-            [result.wait() for result in fit_results]
-
-            # Write back to instance parameters (mp results are in a different namespace)
-            for it, result in enumerate(fit_results):
-                param_set = (result.get())
-                fitters[it].parameters = param_set
-
-            # Fit done
-            self.mp_pool.close()
 
             ################ END HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ########################################
 

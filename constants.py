@@ -6,7 +6,6 @@ class El:
 
 PROMINENCE_DEFAULT = .5 #dB
 ACOUSTIC_RESONANCE_PROMINENCE = 1.0 #dB
-MAIN_RESONANCE_OFFSET = 50 #obsolete
 MAX_ORDER = 15
 
 
@@ -43,10 +42,6 @@ PHASE_OFFSET_THRESHOLD = 60 #60 #°
 PHASE_OFFSET_THRESHOLD_CAPS = 20
 #value for detection of the inductive/capacitive range; if phase is below this value, inductive/capacitive range will not be detected
 PERMITTED_MIN_PHASE = 75 #75
-
-
-#Decide wheter to full fit the higher order resonances (0= main res fit; 1= full fit)
-FULL_FIT = 1
 
 
 #parameters for the smoothing filter
