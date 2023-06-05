@@ -17,6 +17,7 @@ import skrf as rf
 from tkinter import scrolledtext
 from texthandler import *
 from lmfit import Parameters
+from collections import Counter
 
 import multiprocessing as mp
 
@@ -1051,11 +1052,25 @@ class GUI:
                 if not w_array[set_number][param_number] is None and ref_array:
                     diff = abs(ref_array - w_array[set_number][param_number])
                     best_match = np.argwhere(diff == min(diff))[0][0]
-                    assignment_matrix[set_number, param_number] = best_match
+
+                    # Check if the best match has already been used as a key -> we need unique keys
+                    if best_match not in assignment_matrix[set_number]:
+                        assignment_matrix[set_number, param_number] = best_match
+                    else:
+                        # Handle the case when the best match has already been used as a key
+                        while best_match in assignment_matrix[set_number]:
+                            diff[best_match] = None
+                            best_match = np.argwhere(diff == min(diff))[0][0]
+                            if not any(assignment_matrix[set_number]):
+                                raise Exception("If you see this message please report as a bug. Hit an edge case that"
+                                                "would result in an endless loop")
+                        assignment_matrix[set_number, param_number] = best_match
+
+
 
         #rebuild the matrix to have absolute keys rather than relative ones
 
-        asg_mat_new = np.full(( len(parameter_list), max(orders)), None)
+        asg_mat_new = np.full((len(parameter_list), max(orders)), None)
 
         for set_number in reversed(range(1, np.shape(w_array)[0])):
             for param_number in range(np.shape(w_array)[1]):

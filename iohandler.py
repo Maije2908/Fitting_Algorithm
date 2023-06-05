@@ -304,22 +304,32 @@ class IOhandler:
 
                 #TODO: IMPORTANT!!! WRITE OUTPUT FUNCTION FOR DC BIAS DEPENDENT CAPACITOR FOR MAIN RES ASAP
                 lib += 'BC PORT1 ' +main_res_terminal_port+' ' + 'I=-I(BCT)*V(K_C)'+ "\n"
-                lib += 'C PORT1 '+main_res_terminal_port+' ' + str(C) + "\n"
+                # lib += 'C PORT1 '+main_res_terminal_port+' ' + str(C) + "\n"
 
-                lib += 'BL B1 '+main_res_terminal_port+' V=V(K_L)*V(LT)' + "\n"
+                lib += 'BL B1 ' + main_res_terminal_port + ' V=V(K_L)*V(LT)' + "\n"
 
                 #'test' inductor
                 lib += 'L LT 0 ' + str(L) + "\n"
                 lib += 'F1 0 LT BL 1' + "\n"
+
+                # 'Test' capacitor
+                lib += 'C CT 0 ' + str(C) + '\n'
+                lib += 'BCT CT 0 V=V(PORT1)-V(' + main_res_terminal_port + ')' + '\n'
+
 
                 ############### PROPORTIONALITY TABLES FOR MAIN ELEMENT ################################################
                 lib += '* The values for the Current-Inductance-Table can be edited here:' + "\n"
                 #proportionality factor for L
                 lib += '* current dependent proportionality factor for L' + "\n"
                 lib += 'B2 K_L 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['L']) + "\n"
+                # Proportionality factor for C
+                lib += '* current dependent proportionality factor for C' + "\n"
+                lib += 'B4 K_C 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['C']) + "\n"
                 #proportionality factor for R_Fe
                 lib += '* current dependent proportionality factor for R_Fe' + "\n"
                 lib += 'B3 K_FE 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['R_Fe']) + "\n"
+
+
 
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
 
