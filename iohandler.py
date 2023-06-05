@@ -103,29 +103,41 @@ class IOhandler:
                     lib += 'L{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=node2) + str(Lx) + "\n"
                     lib += 'R{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=node2) + str(Rx) + "\n"
 
-                ################ MAIN ELEMENT ##########################################################################
-                # node connections from current dependent inductor model
+                ############### MAIN ELEMENT ###########################################################################
 
                 main_res_terminal_port = '1' if order > 0 else 'PORT2'
                 lib += 'R_s PORT1 B1 ' + str(R_s) + "\n"
-                lib += 'R_p B1 '+main_res_terminal_port+' R = limit({lo}, {hi}, {R_Fe} * V(K_Fe))'.format(lo = R_p * 1e-8, hi = R_p * 1e8, R_Fe = R_p) + "\n"
-                lib += 'C PORT1 '+main_res_terminal_port+' ' + str(C) + "\n"
-                lib += 'BL B1 '+main_res_terminal_port+' V=V(K_L)*V(L)' + "\n"
+                lib += 'R_p B1 ' + main_res_terminal_port + ' R = limit({lo}, {hi}, {R_Fe} * V(K_Fe))'.format(
+                    lo=R_p * 1e-8, hi=R_p * 1e8, R_Fe=R_p) + "\n"
 
-                #'test' inductor
-                lib += 'L L 0 ' + str(L) + "\n"
-                lib += 'F1 0 L B1 1' + "\n"
+                # B source mimicking the parasitic capacitance
+                lib += 'BC PORT1 ' + main_res_terminal_port + ' ' + 'I=-I(BCT)*V(K_C)' + "\n"
 
-                ############## PROPORTIONALITY TABLES ##################################################################
+                # B source mimicking the main inductor
+                lib += 'BL B1 ' + main_res_terminal_port + ' V=V(K_L)*V(LT)' + "\n"
+
+                # 'Test' inductor
+                lib += 'L LT 0 ' + str(L) + "\n"
+                lib += 'F1 0 LT BL 1' + "\n"
+
+                # 'Test' capacitor
+                lib += 'C CT 0 ' + str(C) + '\n'
+                lib += 'BCT CT 0 V=V(PORT1)-V(' + main_res_terminal_port + ')' + '\n'
+
+                ############### PROPORTIONALITY TABLES FOR MAIN ELEMENT ################################################
                 lib += '* The values for the Current-Inductance-Table can be edited here:' + "\n"
-                #proportionality factor for L
+                # proportionality factor for L
                 lib += '* current dependent proportionality factor for L' + "\n"
-                lib += 'B2 K_L 0 V=table(abs(I(B1)),{table})'.format(table=saturation_table['L']) + "\n"
-                #proportionality factor for R_Fe
+                lib += 'BKL K_L 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['L']) + "\n"
+                # Proportionality factor for C
+                lib += '* current dependent proportionality factor for C' + "\n"
+                lib += 'BKC K_C 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['C']) + "\n"
+                # proportionality factor for R_Fe
                 lib += '* current dependent proportionality factor for R_Fe' + "\n"
-                lib += 'B3 K_FE 0 V=table(abs(I(B1)),{table})'.format(table=saturation_table['R_Fe']) + "\n"
+                lib += 'BKR K_FE 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['R_Fe']) + "\n"
 
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
+
 
 
             case constants.El.CAPACITOR:
@@ -302,13 +314,13 @@ class IOhandler:
                 lib += 'R_s PORT1 B1 ' + str(R_s) + "\n"
                 lib += 'R_p B1 '+main_res_terminal_port+' R = limit({lo}, {hi}, {R_Fe} * V(K_Fe))'.format(lo = R_p * 1e-8, hi = R_p * 1e8, R_Fe = R_p) + "\n"
 
-                #TODO: IMPORTANT!!! WRITE OUTPUT FUNCTION FOR DC BIAS DEPENDENT CAPACITOR FOR MAIN RES ASAP
+                # B source mimicking the parasitic capacitance
                 lib += 'BC PORT1 ' +main_res_terminal_port+' ' + 'I=-I(BCT)*V(K_C)'+ "\n"
-                # lib += 'C PORT1 '+main_res_terminal_port+' ' + str(C) + "\n"
 
+                # B source mimicking the main inductor
                 lib += 'BL B1 ' + main_res_terminal_port + ' V=V(K_L)*V(LT)' + "\n"
 
-                #'test' inductor
+                # 'Test' inductor
                 lib += 'L LT 0 ' + str(L) + "\n"
                 lib += 'F1 0 LT BL 1' + "\n"
 
@@ -321,15 +333,13 @@ class IOhandler:
                 lib += '* The values for the Current-Inductance-Table can be edited here:' + "\n"
                 #proportionality factor for L
                 lib += '* current dependent proportionality factor for L' + "\n"
-                lib += 'B2 K_L 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['L']) + "\n"
+                lib += 'BKL K_L 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['L']) + "\n"
                 # Proportionality factor for C
                 lib += '* current dependent proportionality factor for C' + "\n"
-                lib += 'B4 K_C 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['C']) + "\n"
+                lib += 'BKC K_C 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['C']) + "\n"
                 #proportionality factor for R_Fe
                 lib += '* current dependent proportionality factor for R_Fe' + "\n"
-                lib += 'B3 K_FE 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['R_Fe']) + "\n"
-
-
+                lib += 'BKR K_FE 0 V=table(abs(I(BL)),{table})'.format(table=saturation_table['R_Fe']) + "\n"
 
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
 

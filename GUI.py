@@ -656,9 +656,9 @@ class GUI:
 
             if config.FULL_FIT:
 
-                # create saturation tables for all parameters
+                # Create saturation tables for all parameters
                 for key_number in range(1, order + 1):
-                    # create keys
+                    # Create keys
                     C_key = "C%s" % key_number
                     L_key = "L%s" % key_number
                     R_key = "R%s" % key_number
@@ -671,7 +671,7 @@ class GUI:
 
             ################ OUTPUT ####################################################################################
 
-            #set path for IO handler
+            # Set path for IO handler
             path_out = self.selected_s2p_files[0]
             self.iohandler.set_out_path(path_out)
 
@@ -1047,24 +1047,28 @@ class GUI:
         assignment_matrix = np.atleast_2d(np.full(( len(parameter_list), max(orders)), None))
 
         for set_number in range(1, np.shape(w_array)[0]):
-            ref_array = list(filter(lambda x: x is not None, w_array[set_number - 1]))
-            for param_number in range(np.shape(w_array)[1]):
-                if not w_array[set_number][param_number] is None and ref_array:
-                    diff = abs(ref_array - w_array[set_number][param_number])
-                    best_match = np.argwhere(diff == min(diff))[0][0]
+            # Hotfix to not mess up parameter sets that are of the same order
+            if not all((w_array[set_number] == None) == (w_array[set_number - 1] == None)):
+                ref_array = list(filter(lambda x: x is not None, w_array[set_number - 1]))
+                for param_number in range(np.shape(w_array)[1]):
+                    if not w_array[set_number][param_number] is None and ref_array:
+                        diff = abs(ref_array - w_array[set_number][param_number])
+                        best_match = np.argwhere(diff == min(diff))[0][0]
 
-                    # Check if the best match has already been used as a key -> we need unique keys
-                    if best_match not in assignment_matrix[set_number]:
-                        assignment_matrix[set_number, param_number] = best_match
-                    else:
-                        # Handle the case when the best match has already been used as a key
-                        while best_match in assignment_matrix[set_number]:
-                            diff[best_match] = None
-                            best_match = np.argwhere(diff == min(diff))[0][0]
-                            if not any(assignment_matrix[set_number]):
-                                raise Exception("If you see this message please report as a bug. Hit an edge case that"
-                                                "would result in an endless loop")
-                        assignment_matrix[set_number, param_number] = best_match
+                        # Check if the best match has already been used as a key -> we need unique keys
+                        if best_match not in assignment_matrix[set_number]:
+                            assignment_matrix[set_number, param_number] = best_match
+                        else:
+                            # Handle the case when the best match has already been used as a key
+                            while best_match in assignment_matrix[set_number]:
+                                diff[best_match] = None
+                                best_match = np.argwhere(diff == min(diff))[0][0]
+                                if not any(assignment_matrix[set_number]):
+                                    raise Exception("If you see this message please report as a bug. Hit an edge case that"
+                                                    "would result in an endless loop")
+                            assignment_matrix[set_number, param_number] = best_match
+            else:
+                assignment_matrix[set_number] = assignment_matrix[set_number - 1]
 
 
 
