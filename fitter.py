@@ -1144,20 +1144,24 @@ class Fitter:
 
                         #to get a better estimate for the resistive value, look at the real part and find the peak
                         try:
-                            data_lim = self.z21_data[np.logical_and(self.freq < band[2], self.freq > band[0])]
-                            peak = find_peaks(np.real(data_lim), height = 0)
-                            match self.fit_type:
-                                case constants.El.INDUCTOR:
-                                    r_peak_index = np.argwhere(peak[1]['peak_heights'] == max(peak[1]['peak_heights']))[0][0]
-                                    r_peak = peak[1]['peak_heights'][r_peak_index]
-                                case constants.El.CAPACITOR:
-                                    r_peak_index = np.argwhere(peak[1]['peak_heights'] == min(peak[1]['peak_heights']))[0][0]
-                                    r_peak = peak[1]['peak_heights'][r_peak_index]
+
+                            r_peak = abs(self.z21_data[dataindex])
+                            #TODO: what was the rationale behind this code???
+
+                            # data_lim = self.z21_data[np.logical_and(self.freq < band[2], self.freq > band[0])]
+                            # peak = find_peaks(np.real(data_lim), height = 0)
+                            # match self.fit_type:
+                            #     case constants.El.INDUCTOR:
+                            #         r_peak_index = np.argwhere(peak[1]['peak_heights'] == max(peak[1]['peak_heights']))[0][0]
+                            #         r_peak = peak[1]['peak_heights'][r_peak_index]
+                            #     case constants.El.CAPACITOR:
+                            #         r_peak_index = np.argwhere(peak[1]['peak_heights'] == min(peak[1]['peak_heights']))[0][0]
+                            #         r_peak = peak[1]['peak_heights'][r_peak_index]
                         except:
                             r_peak = np.real(self.z21_data[dataindex])
 
                         R = params[R_key].value
-                        R_diff = r_peak - np.real(curve_data[dataindex])
+                        R_diff = r_peak - abs(curve_data[dataindex])
                         if (R + R_diff) > 0:
                             R_adjusted = R + R_diff
                             w_c = params['w%s' % key_number].value * config.FUNIT
@@ -1166,11 +1170,11 @@ class Fitter:
                             C_adjusted = Q / (R_adjusted * w_c)
                             #rescale parameter to match units
                             C_adjusted = C_adjusted / config.CAPUNIT
-                            self.change_parameter(params, R_key, min = R_adjusted*0.2, max = R_adjusted *5, value = R_adjusted, vary = True, expr ='')
-                            self.change_parameter(params, C_key, min = C_adjusted*1e-1, max = C_adjusted *1e1, value = C_adjusted, vary = True)
+                            self.change_parameter(params, R_key, min = R_adjusted*0.9, max = R_adjusted*1.1, value = R_adjusted, vary = True, expr ='')
+                            self.change_parameter(params, C_key, min = C_adjusted*0.8, max = C_adjusted *1.2, value = C_adjusted, vary = True)
                         else:
                             #if we can't find a valid correction, leave it be
-                            self.logger.info('Parameter not corrected: ' + R_key + ' ;run: ' + self.name)
+                            pass
 
 
         self.parameters = params

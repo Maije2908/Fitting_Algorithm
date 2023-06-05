@@ -535,17 +535,19 @@ class GUI:
                     raise Exception("Error: Something went wrong while trying to create nominal parameters; "
                                     "check if the element type is correct")
 
-                if it == 0:
-                    #fit the main resonance for the first file
-                     ref_set = fitter.fit_main_res_inductor_file_1()
-                else:
-                    #fit the main resonance for every other file (we have to overwrite some parameters here, since the
-                    # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
-                    #TODO: don't know if this overwrite routine is all that smart... maybe let the biased fitters have
-                    # their own param sets since we might bump into the constraints with this approach
-                    fitter.overwrite_main_res_params_file_n(ref_set)
-                    fitter.fit_main_res_inductor_file_n()
-                #finally write the fitted main resonance parameters to the list
+                ref_set = fitter.fit_main_res_inductor_file_1()
+
+                # if it == 0:
+                #     #fit the main resonance for the first file
+                #      ref_set = fitter.fit_main_res_inductor_file_1()
+                # else:
+                #     #fit the main resonance for every other file (we have to overwrite some parameters here, since the
+                #     # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
+                #     #TODO: don't know if this overwrite routine is all that smart... maybe let the biased fitters have
+                #     # their own param sets since we might bump into the constraints with this approach
+                #     fitter.overwrite_main_res_params_file_n(ref_set)
+                #     fitter.fit_main_res_inductor_file_n()
+                # #finally write the fitted main resonance parameters to the list
 
             ################ END MAIN RESONANCE FIT ####################################################################
 
@@ -611,8 +613,9 @@ class GUI:
                 fitters[0].correct_parameters(change_main=correct_main_res, num_it=num_iterations)
                 fitters[0].pre_fit_bands()
                 higher_order_params = fitters[0].fit_curve_higher_order()
-                for fitter in fitters[1:]:
-                    fitter.add_higher_order_resonances_MR_fit(order = fitters[0].order, param_set0=higher_order_params)
+                if len(fitters) > 1:
+                    for fitter in fitters[1:]:
+                        fitter.add_higher_order_resonances_MR_fit(order=fitters[0].order, param_set0=higher_order_params)
 
 
 
@@ -637,6 +640,7 @@ class GUI:
             match fit_type:
                 case constants.El.INDUCTOR:
                     saturation_table['L'] = self.generate_saturation_table(parameter_list, 'L', dc_bias)
+                    saturation_table['C'] = self.generate_saturation_table(parameter_list, 'C', dc_bias)
                     saturation_table['R_Fe'] = self.generate_saturation_table(parameter_list, 'R_Fe',
                                                                               dc_bias)
                 case constants.El.CAPACITOR:

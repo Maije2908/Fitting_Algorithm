@@ -301,12 +301,16 @@ class IOhandler:
                 main_res_terminal_port = '1' if order > 0 else 'PORT2'
                 lib += 'R_s PORT1 B1 ' + str(R_s) + "\n"
                 lib += 'R_p B1 '+main_res_terminal_port+' R = limit({lo}, {hi}, {R_Fe} * V(K_Fe))'.format(lo = R_p * 1e-8, hi = R_p * 1e8, R_Fe = R_p) + "\n"
+
+                #TODO: IMPORTANT!!! WRITE OUTPUT FUNCTION FOR DC BIAS DEPENDENT CAPACITOR FOR MAIN RES ASAP
+                lib += 'BC PORT1 ' +main_res_terminal_port+' ' + 'I=-I(BCT)*V(K_C)'+ "\n"
                 lib += 'C PORT1 '+main_res_terminal_port+' ' + str(C) + "\n"
-                lib += 'BL B1 '+main_res_terminal_port+' V=V(K_L)*V(L)' + "\n"
+
+                lib += 'BL B1 '+main_res_terminal_port+' V=V(K_L)*V(LT)' + "\n"
 
                 #'test' inductor
-                lib += 'L L 0 ' + str(L) + "\n"
-                lib += 'F1 0 L BL 1' + "\n"
+                lib += 'L LT 0 ' + str(L) + "\n"
+                lib += 'F1 0 LT BL 1' + "\n"
 
                 ############### PROPORTIONALITY TABLES FOR MAIN ELEMENT ################################################
                 lib += '* The values for the Current-Inductance-Table can be edited here:' + "\n"
