@@ -678,7 +678,9 @@ class GUI:
             #export parameters
             self.iohandler.export_parameters(parameter_list, order, fit_type, captype)
 
-            if config.FULL_FIT:
+            if config.FORCE_SINGLE_POINT_MODEL or len(fitters) == 1:
+                self.iohandler.generate_Netlist_2_port_single_point(parameter_list[0], order, fit_type, saturation_table, captype=captype)
+            elif config.FULL_FIT:
                 self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],order, fit_type, saturation_table, captype=captype)
             else:
                 self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table, captype=captype)
@@ -939,7 +941,9 @@ class GUI:
             #export parameters
             self.iohandler.export_parameters(parameter_list, order, fit_type, captype)
 
-            if config.FULL_FIT:
+            if config.FORCE_SINGLE_POINT_MODEL or len(fitters) == 1:
+                self.iohandler.generate_Netlist_2_port_single_point(parameter_list[0], order, fit_type, saturation_table, captype=captype)
+            elif config.FULL_FIT:
                 self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],order, fit_type, saturation_table, captype=captype)
             else:
                 self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table, captype=captype)

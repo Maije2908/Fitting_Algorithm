@@ -157,15 +157,6 @@ class IOhandler:
                                                                                                     number=order)
                 lib += '.SUBCKT {name} PORT1 PORT2'.format(name=model_name) + '\n*\n'
 
-                ############### MAIN ELEMENT ###########################################################################
-                lib += 'R_s PORT1 LsRs R = limit({lo}, {hi}, {R_s} * V(K_Rs))'.format(lo = R_s * 1e-8,
-                                                                                      hi = R_s * 1e8, R_s = R_s) + "\n"
-                lib += 'R_iso Vcap 0 ' + str(R_iso) + "\n"
-                lib += 'L_s LsRs Vcap ' + str(Ls) + "\n"
-                lib += 'E1 E1 0 Vcap 0 1 ' + "\n"
-                lib += 'C E1 0 ' + str(C) + "\n"
-                lib += 'B1 0 Vcap I=I(E1)*V(K) ' + "\n"
-
                 ############### ACOUSTIC RESONANCE PARAMETERS FOR MLCCs ################################################
 
                 if captype == constants.captype.MLCC:
@@ -206,20 +197,35 @@ class IOhandler:
                     Lx = out['L%s' % circuit].value*config.INDUNIT
                     Rx = out['R%s' % circuit].value
 
-                    lib += 'R{no} PORT1 {node2} '.format(no=circuit, node2=circuit) + str(Rx) + "\n"
-                    lib += 'L{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=order + circuit) + str(
+                    lib += 'R{no} PORT1 NR{node2} '.format(no=circuit, node2=circuit) + str(Rx) + "\n"
+                    lib += 'L{no} NR{node1} NL{node2} '.format(no=circuit, node1=circuit, node2=circuit) + str(
                         Lx) + "\n"
-                    lib += 'C{no} {node1} 0 '.format(no=circuit, node1=order + circuit) + str(Cx) + "\n"
+                    lib += 'C{no} NL{node1} PORT2 '.format(no=circuit, node1=order + circuit) + str(Cx) + "\n"
 
-                ############## PROPORTIONALITY TABLES ##################################################################
-                # proportionality factor for C
+                ############### MAIN ELEMENT ###########################################################################
+
+                # Series resistance
+                lib += 'R_s PORT1 LsRs R = limit({lo}, {hi}, {R_s} * V(K_Rs))'.format(lo=R_s * 1e-8, hi=R_s * 1e8,
+                                                                                 R_s=R_s) + "\n"
+                # Parasitic inductance
+                lib += 'L_s LsRs Vcap ' + str(Ls) + "\n"
+                # B source mimicking the capacitor
+                lib += 'B1 PORT2 Vcap I=I(E1)*V(K_C) ' + "\n"
+                # Isolation Resistance
+                lib += 'R_iso Vcap PORT2 ' + str(R_iso) + "\n"
+
+                # Test cap (E source taking the voltage over the main capacitance)
+                lib += 'E1 VC 0 Vcap PORT2 1 ' + "\n"
+                lib += 'C VC 0 ' + str(C) + "\n"
+
+                ############### PROPORTIONALITY TABLES FOR MAIN ELEMENT ################################################
+                # Proportionality factor for main element
                 lib += '* The values for the Voltage-Capacitance-Table can be edited here:' + "\n"
-                lib += '* current dependent proportionality factor for L' + "\n"
-                lib += 'B2 K 0 V=table(abs(V(PORT1)),{table}) '.format(table=saturation_table['C']) + "\n"
-                # proportionality factor for R_Fe
-                lib += '* current dependent proportionality factor for R_s' + "\n"
-                lib += 'B3 K_Rs 0 V=table(abs(I(B1)),{table})'.format(table=saturation_table['R_s']) + "\n"
-
+                lib += 'B2 K_C 0 V=table(abs(V(PORT1)-V(PORT2)),{table}) '.format(table=saturation_table['C']) + "\n"
+                # Proportionality factor for series resistance
+                lib += '* The values for the Voltage-Resistance-Table can be edited here:' + "\n"
+                lib += 'B3 K_Rs 0 V=table(abs(V(PORT1)-V(PORT2)),{table}) '.format(table=saturation_table['R_s']) + "\n"
+                # Model closing
                 lib += '.ENDS {name}'.format(name=model_name) + "\n"
 
 
@@ -368,27 +374,31 @@ class IOhandler:
                     Rx = out['R%s' % circuit].value
                     node2 = circuit + 1 if circuit < order else 'PORT2'
 
-                    #current dependent coil for higher order res:
+                    # Voltage dependent coil for higher order res:
+                    # B-source mimicking the inductor
                     lib += 'BL{no} PORT1 NL{node1} '.format(no=circuit, node1=circuit) + 'V=V(VL{no})*V(K_L{no})'.format(no=circuit) + "\n"
+                    # Test Inductor
                     lib += 'L{no} VL{no} 0 '.format(no=circuit) + str(Lx) + "\n"
                     lib += 'FL{no} 0 VL{no} BL{no} 1'.format(no=circuit) + "\n"
-
+                    # Proportionality factor
                     lib += '* current dependent proportionality factor for L{no}'.format(no=circuit) + "\n"
                     lib += 'BLK{no} K_L{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no=circuit, table=saturation_table['L%s' % circuit]) + "\n"
                     lib += "\n"
 
-                    # current dependent cap for higher order res:
+                    # Voltage dependent cap for higher order res:
+                    # B source mimicking the capacitor
                     lib += 'BC{no} NL{node1} NC{node1} '.format(no=circuit, node1=circuit) + 'I=-I(BCT{no})*V(K_C{no})'.format(no=circuit) + "\n"
+                    # Test cap
                     lib += 'C{no} VC{no} 0 '.format(no=circuit) + str(Cx) + "\n"
                     lib += 'BCT{no} VC{no} 0 '.format(no=circuit) + 'V=V(NL{node1})-V(NC{node1})'.format(node1=circuit) + "\n"
-
+                    # Proportionality factor
                     lib += '* current dependent proportionality factor for C{no}'.format(no=circuit) + "\n"
                     lib += 'BCK{no} K_C{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no=circuit, table=saturation_table['C%s' % circuit]) + "\n"
                     lib += "\n"
 
-                    #current dependent resistor
+                    # Voltage dependent resistor for higher order res:
                     lib += 'R_{no} NC{node1} PORT2 R = limit({lo}, {hi}, {R_x} * V(K_R{no}))'.format(no=circuit, node1=circuit, lo=Rx * 1e-8, hi=Rx * 1e8,R_x=Rx) + "\n"
-
+                    # Proportionality factor
                     lib += '* current dependent proportionality factor for R{no}'.format(no=circuit) + "\n"
                     lib += 'BRK{no} K_R{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no=circuit, table=saturation_table['R%s' % circuit]) + "\n"
                     lib += "\n"
@@ -398,48 +408,59 @@ class IOhandler:
                     RA = out['R_A'].value
                     LA = out['L_A'].value*config.INDUNIT
                     CA = out['C_A'].value*config.CAPUNIT
-                    #current dependent coil for higher order res:
+
+                    # Voltage dependent inductance:
+                    # B source mimicking the inductor
                     lib += 'BL{no} PORT1 NL{node1} '.format(no='A', node1='A') + 'V=V(VL{no})*V(K_L{no})'.format(no='A') + "\n"
+                    # Test inductor
                     lib += 'L{no} VL{no} 0 '.format(no='A') + str(LA) + "\n"
                     lib += 'FL{no} 0 VL{no} BL{no} 1'.format(no='A') + "\n"
-
+                    # Proportionality factor
                     lib += '* current dependent proportionality factor for L{no}'.format(no='A') + "\n"
                     lib += 'BLK{no} K_L{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no='A', table=saturation_table['L_A']) + "\n"
                     lib += "\n"
 
-                    # current dependent cap for higher order res:
+                    # Voltage dependent cap:
+                    # B source mimicking the cap
                     lib += 'BC{no} NL{node1} NC{node1} '.format(no='A', node1='A') + 'I=-I(BCT{no})*V(K_C{no})'.format(no='A') + "\n"
+                    # Test cap
                     lib += 'C{no} VC{no} 0 '.format(no='A') + str(CA) + "\n"
                     lib += 'BCT{no} VC{no} 0 '.format(no='A') + 'V=V(NL{node1})-V(NC{node1})'.format(node1='A') + "\n"
-
+                    # Proportionality factor
                     lib += '* current dependent proportionality factor for C{no}'.format(no='A') + "\n"
                     lib += 'BCK{no} K_C{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no='A', table=saturation_table['C_A']) + "\n"
 
-                    # current dependent resistor
+                    # Current dependent resistor
                     lib += 'R_{no} NC{node1} PORT2 R = limit({lo}, {hi}, {R_x} * V(K_R{no}))'.format(no='A', node1='A',lo=RA * 1e-8,hi=RA * 1e8,R_x=RA) + "\n"
-
+                    # Proportionality factor
                     lib += '* current dependent proportionality factor for R{no}'.format(no='A') + "\n"
                     lib += 'BRK{no} K_R{no} 0 V=table(abs(V(PORT1)-V(PORT2)),{table})'.format(no='A',table=saturation_table['R_A']) + "\n"
                     lib += "\n"
 
                 ############### MAIN ELEMENT ###########################################################################
+
+                # Series resistance
+                lib += 'R_s PORT1 LsRs R = limit({lo}, {hi}, {R_s} * V(K_Rs))'.format(lo=R_s * 1e-8, hi=R_s * 1e8,
+                                                                                 R_s=R_s) + "\n"
+                # Parasitic inductance
                 lib += 'L_s LsRs Vcap ' + str(Ls) + "\n"
+                # B source mimicking the capacitor
+                lib += 'B1 PORT2 Vcap I=I(E1)*V(K_C) ' + "\n"
+                # Isolation Resistance
                 lib += 'R_iso Vcap PORT2 ' + str(R_iso) + "\n"
 
-                lib += 'B1 PORT2 Vcap I=I(E1)*V(K_C) ' + "\n"
+                # Test cap (E source taking the voltage over the main capacitance)
                 lib += 'E1 VC 0 Vcap PORT2 1 ' + "\n"
                 lib += 'C VC 0 ' + str(C) + "\n"
 
                 ############### PROPORTIONALITY TABLES FOR MAIN ELEMENT ################################################
-                lib += 'R_p PORT1 LsRs R = limit({lo}, {hi}, {R_s} * V(K_Rs))'.format(lo=R_s * 1e-8, hi=R_s * 1e8,
-                                                                                 R_s=R_s) + "\n"
-
+                # Proportionality factor for main element
                 lib += '* The values for the Voltage-Capacitance-Table can be edited here:' + "\n"
                 lib += 'B2 K_C 0 V=table(abs(V(PORT1)-V(PORT2)),{table}) '.format(table=saturation_table['C']) + "\n"
-
+                # Proportionality factor for series resistance
                 lib += '* The values for the Voltage-Resistance-Table can be edited here:' + "\n"
                 lib += 'B3 K_Rs 0 V=table(abs(V(PORT1)-V(PORT2)),{table}) '.format(table=saturation_table['R_s']) + "\n"
-
+                # Model closing
                 lib += '.ENDS {name}'.format(name=model_name) + "\n"
 
 
@@ -458,7 +479,7 @@ class IOhandler:
         file.write(lib)
         file.close()
 
-    def generate_Netlist_2_port_one_point(self, parameters, fit_order, fit_type, saturation_table, captype = None):
+    def generate_Netlist_2_port_single_point(self, parameters, fit_order, fit_type, saturation_table, captype = None):
         """
         Writes an LTSpice Netlist to the path that is stored in the IOhandlers instance variable.
 
@@ -516,10 +537,10 @@ class IOhandler:
                 lib += 'R_p B1 ' + main_res_terminal_port + str(R_p) + "\n"
 
                 # Parasitic capacitance main element
-                lib += 'C PORT1 ' + main_res_terminal_port + str(C)
+                lib += 'C PORT1 ' + main_res_terminal_port + str(C) + "\n"
 
                 # Main inductance
-                lib += 'L B1 '+ main_res_terminal_port + str(L)
+                lib += 'L B1 '+ main_res_terminal_port + str(L) + "\n"
 
                 # Model closing
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"

@@ -5,6 +5,8 @@ FULL_FIT = True
 MULTIPROCESSING_COUNT = 8
 FREQ_UPPER_LIMIT = 1e9
 
+FORCE_SINGLE_POINT_MODEL = False
+
 CAPUNIT = constants.capunits.NANOFARADS
 INDUNIT = constants.indunits.MICROHENRIES
 FUNIT   = constants.funits.MEGAHERTZ
