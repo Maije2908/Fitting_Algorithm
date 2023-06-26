@@ -534,13 +534,13 @@ class IOhandler:
 
                 main_res_terminal_port = '1' if order > 0 else 'PORT2'
                 lib += 'R_s PORT1 B1 ' + str(R_s) + "\n"
-                lib += 'R_p B1 ' + main_res_terminal_port + str(R_p) + "\n"
+                lib += 'R_p B1 ' + main_res_terminal_port + ' ' + str(R_p) + "\n"
 
                 # Parasitic capacitance main element
-                lib += 'C PORT1 ' + main_res_terminal_port + str(C) + "\n"
+                lib += 'C PORT1 ' + main_res_terminal_port + ' ' + str(C) + "\n"
 
                 # Main inductance
-                lib += 'L B1 '+ main_res_terminal_port + str(L) + "\n"
+                lib += 'L B1 '+ main_res_terminal_port + ' ' + str(L) + "\n"
 
                 # Model closing
                 lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
