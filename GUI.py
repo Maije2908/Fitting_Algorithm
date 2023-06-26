@@ -1068,7 +1068,10 @@ class GUI:
                                                     "would result in an endless loop")
                             assignment_matrix[set_number, param_number] = best_match
             else:
-                assignment_matrix[set_number] = assignment_matrix[set_number - 1]
+                if set_number == 1:
+                    assignment_matrix[set_number] = np.arange(0, len(assignment_matrix[1]))
+                else:
+                    assignment_matrix[set_number] = assignment_matrix[set_number - 1]
 
 
 
@@ -1107,6 +1110,7 @@ class GUI:
 
         #switch key numbers
         for set_number in range(1, np.shape(w_array)[0]):
+            print(str(set_number))
             parameter_set = parameter_list[set_number]
             previous_set  = parameter_list[set_number - 1]
 
