@@ -458,6 +458,135 @@ class IOhandler:
         file.write(lib)
         file.close()
 
+    def generate_Netlist_2_port_one_point(self, parameters, fit_order, fit_type, saturation_table, captype = None):
+        """
+        Writes an LTSpice Netlist to the path that is stored in the IOhandlers instance variable.
+
+        Will output an LTSpice Netlist for current dependent inductor/capacitor with
+        **constant higher order resonances**. That is the higher order resonant circuits **will not** be current/voltage
+        dependent in this form of output.
+
+
+        :param parameters: The Parameters for the model. A Parameters() object containing the model parameters for
+            reference file
+        :param fit_order: The order of the model i.e. the number of circuits
+        :param fit_type: Whether the element is a coil or capacitor
+        :param saturation_table: The saturation table for the elements. A dict type object with a key equal to that of
+            the parameter in question containing the saturation table as a string
+        :param captype: The type of capacitor. Can be GENERIC or MLCC
+        :return: None
+        """
+
+        out = parameters
+        order = fit_order
+
+        match fit_type:
+            case constants.El.INDUCTOR:
+
+                # define the name of the model here:
+                model_name = "L_1"
+
+                # main element parameters
+                L = out['L'].value*config.INDUNIT
+                C = out['C'].value*config.CAPUNIT
+                R_s = out['R_s'].value
+                R_p = out['R_Fe'].value
+
+                lib = '* Netlist for Inductor Model {name} (L={value}H)\n' \
+                      '* Including {number} Serially Chained Parallel Resonant Circuits\n*\n'.format(name=model_name,
+                                                                                                     value=str(L),
+                                                                                                     number=order)
+                lib += '.SUBCKT {name} PORT1 PORT2'.format(name=model_name) + '\n*\n'
+
+
+                ############### HIGHER ORDER ELEMENTS ##################################################################
+                for circuit in range(1, order + 1):
+                    Cx = out['C%s' % circuit].value*config.CAPUNIT
+                    Lx = out['L%s' % circuit].value*config.INDUNIT
+                    Rx = out['R%s' % circuit].value
+                    node2 = circuit + 1 if circuit < order else 'PORT2'
+                    lib += 'C{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=node2) + str(Cx) + "\n"
+                    lib += 'L{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=node2) + str(Lx) + "\n"
+                    lib += 'R{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=node2) + str(Rx) + "\n"
+
+                ############### MAIN ELEMENT ###########################################################################
+
+                main_res_terminal_port = '1' if order > 0 else 'PORT2'
+                lib += 'R_s PORT1 B1 ' + str(R_s) + "\n"
+                lib += 'R_p B1 ' + main_res_terminal_port + str(R_p) + "\n"
+
+                # Parasitic capacitance main element
+                lib += 'C PORT1 ' + main_res_terminal_port + str(C)
+
+                # Main inductance
+                lib += 'L B1 '+ main_res_terminal_port + str(L)
+
+                # Model closing
+                lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
+
+
+
+            case constants.El.CAPACITOR:
+
+                # define the name of the model here:
+                model_name = "C_1"
+
+                # main element parameters
+                C = out['C'].value*config.CAPUNIT
+                Ls = out['L'].value*config.INDUNIT
+                R_s = out['R_s'].value
+                R_iso = out['R_iso'].value
+
+                lib = '* Netlist for Capacitor Model {name} (C={value}F)\n' \
+                      '* Including {number} Parallely Chained Serial Resonant Circuits\n*\n'.format(name=model_name,
+                                                                                                    value=str(C),
+                                                                                                    number=order)
+                lib += '.SUBCKT {name} PORT1 PORT2'.format(name=model_name) + '\n*\n'
+
+                ############### MAIN ELEMENT ###########################################################################
+
+                lib += 'R_s PORT1 LsRs ' + str(R_s) + "\n"
+
+                lib += 'L_s LsRs Vcap ' + str(Ls) + "\n"
+
+                lib += 'R_iso Vcap PORT2 ' + str(R_iso) + "\n"
+
+                lib += 'C Vcap PORT2 ' + str(C) + "\n"
+
+                ############### ACOUSTIC RESONANCE PARAMETERS FOR MLCCs ################################################
+
+                ############### HIGHER ORDER ELEMENTS ##################################################################
+                for circuit in range(1, order + 1):
+                    Cx = out['C%s' % circuit].value*config.CAPUNIT
+                    Lx = out['L%s' % circuit].value*config.INDUNIT
+                    Rx = out['R%s' % circuit].value
+
+                    lib += 'R{no} PORT1 {node2} '.format(no=circuit, node2=circuit) + str(Rx) + "\n"
+                    lib += 'L{no} {node1} {node2} '.format(no=circuit, node1=circuit, node2=order + circuit) + str(
+                        Lx) + "\n"
+                    lib += 'C{no} {node1} PORT2 '.format(no=circuit, node1=order + circuit) + str(Cx) + "\n"
+
+
+                lib += '.ENDS {name}'.format(name=model_name) + "\n"
+
+
+        ############### OUTPUT #########################################################################################
+        # get output folder and path
+        out_path = os.path.split(self.outpath)[0]
+        dir_name = os.path.normpath(self.outpath).split(os.sep)[-2]
+        out_folder = os.path.join(out_path, "fit_results_%s" % dir_name)
+
+        #create the folder; should not be necessary to handle an exception; however folder could be write protected
+        try:
+            os.makedirs(out_folder, exist_ok = True)
+        except Exception:
+            raise
+
+        # write LTSpice .lib file
+        file = open(os.path.join(out_folder, "LT_Spice_Model_" + dir_name + ".lib"), "w+")
+        file.write(lib)
+        file.close()
+
     def export_parameters(self, param_array, order, fit_type, captype):
         """
         Method to output the obtained model parameters as an .xlsx file to the directory in IOhandlers output path.
@@ -665,7 +794,5 @@ class IOhandler:
             plt.show()
         else:
             plt.close(fig)
-
-
 
 
