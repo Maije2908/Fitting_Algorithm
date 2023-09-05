@@ -1,1 +1,14 @@
-
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Maier"
+  given-names: "Christoph"
+  orcid: "https://orcid.org/0000-0002-7841-7530"
+- family-names: "Scambor"
+  given-names: "Andree"
+  %orcid: "https://orcid.org/0000-0000-0000-0000"
+title: "Automated Tool for Modelling Impedance for SPICE "
+version: v1.0
+%doi: 10.5281/zenodo.1234
+date-released: 2022-11-24
+url: "https://github.com/Maije2908/Fitting_Algorithm"
