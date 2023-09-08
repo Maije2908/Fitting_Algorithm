@@ -1436,7 +1436,6 @@ class Fitter:
         self.parameters = param_set
         return param_set
 
-
     #TODO: those two methods are rather redundant (fit_cap/coil_file_n) to the point where they are essentially the
     # same function
     def fit_main_res_inductor_file_n(self, param_set: lmfit.Parameters = None) -> lmfit.Parameters:

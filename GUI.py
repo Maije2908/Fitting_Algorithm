@@ -1039,7 +1039,7 @@ class GUI:
 
         orders = [fitter.order for fitter in fitters]
 
-        w_array = np.full(( len(parameter_list), max(orders)), None)
+        w_array = np.full(( len(parameter_list), max(orders)), np.nan)
 
         for num_set, parameter_set in enumerate(parameter_list[:]):
             for key_number in range(1, orders[num_set] + 1):
@@ -1047,55 +1047,63 @@ class GUI:
                 w_array[num_set, key_number-1] = parameter_set[w_key].value
 
 
-        #create an assignment matrix, looking for the resonance in the next dataset (relative keys)
-        assignment_matrix = np.atleast_2d(np.full(( len(parameter_list), max(orders)), None))
+        ref_array = np.nan
+        # find a reference array by iterating through all sets and finding one where all keys are filled
+        # ideally we have only one iteration
+        for set_number in range(np.shape(w_array)[0]):
+            if not np.isnan(w_array[set_number]).any():
+                ref_array = w_array[set_number]
+                break
 
+        # Check if we have found a reference array with all keys filled
+        if np.isnan(ref_array).any():
+            raise Exception("Could not determine a reference array for output; this should not happen")
+
+        # Create an assignment matrix and fill with -1; -1 is the indicator for "not present"
+        assignment_matrix = np.empty_like(w_array, dtype=np.int64)
+        assignment_matrix[:] = -1
+
+        # Iterate through all sets and find the keys that match best
         for set_number in range(1, np.shape(w_array)[0]):
-            # Hotfix to not mess up parameter sets that are of the same order
-            if not all((w_array[set_number] == None) == (w_array[set_number - 1] == None)):
-                ref_array = list(filter(lambda x: x is not None, w_array[set_number - 1]))
-                for param_number in range(np.shape(w_array)[1]):
-                    if not w_array[set_number][param_number] is None and ref_array:
-                        diff = abs(ref_array - w_array[set_number][param_number])
-                        best_match = np.argwhere(diff == min(diff))[0][0]
+            # Create a temporary row for the assignment matrix
+            temp_row = np.full([1, np.shape(w_array)[1]], -1, dtype=np.int64)[0]
 
-                        # Check if the best match has already been used as a key -> we need unique keys
-                        if best_match not in assignment_matrix[set_number]:
-                            assignment_matrix[set_number, param_number] = best_match
-                        else:
-                            # Handle the case when the best match has already been used as a key
-                            while best_match in assignment_matrix[set_number]:
-                                diff[best_match] = None
-                                best_match = np.argwhere(diff == min(diff))[0][0]
-                                if not any(assignment_matrix[set_number]):
-                                    raise Exception("If you see this message please report as a bug. Hit an edge case that"
-                                                    "would result in an endless loop")
-                            assignment_matrix[set_number, param_number] = best_match
-            else:
-                if set_number == 1:
-                    assignment_matrix[set_number] = np.arange(0, len(assignment_matrix[1]))
-                else:
-                    assignment_matrix[set_number] = assignment_matrix[set_number - 1]
-
-
-
-        #rebuild the matrix to have absolute keys rather than relative ones
-
-        asg_mat_new = np.full((len(parameter_list), max(orders)), None)
-
-        for set_number in reversed(range(1, np.shape(w_array)[0])):
+            # Iterate through all parameters and find the key that fits best (has the minimum distance from ref_array)
             for param_number in range(np.shape(w_array)[1]):
-                if not assignment_matrix[set_number][param_number] is None:
-                    rel_key = assignment_matrix[set_number][param_number]
-                    if not rel_key is None:
-                        for backwards_set_number in reversed(range(1, set_number)):
-                            if not assignment_matrix[backwards_set_number][rel_key] is None:
-                                rel_key = assignment_matrix[backwards_set_number][rel_key]
-                        abs_key = rel_key
-                        asg_mat_new[set_number][param_number] = abs_key
+                if not np.isnan(w_array[set_number][param_number]):
+                    temp_row[param_number] = np.where(abs(w_array[set_number][param_number] - ref_array) == min(
+                        abs(w_array[set_number][param_number] - ref_array)))[0][0]
+
+            # Find duplicate keys that were assigned and free keys that have not been assigned
+            duplicates = [x for x in list(set([x for x in list(temp_row) if list(temp_row).count(x) > 1])) if x != -1]
+            free_keys = list(set(list(range(np.shape(ref_array)[0]))).difference(set(temp_row)))
+
+            # Iterate through all found duplicates
+            for duplicate in duplicates:
+                duplicate_positions = np.where(temp_row == duplicate)[0]
+                # Find the duplicate that fits the key number best; this is the duplicate we want to keep at that key
+                # Delete that key from the found duplicates
+                duplicate_positions = np.delete(duplicate_positions, np.where(
+                    abs(w_array[set_number][duplicate_positions] - ref_array[duplicate_positions]) == min(
+                        abs((w_array[set_number][duplicate_positions] - ref_array[duplicate_positions]))))[0][0])
+
+                # Iterate through the other occurences of the duplicate and find a free key that fits them
+                for it in duplicate_positions:
+                    best_key = free_keys[np.where(abs(w_array[set_number][it] - ref_array[free_keys]) ==
+                                                  min(abs(w_array[set_number][it] - ref_array[free_keys])))[0][0]]
+                    temp_row[it] = best_key
+
+            # Update ref_array
+            for param_number in range(np.shape(w_array)[1]):
+                if temp_row[param_number] != -1:
+                    ref_array[temp_row[param_number]] = w_array[set_number][param_number]
+
+            # Write to assignment matrix
+            assignment_matrix[set_number] = temp_row
 
 
-        assignment_matrix = asg_mat_new
+
+
 
         match fitters[0].fit_type: #TODO: this could use some better way of determining the fit type
             case constants.El.INDUCTOR:
@@ -1108,7 +1116,7 @@ class GUI:
         for check_key in range(1, np.shape(w_array)[1]+1):
             w_key = "w%s" % check_key
             if not w_key in parameter_list[0]:
-                first_occurence = np.argwhere(assignment_matrix[:, param_number] != None)[0][0]
+                first_occurence = np.argwhere(assignment_matrix[:, param_number] != -1)[0][0]
                 first_occurence_set = parameter_list[first_occurence]
                 parameter_list[0] = self.fill_key(parameter_list[0], first_occurence_set, check_key, r_default)
 
@@ -1123,10 +1131,10 @@ class GUI:
 
             for param_number in range(np.shape(w_array)[1]):
                 old_key_nr = param_number + 1
-                if assignment_matrix[set_number][param_number] is not None:
+                if assignment_matrix[set_number][param_number] != -1:
                     new_key_nr = assignment_matrix[set_number][param_number] + 1
 
-                if assignment_matrix[set_number][param_number] is not None:
+                if assignment_matrix[set_number][param_number]  != -1:
                     output_set = self.switch_key(output_set, parameter_set, old_key_nr, new_key_nr)
 
             #fill remaining keys
