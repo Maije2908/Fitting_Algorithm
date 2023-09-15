@@ -849,7 +849,7 @@ class Fitter:
         return param_set
 
     #TODO: delete config number as soon as the callers are adapted
-    def create_higher_order_parameters(self, config_number=None, param_set: lmfit.Parameters = None) -> lmfit.Parameters:
+    def create_higher_order_parameters(self, param_set: lmfit.Parameters = None) -> lmfit.Parameters:
         """
         Method to create the circuit elements for the higher order resonances.
         Can create parameters in two configurations.
@@ -1129,7 +1129,7 @@ class Fitter:
                 self.change_parameter(params, 'R_s', min=R_new * 0.8, max=R_new * 1.2, value=R_new, vary=False)
                 self.change_parameter(params, 'L', min=L_new * 0.8, max=L_new * 1.2, value=L_new, vary=False)
 
-
+            #TODO: the parameter correction does some weird stuff for some measurement sets, check it out
             for key_number in range(1, self.order + 1):
                 index = key_number - 1
                 if self.fit_type == constants.El.INDUCTOR:
@@ -1144,20 +1144,24 @@ class Fitter:
 
                         #to get a better estimate for the resistive value, look at the real part and find the peak
                         try:
-                            data_lim = self.z21_data[np.logical_and(self.freq < band[2], self.freq > band[0])]
-                            peak = find_peaks(np.real(data_lim), height = 0)
-                            match self.fit_type:
-                                case constants.El.INDUCTOR:
-                                    r_peak_index = np.argwhere(peak[1]['peak_heights'] == max(peak[1]['peak_heights']))[0][0]
-                                    r_peak = peak[1]['peak_heights'][r_peak_index]
-                                case constants.El.CAPACITOR:
-                                    r_peak_index = np.argwhere(peak[1]['peak_heights'] == min(peak[1]['peak_heights']))[0][0]
-                                    r_peak = peak[1]['peak_heights'][r_peak_index]
+
+                            r_peak = abs(self.z21_data[dataindex])
+                            #TODO: what was the rationale behind this code???
+
+                            # data_lim = self.z21_data[np.logical_and(self.freq < band[2], self.freq > band[0])]
+                            # peak = find_peaks(np.real(data_lim), height = 0)
+                            # match self.fit_type:
+                            #     case constants.El.INDUCTOR:
+                            #         r_peak_index = np.argwhere(peak[1]['peak_heights'] == max(peak[1]['peak_heights']))[0][0]
+                            #         r_peak = peak[1]['peak_heights'][r_peak_index]
+                            #     case constants.El.CAPACITOR:
+                            #         r_peak_index = np.argwhere(peak[1]['peak_heights'] == min(peak[1]['peak_heights']))[0][0]
+                            #         r_peak = peak[1]['peak_heights'][r_peak_index]
                         except:
                             r_peak = np.real(self.z21_data[dataindex])
 
                         R = params[R_key].value
-                        R_diff = r_peak - np.real(curve_data[dataindex])
+                        R_diff = r_peak - abs(curve_data[dataindex])
                         if (R + R_diff) > 0:
                             R_adjusted = R + R_diff
                             w_c = params['w%s' % key_number].value * config.FUNIT
@@ -1166,11 +1170,11 @@ class Fitter:
                             C_adjusted = Q / (R_adjusted * w_c)
                             #rescale parameter to match units
                             C_adjusted = C_adjusted / config.CAPUNIT
-                            self.change_parameter(params, R_key, min = R_adjusted*0.2, max = R_adjusted *5, value = R_adjusted, vary = True, expr ='')
-                            self.change_parameter(params, C_key, min = C_adjusted*1e-1, max = C_adjusted *1e1, value = C_adjusted, vary = True)
+                            self.change_parameter(params, R_key, min = R_adjusted*0.9, max = R_adjusted*1.1, value = R_adjusted, vary = True, expr ='')
+                            self.change_parameter(params, C_key, min = C_adjusted*0.8, max = C_adjusted *1.2, value = C_adjusted, vary = True)
                         else:
                             #if we can't find a valid correction, leave it be
-                            self.logger.info('Parameter not corrected: ' + R_key + ' ;run: ' + self.name)
+                            pass
 
 
         self.parameters = params
@@ -1432,7 +1436,6 @@ class Fitter:
         self.parameters = param_set
         return param_set
 
-
     #TODO: those two methods are rather redundant (fit_cap/coil_file_n) to the point where they are essentially the
     # same function
     def fit_main_res_inductor_file_n(self, param_set: lmfit.Parameters = None) -> lmfit.Parameters:
@@ -1442,7 +1445,8 @@ class Fitter:
         :param param_set: A Parameters() object containing the parameters for the main resonance circuit
         :return: A Parameters() object containing the fitted parameters of the main resonance
         """
-
+        if param_set is None:
+            param_set = self.parameters
 
         mode = constants.fcnmode.FIT
         fit_main_resonance = 1
@@ -1577,6 +1581,37 @@ class Fitter:
         self.parameters = param_set
         return param_set
 
+    def add_higher_order_resonances_MR_fit(self, order: int, param_set0: lmfit.Parameters,
+                                           param_set: lmfit.Parameters = None) -> lmfit.Parameters:
+        """
+        Method to add the higher order parameters of another parameter set to the fitter. This is needed for the main
+            resonance fit, in order to have the parameters present for plot generation. It does not serve another
+            purpose to add the parameters to the instance variable
+        """
+        if param_set is None:
+            param_set = self.parameters
+
+        self.order = order
+
+        for key_number in range(1, order + 1):
+            C_key = "C%s" % key_number
+            L_key = "L%s" % key_number
+            R_key = "R%s" % key_number
+            w_key = "w%s" % key_number
+            BW_key = "BW%s" % key_number
+
+            param_set.add(C_key, value=param_set0[C_key].value)
+            param_set.add(L_key, value=param_set0[L_key].value)
+            param_set.add(R_key, value=param_set0[R_key].value)
+            param_set.add(w_key, value=param_set0[w_key].value)
+            param_set.add(BW_key, value=param_set0[BW_key].value)
+
+        # Write to instance parameters and return
+        self.parameters = param_set
+        return param_set
+
+
+
     ####################################V AUXILLIARY V##################################################################
     def write_model_data(self, param_set, model_order):
         """
@@ -1643,7 +1678,7 @@ class Fitter:
 
         return cumnorm
 
-    def plot_curve(self, param_set, order, main_res, title = None, angle = False):
+    def plot_curve(self, param_set = None, order = None, main_res = 0, title = None, angle = False):
         """
         Auxillary function to generate a plot of the given measurement data and the impedance of the model.
 
@@ -1653,6 +1688,11 @@ class Fitter:
         :param title: Optional. String to use as title for the plot
         :return: None
         """
+        if param_set is None:
+            param_set = self.parameters
+
+        if order is None:
+            order = self.order
 
         testdata = self._calculate_Z(param_set, self.freq, 2, order, main_res, 2)
         if angle:

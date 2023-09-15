@@ -2,7 +2,6 @@
 import tkinter as tk
 from tkinter import filedialog
 
-import constants
 
 
 from fitter import *
@@ -18,6 +17,7 @@ import skrf as rf
 from tkinter import scrolledtext
 from texthandler import *
 from lmfit import Parameters
+from collections import Counter
 
 import multiprocessing as mp
 
@@ -507,7 +507,6 @@ class GUI:
 
         fit_type = constants.El.INDUCTOR
 
-
         self.logger.info("----------Run----------\n")
         [passive_nom, res, prom, shunt_series, files, dc_bias] = self.read_from_GUI()
 
@@ -537,110 +536,89 @@ class GUI:
                     raise Exception("Error: Something went wrong while trying to create nominal parameters; "
                                     "check if the element type is correct")
 
-                if it == 0:
-                    #fit the main resonance for the first file
-                     ref_set = fitter.fit_main_res_inductor_file_1()
-                else:
-                    #fit the main resonance for every other file (we have to overwrite some parameters here, since the
-                    # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
-                    #TODO: don't know if this overwrite routine is all that smart... maybe let the biased fitters have
-                    # their own param sets since we might bump into the constraints with this approach
-                    fitter.overwrite_main_res_params_file_n(ref_set)
-                    fitter.fit_main_res_inductor_file_n()
-                #finally write the fitted main resonance parameters to the list
+                ref_set = fitter.fit_main_res_inductor_file_1()
+
+                # if it == 0:
+                #     #fit the main resonance for the first file
+                #      ref_set = fitter.fit_main_res_inductor_file_1()
+                # else:
+                #     #fit the main resonance for every other file (we have to overwrite some parameters here, since the
+                #     # main parasitic element (C for inductors, L for capacitors) and the R_s should be constrained
+                #     #TODO: don't know if this overwrite routine is all that smart... maybe let the biased fitters have
+                #     # their own param sets since we might bump into the constraints with this approach
+                #     fitter.overwrite_main_res_params_file_n(ref_set)
+                #     fitter.fit_main_res_inductor_file_n()
+                # #finally write the fitted main resonance parameters to the list
 
             ################ END MAIN RESONANCE FIT ####################################################################
 
-            '''
-            ################ HIGHER ORDER RESONANCES - SINGLE PROCESS ##################################################
+            ################ HIGHER ORDER RESONANCES - MULTIPROCESSING #################################################
 
-            test_pre_fit = []
-            for it, fitter in enumerate(fitters):
+            # Start multiprocessing only if full fit is selected, otherwise use single process fitting
+            if config.FULL_FIT:
+                # Start multiprocessing pool
+                self.mp_pool = mp.Pool(config.MULTIPROCESSING_COUNT)
 
-                fitter.get_resonances()
+                for it, fitter in enumerate(fitters):
+                    fitter.get_resonances()
 
-                if fitter.order:
-                    #generate parameter sets in two configurations 1=Q constrained; 2=free R and C
-                    params1 = copy.copy(fitter.create_higher_order_parameters(1, parameter_list[it]))
-                    params2 = copy.copy(fitter.create_higher_order_parameters(2, parameter_list[it]))
+                correct_main_res = False
+                num_iterations = 4
+                # Create parameters for higher order resonances
 
-                    #correct obtained parameters
-                    correct_main_res = False
-                    num_iterations = 4
+                for fitter in fitters:
+                    fitter.create_higher_order_parameters()
 
-                    params1 = fitter.correct_parameters(params1, correct_main_res, num_iterations)
-                    params2 = fitter.correct_parameters(params2, correct_main_res, num_iterations)
+                # Correct parameters based on magnitude
+
+                for fitter in fitters:
+                    fitter.correct_parameters(change_main=correct_main_res, num_it=num_iterations)
+
+                #apply pre-fitting tasks to the multiprocessing pool
+                pre_fit_results = []
+                for it, fitter in enumerate(fitters):
+                    pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands))
+
+                #wait for all pre-fits to finish
+                [result.wait() for result in pre_fit_results]
+
+                #write back to parameters of fitters
+                for it, pre_fit_result in enumerate(pre_fit_results):
+                    # we need to rewrite the obtained parameters to the fitters, since the address space for the subprocess
+                    # is different from the main
+                    param_set = (pre_fit_result.get())
+                    fitters[it].parameters = param_set
+
+                #CURVE FIT
+                # Create array for fit results
+                fit_results = []
+                for it, fitter in enumerate(fitters):
+                    fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order))
+
+                # Wait for all fits to finish
+                [result.wait() for result in fit_results]
+
+                # Write back to instance parameters (mp results are in a different namespace)
+                for it, result in enumerate(fit_results):
+                    param_set = (result.get())
+                    fitters[it].parameters = param_set
+
+                # Fit done
+                self.mp_pool.close()
+            else:
+                # Run the higher order fitting process only for the first file
+                fitters[0].get_resonances()
+                fitters[0].create_higher_order_parameters()
+                correct_main_res = 0
+                num_iterations = 4
+                fitters[0].correct_parameters(change_main=correct_main_res, num_it=num_iterations)
+                fitters[0].pre_fit_bands()
+                higher_order_params = fitters[0].fit_curve_higher_order()
+                if len(fitters) > 1:
+                    for fitter in fitters[1:]:
+                        fitter.add_higher_order_resonances_MR_fit(order=fitters[0].order, param_set0=higher_order_params)
 
 
-                    params1 = fitter.pre_fit_bands(params1)
-                    params2 = fitter.pre_fit_bands(params2)
-
-                    #TODO: delme
-                    test_pre_fit.append(params1)
-
-                    #fit the whole curve
-                    fit_params1 = fitter.fit_curve_higher_order(params1)
-                    fit_params2 = fitter.fit_curve_higher_order(params2)
-
-                    #check wich model fits best
-                    out_params = fitter.select_param_set([fit_params1, fit_params2], debug=True)
-                    parameter_list[it] = out_params
-
-                    #write the model data to the fitter instance
-                    # fitter.write_model_data(out_params)
-
-                    if DEBUG_FIT:
-                        fitter.plot_curve(parameter_list[it], fitter.order, False, str(fitter.file.name) + ' fitted higher order resonances')
-
-
-            ################ END HIGHER ORDER RESONANCES - SINGLE PROCESS ##############################################
-            '''
-
-            ################ HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ############################################
-            # mp.freeze_support()
-            self.mp_pool = mp.Pool(config.MULTIPROCESSING_COUNT)
-
-
-            for it, fitter in enumerate(fitters):
-                fitter.get_resonances()
-
-            correct_main_res = False
-            num_iterations = 4
-            for it, fitter in enumerate(fitters):
-                fitter.create_higher_order_parameters()
-                fitter.correct_parameters(change_main=correct_main_res, num_it=num_iterations)
-
-            #apply pre-fitting tasks to the multiprocessing pool
-            pre_fit_results = []
-            for it, fitter in enumerate(fitters):
-                pre_fit_results.append(self.mp_pool.apply_async(fitter.pre_fit_bands))
-
-            #wait for all pre-fits to finish
-            [result.wait() for result in pre_fit_results]
-
-            #write back to parameters of fitters
-            for it, pre_fit_result in enumerate(pre_fit_results):
-                # we need to rewrite the obtained parameters to the fitters, since the address space for the subprocess
-                # is different from the main
-                param_set = (pre_fit_result.get())
-                fitters[it].parameters = param_set
-
-            #CURVE FIT
-            # Create array for fit results
-            fit_results = []
-            for it, fitter in enumerate(fitters):
-                fit_results.append(self.mp_pool.apply_async(fitter.fit_curve_higher_order))
-
-            # Wait for all fits to finish
-            [result.wait() for result in fit_results]
-
-            # Write back to instance parameters (mp results are in a different namespace)
-            for it, result in enumerate(fit_results):
-                param_set = (result.get())
-                fitters[it].parameters = param_set
-
-            # Fit done
-            self.mp_pool.close()
 
             ################ END HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ########################################
 
@@ -663,6 +641,7 @@ class GUI:
             match fit_type:
                 case constants.El.INDUCTOR:
                     saturation_table['L'] = self.generate_saturation_table(parameter_list, 'L', dc_bias)
+                    saturation_table['C'] = self.generate_saturation_table(parameter_list, 'C', dc_bias)
                     saturation_table['R_Fe'] = self.generate_saturation_table(parameter_list, 'R_Fe',
                                                                               dc_bias)
                 case constants.El.CAPACITOR:
@@ -677,9 +656,9 @@ class GUI:
 
             if config.FULL_FIT:
 
-                # create saturation tables for all parameters
+                # Create saturation tables for all parameters
                 for key_number in range(1, order + 1):
-                    # create keys
+                    # Create keys
                     C_key = "C%s" % key_number
                     L_key = "L%s" % key_number
                     R_key = "R%s" % key_number
@@ -692,14 +671,16 @@ class GUI:
 
             ################ OUTPUT ####################################################################################
 
-            #set path for IO handler
+            # Set path for IO handler
             path_out = self.selected_s2p_files[0]
             self.iohandler.set_out_path(path_out)
 
             #export parameters
             self.iohandler.export_parameters(parameter_list, order, fit_type, captype)
 
-            if config.FULL_FIT:
+            if config.FORCE_SINGLE_POINT_MODEL or len(fitters) == 1:
+                self.iohandler.generate_Netlist_2_port_single_point(parameter_list[0], order, fit_type, saturation_table, captype=captype)
+            elif config.FULL_FIT:
                 self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],order, fit_type, saturation_table, captype=captype)
             else:
                 self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table, captype=captype)
@@ -960,7 +941,9 @@ class GUI:
             #export parameters
             self.iohandler.export_parameters(parameter_list, order, fit_type, captype)
 
-            if config.FULL_FIT:
+            if config.FORCE_SINGLE_POINT_MODEL or len(fitters) == 1:
+                self.iohandler.generate_Netlist_2_port_single_point(parameter_list[0], order, fit_type, saturation_table, captype=captype)
+            elif config.FULL_FIT:
                 self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],order, fit_type, saturation_table, captype=captype)
             else:
                 self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table, captype=captype)
@@ -1056,7 +1039,7 @@ class GUI:
 
         orders = [fitter.order for fitter in fitters]
 
-        w_array = np.full(( len(parameter_list), max(orders)), None)
+        w_array = np.full(( len(parameter_list), max(orders)), np.nan)
 
         for num_set, parameter_set in enumerate(parameter_list[:]):
             for key_number in range(1, orders[num_set] + 1):
@@ -1064,34 +1047,63 @@ class GUI:
                 w_array[num_set, key_number-1] = parameter_set[w_key].value
 
 
-        #create an assignment matrix, looking for the resonance in the next dataset (relative keys)
-        assignment_matrix = np.atleast_2d(np.full(( len(parameter_list), max(orders)), None))
+        ref_array = np.nan
+        # find a reference array by iterating through all sets and finding one where all keys are filled
+        # ideally we have only one iteration
+        for set_number in range(np.shape(w_array)[0]):
+            if not np.isnan(w_array[set_number]).any():
+                ref_array = w_array[set_number]
+                break
 
+        # Check if we have found a reference array with all keys filled
+        if np.isnan(ref_array).any():
+            raise Exception("Could not determine a reference array for output; this should not happen")
+
+        # Create an assignment matrix and fill with -1; -1 is the indicator for "not present"
+        assignment_matrix = np.empty_like(w_array, dtype=np.int64)
+        assignment_matrix[:] = -1
+
+        # Iterate through all sets and find the keys that match best
         for set_number in range(1, np.shape(w_array)[0]):
-            ref_array = list(filter(lambda x: x is not None, w_array[set_number - 1]))
+            # Create a temporary row for the assignment matrix
+            temp_row = np.full([1, np.shape(w_array)[1]], -1, dtype=np.int64)[0]
+
+            # Iterate through all parameters and find the key that fits best (has the minimum distance from ref_array)
             for param_number in range(np.shape(w_array)[1]):
-                if not w_array[set_number][param_number] is None and ref_array:
-                    diff = abs(ref_array - w_array[set_number][param_number])
-                    best_match = np.argwhere(diff == min(diff))[0][0]
-                    assignment_matrix[set_number, param_number] = best_match
+                if not np.isnan(w_array[set_number][param_number]):
+                    temp_row[param_number] = np.where(abs(w_array[set_number][param_number] - ref_array) == min(
+                        abs(w_array[set_number][param_number] - ref_array)))[0][0]
 
-        #rebuild the matrix to have absolute keys rather than relative ones
+            # Find duplicate keys that were assigned and free keys that have not been assigned
+            duplicates = [x for x in list(set([x for x in list(temp_row) if list(temp_row).count(x) > 1])) if x != -1]
+            free_keys = list(set(list(range(np.shape(ref_array)[0]))).difference(set(temp_row)))
 
-        asg_mat_new = np.full(( len(parameter_list), max(orders)), None)
+            # Iterate through all found duplicates
+            for duplicate in duplicates:
+                duplicate_positions = np.where(temp_row == duplicate)[0]
+                # Find the duplicate that fits the key number best; this is the duplicate we want to keep at that key
+                # Delete that key from the found duplicates
+                duplicate_positions = np.delete(duplicate_positions, np.where(
+                    abs(w_array[set_number][duplicate_positions] - ref_array[duplicate_positions]) == min(
+                        abs((w_array[set_number][duplicate_positions] - ref_array[duplicate_positions]))))[0][0])
 
-        for set_number in reversed(range(1, np.shape(w_array)[0])):
+                # Iterate through the other occurences of the duplicate and find a free key that fits them
+                for it in duplicate_positions:
+                    best_key = free_keys[np.where(abs(w_array[set_number][it] - ref_array[free_keys]) ==
+                                                  min(abs(w_array[set_number][it] - ref_array[free_keys])))[0][0]]
+                    temp_row[it] = best_key
+
+            # Update ref_array
             for param_number in range(np.shape(w_array)[1]):
-                if not assignment_matrix[set_number][param_number] is None:
-                    rel_key = assignment_matrix[set_number][param_number]
-                    if not rel_key is None:
-                        for backwards_set_number in reversed(range(1, set_number)):
-                            if not assignment_matrix[backwards_set_number][rel_key] is None:
-                                rel_key = assignment_matrix[backwards_set_number][rel_key]
-                        abs_key = rel_key
-                        asg_mat_new[set_number][param_number] = abs_key
+                if temp_row[param_number] != -1:
+                    ref_array[temp_row[param_number]] = w_array[set_number][param_number]
+
+            # Write to assignment matrix
+            assignment_matrix[set_number] = temp_row
 
 
-        assignment_matrix = asg_mat_new
+
+
 
         match fitters[0].fit_type: #TODO: this could use some better way of determining the fit type
             case constants.El.INDUCTOR:
@@ -1104,12 +1116,13 @@ class GUI:
         for check_key in range(1, np.shape(w_array)[1]+1):
             w_key = "w%s" % check_key
             if not w_key in parameter_list[0]:
-                first_occurence = np.argwhere(assignment_matrix[:, param_number] != None)[0][0]
+                first_occurence = np.argwhere(assignment_matrix[:, param_number] != -1)[0][0]
                 first_occurence_set = parameter_list[first_occurence]
                 parameter_list[0] = self.fill_key(parameter_list[0], first_occurence_set, check_key, r_default)
 
         #switch key numbers
         for set_number in range(1, np.shape(w_array)[0]):
+            print(str(set_number))
             parameter_set = parameter_list[set_number]
             previous_set  = parameter_list[set_number - 1]
 
@@ -1118,10 +1131,10 @@ class GUI:
 
             for param_number in range(np.shape(w_array)[1]):
                 old_key_nr = param_number + 1
-                if assignment_matrix[set_number][param_number] is not None:
+                if assignment_matrix[set_number][param_number] != -1:
                     new_key_nr = assignment_matrix[set_number][param_number] + 1
 
-                if assignment_matrix[set_number][param_number] is not None:
+                if assignment_matrix[set_number][param_number]  != -1:
                     output_set = self.switch_key(output_set, parameter_set, old_key_nr, new_key_nr)
 
             #fill remaining keys
