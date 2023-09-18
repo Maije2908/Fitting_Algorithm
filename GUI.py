@@ -1122,7 +1122,6 @@ class GUI:
 
         #switch key numbers
         for set_number in range(1, np.shape(w_array)[0]):
-            print(str(set_number))
             parameter_set = parameter_list[set_number]
             previous_set  = parameter_list[set_number - 1]
 

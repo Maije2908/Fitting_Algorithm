@@ -848,7 +848,6 @@ class Fitter:
         self.parameters = param_set
         return param_set
 
-    #TODO: delete config number as soon as the callers are adapted
     def create_higher_order_parameters(self, param_set: lmfit.Parameters = None) -> lmfit.Parameters:
         """
         Method to create the circuit elements for the higher order resonances.
@@ -1065,7 +1064,6 @@ class Fitter:
         self.parameters = param_set
         return param_set
 
-    #TODO: change parameter_set to optional parameter and update callers
     def correct_parameters(self, param_set: lmfit.Parameters = None, change_main = False, num_it = 2) -> lmfit.Parameters:
         """
         Method to correct the parameters of the set. Corrects higher order resonances, but can also correct the main
