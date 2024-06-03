@@ -212,6 +212,8 @@ class GUI:
                 ntwk = rf.Network(os.path.abspath(filename))
                 self.cmc_files[mode] = ntwk
                 self.checklables[mode].config(text = "\u2713")
+                #TODO: again a hotfix for the CMCs, this will only save the last entry to the self.selected_files
+                self.selected_s2p_files = [os.path.abspath(filename)]
         except Exception as e:
             raise e
 
@@ -404,6 +406,7 @@ class GUI:
         self.filename_label = []
         self.filename_entry = []
         self.filename_ref_button = []
+        #TODO: extend functionality for CMC files
 
     def callback_browse_s2p_file(self):
         """
@@ -455,48 +458,54 @@ class GUI:
 
     def fit_cmc(self):
 
-        Z0 = 50
-
-        #instanciate cmc fitter with logger instance
-        fitter_instance = CMC_Fitter(self.logger)
-
-        #iterate through loaded files and safe the keys
+        # iterate through loaded files and safe the keys
         checkkey = []
         for key in self.cmc_files:
             checkkey.append(key)
 
-        #check if all required configurations for CMCs are present
-        if not(set(config.CMC_REQUIRED_CONFIGURATIONS).issubset(set(checkkey))):
+        # check if all required configurations for CMCs are present
+        if not (set(config.CMC_REQUIRED_CONFIGURATIONS).issubset(set(checkkey))):
             raise Exception("not all required files present")
 
+        #instanciate cmc fitter with logger instance
+        for mode, files in self.cmc_files.items():
+            self.iohandler.files = files
+            self.logger.info("Fitting CMC, "+mode+"\n")
+            self.fit_coil()
 
-
-
-        fitter_instance.set_file(self.cmc_files['CM'])
-        fitter_instance.cmcmodel = cmctype.PLATEAU
-
-
-
-
-        fitter_instance.calc_series_thru(Z0)
-        fitter_instance._smooth_data()
-        fitter_instance.get_main_resonance()
-        fitter_instance.calculate_nominal_value()
-        fitter_instance.get_resonances()
-
-        fitter_instance.create_nominal_parameters_CM()
-        fitter_instance.plot_curves_cmc(1)
-        #for testing:
-        fitter_instance.params_dict["DM"].pretty_print()
-        fitter_instance.fit_cmc_main_res()
-        fitter_instance.plot_curves_cmc(1)
-        fitter_instance.params_dict["DM"].pretty_print()
-        fitter_instance.create_higher_order_parameters()
-        fitter_instance.plot_curves_cmc(0)
-        fitter_instance.fit_cmc_higher_order_res()
-        fitter_instance.plot_curves_cmc(0)
-
-        pass
+            #
+            #
+            #
+            #
+            #
+            #
+            #
+            #
+            # fitter_instance.set_file(self.cmc_files['CM'])
+            # fitter_instance.cmcmodel = cmctype.PLATEAU
+            #
+            #
+            #
+            #
+            # fitter_instance.calc_series_thru(Z0)
+            # fitter_instance._smooth_data()
+            # fitter_instance.get_main_resonance()
+            # fitter_instance.calculate_nominal_value()
+            # fitter_instance.get_resonances()
+            #
+            # fitter_instance.create_nominal_parameters_CM()
+            # fitter_instance.plot_curves_cmc(1)
+            # #for testing:
+            # fitter_instance.params_dict["DM"].pretty_print()
+            # fitter_instance.fit_cmc_main_res()
+            # fitter_instance.plot_curves_cmc(1)
+            # fitter_instance.params_dict["DM"].pretty_print()
+            # fitter_instance.create_higher_order_parameters()
+            # fitter_instance.plot_curves_cmc(0)
+            # fitter_instance.fit_cmc_higher_order_res()
+            # fitter_instance.plot_curves_cmc(0)
+            #
+            # pass
         # fitter_instance.one_sided_params_to_sym_params()
 
 
@@ -995,25 +1004,34 @@ class GUI:
             # raise an exception if shunt/series through was not set
             if not (shunt_series):
                 raise Exception("Error: Shunt/Series-Through not set!\nPlease select a calculation mode")
-            # check if files are present
-            if not self.iohandler.files:
-                raise Exception("Error: No Files present")
-            # get selected reference file and make a list with all files that are not the reference file
-            ref_file = self.iohandler.files[self.ref_file_select.get()]
-            other_files = self.iohandler.files[:self.ref_file_select.get()] + self.iohandler.files[self.ref_file_select.get() + 1:]
 
-            if ref_file is None:
-                raise Exception("Error: Please select a reference file")
+            # Perform File check only if the configuration is not CMC; CMC has different File handling
+            #TODO: this is a hotfix, special handling of CMC files has to be addressed
+            if self.drop_down_var.get() != GUI_config.DROP_DOWN_ELEMENTS[2]:
+                # check if files are present
+                if not self.iohandler.files:
+                    raise Exception("Error: No Files present")
+                # get selected reference file and make a list with all files that are not the reference file
+                ref_file = self.iohandler.files[self.ref_file_select.get()]
+                other_files = self.iohandler.files[:self.ref_file_select.get()] + self.iohandler.files[self.ref_file_select.get() + 1:]
 
-            # get the values from the entries that define the currents/voltages of each file
-            dc_bias = self.get_file_current_voltage_values()
-            if None in dc_bias:
-                raise Exception("Error: Please specify the current/voltage values for the given files!")
+                if ref_file is None:
+                    raise Exception("Error: Please select a reference file")
 
-            # the reference file has to be the first file in the list, but also the DC bias needs to match, so we'll
-            # have to shuffle around a bit
-            dc_bias.insert(0, dc_bias.pop(self.ref_file_select.get()))
-            files = [ref_file] + other_files
+                # get the values from the entries that define the currents/voltages of each file
+                dc_bias = self.get_file_current_voltage_values()
+                if None in dc_bias:
+                    raise Exception("Error: Please specify the current/voltage values for the given files!")
+
+                # the reference file has to be the first file in the list, but also the DC bias needs to match, so we'll
+                # have to shuffle around a bit
+                dc_bias.insert(0, dc_bias.pop(self.ref_file_select.get()))
+                files = [ref_file] + other_files
+
+            #TODO: again CMC hotfix
+            elif self.drop_down_var.get() == GUI_config.DROP_DOWN_ELEMENTS[2]:
+                files = [self.iohandler.files]
+                dc_bias = [0]
 
 
             return [passive_nom, res, prom, shunt_series, files, dc_bias]
