@@ -479,6 +479,175 @@ class IOhandler:
         file.write(lib)
         file.close()
 
+    def generate_Netlist_4_port_single_point(self, parametersDM, parametersCM, fit_orderDM, fit_orderCM):
+
+        # define the name of the model here:
+        model_name = "CMC_1"
+
+        node1 = "A1"
+        node2 = "A2"
+        node3 = "B1"
+        node4 = "B2"
+
+        lib = '* Netlist for Common Mode Choke Model {name}\n' \
+
+        lib += '.SUBCKT {name} {n1} {n2} {n3} {n4}'.format(name=model_name, n1=node1,n2=node2,n3=node3,n4=node4) + '\n*\n'
+
+        nextnodeA = node1
+        nextnodeB = node3
+
+        DMCMnodeA = "DMCMA"
+        DMCMnodeB = "DMCMB"
+
+
+        # DM main resonance
+        L = parametersDM['L'].value * config.INDUNIT / 4
+        C = parametersDM['C'].value * config.CAPUNIT * 2
+        R_s = parametersDM['R_s'].value / 2
+        R_p = parametersDM['R_Fe'].value / 2
+
+        lib += 'R_sADM {port1} BDM1A {Rs}'.format(port1=nextnodeA, Rs=R_s) + "\n"
+        lib += 'R_pADM BDM1A {MRterminal} {Rp}'.format(MRterminal=DMCMnodeA, Rp=R_p) + "\n"
+        lib += 'C_ADM {port1} {MRterminal} {C}'.format(port1=nextnodeA, MRterminal=DMCMnodeA, C=C) + "\n"
+        lib += 'L_ADM BDM1A {MRterminal} {L}'.format(MRterminal=DMCMnodeA, L=L) + "\n"
+        lib += '\n'
+
+        lib += 'R_sBDM {port1} BDM1B {Rs}'.format(port1=nextnodeB, Rs=R_s) + "\n"
+        lib += 'R_pBDM BDM1B {MRterminal} {Rp}'.format(MRterminal=DMCMnodeB, Rp=R_p) + "\n"
+        lib += 'C_BDM {port1} {MRterminal} {C}'.format(port1=nextnodeB, MRterminal=DMCMnodeB, C=C) + "\n"
+        lib += 'L_BDM BDM1B {MRterminal} {L}'.format(MRterminal=DMCMnodeB, L=L) + "\n"
+        lib += '\n'
+
+        lib += 'K{id} {L1} {L2} {K}'.format(id="KDM_main", L1="L_ADM", L2="L_BDM", K="-1") + "\n"
+
+        lib += '\n\n'
+
+        nextnodeA = "MRA" if (fit_orderCM > 0 and fit_orderDM > 0) else node2
+        nextnodeB = "MRB" if (fit_orderCM > 0 and fit_orderDM > 0) else node4
+
+        # CM main resonance
+        L = parametersCM['L'].value * config.INDUNIT
+        C = parametersCM['C'].value * config.CAPUNIT / 2
+        R_s = parametersCM['R_s'].value * 2
+        R_p = parametersCM['R_Fe'].value * 2
+
+        lib += 'R_sACM {port1} BCM1A {Rs}'.format(port1=DMCMnodeA, Rs=R_s) + "\n"
+        lib += 'R_pACM BCM1A {MRterminal} {Rp}'.format(MRterminal=nextnodeA, Rp=R_p) + "\n"
+        lib += 'C_ACM {port1} {MRterminal} {C}'.format(port1=DMCMnodeA, MRterminal=nextnodeA, C=C) + "\n"
+        lib += 'L_ACM BCM1A {MRterminal} {L}'.format(MRterminal=nextnodeA, L=L) + "\n"
+        lib += '\n'
+
+        lib += 'R_sBCM {port1} BCM1B {Rs}'.format(port1=DMCMnodeB, Rs=R_s) + "\n"
+        lib += 'R_pBCM BCM1B {MRterminal} {Rp}'.format(MRterminal=nextnodeB, Rp=R_p) + "\n"
+        lib += 'C_BCM {port1} {MRterminal} {C}'.format(port1=DMCMnodeB, MRterminal=nextnodeB, C=C) + "\n"
+        lib += 'L_BCM BCM1B {MRterminal} {L}'.format(MRterminal=nextnodeB, L=L) + "\n"
+        lib += '\n'
+
+        lib += 'K{id} {L1} {L2} {K}'.format(id="KCM_main", L1="L_ACM", L2="L_BCM", K="1") + "\n"
+
+        lib += '\n\n'
+
+
+
+        ############### HIGHER ORDER ELEMENTS DM ##################################################################
+        for circuit in range(1, fit_orderDM + 1):
+            ID = "DM" + str(circuit)
+
+            Cx = (parametersDM['C%s' % circuit].value*2) * config.CAPUNIT
+            Lx = (parametersDM['L%s' % circuit].value/4) * config.INDUNIT
+            Rx = (parametersDM['R%s' % circuit].value/2)
+
+            n2A = "DM_A_" + str(circuit) if not(circuit == fit_orderDM and fit_orderCM == 0) else node2
+            n2B = "DM_B_" + str(circuit) if not(circuit == fit_orderDM and fit_orderCM == 0) else node4
+
+            n1A = nextnodeA
+            n1B = nextnodeB
+
+
+            lib += 'C{no} {node1} {node2} '.format(no=(ID+"A"), node1=n1A, node2=n2A) + str(Cx) + "\n"
+            lib += 'L{no} {node1} {node2} '.format(no=(ID+"A"), node1=n1A, node2=n2A) + str(Lx) + "\n"
+            lib += 'R{no} {node1} {node2} '.format(no=(ID+"A"), node1=n1A, node2=n2A) + str(Rx) + "\n"
+
+            lib += 'K{id} {L1} {L2} {K}'.format(id=ID, L1="L"+ID+"A", L2="L"+ID+"B",K="-1") + "\n"
+
+            lib += 'C{no} {node1} {node2} '.format(no=(ID+"B"), node1=n1B, node2=n2B) + str(Cx) + "\n"
+            lib += 'L{no} {node1} {node2} '.format(no=(ID+"B"), node1=n1B, node2=n2B) + str(Lx) + "\n"
+            lib += 'R{no} {node1} {node2} '.format(no=(ID+"B"), node1=n1B, node2=n2B) + str(Rx) + "\n"
+            lib += '\n'
+
+            nextnodeA = n2A
+            nextnodeB = n2B
+
+
+        ############### HIGHER ORDER ELEMENTS CM ##################################################################
+        for circuit in range(1, fit_orderCM + 1):
+            ID = "CM" + str(circuit)
+
+            Cx = (parametersCM['C%s' % circuit].value / 2) * config.CAPUNIT
+            Lx = (parametersCM['L%s' % circuit].value) * config.INDUNIT
+            Rx = (parametersCM['R%s' % circuit].value * 2)
+
+            n2A = "CM_A_" + str(circuit) if not(circuit == fit_orderCM) else node2
+            n2B = "CM_B_" + str(circuit) if not(circuit == fit_orderCM) else node4
+
+            n1A = nextnodeA
+            n1B = nextnodeB
+
+
+            # if circuit < fit_orderCM:
+            #     n2A = "CM_A_" + str(circuit + 1)
+            #     n2B = "CM_B_" + str(circuit + 1)
+            # elif circuit < fit_orderCM and fit_orderDM == 0:
+            #     n2A = node2
+            #     n2B = node4
+            # else:
+            #     n2A = DMCMconnectA
+            #     n2B = DMCMconnectB
+
+
+
+            lib += 'C{no} {node1} {node2} '.format(no=(ID + "A"), node1=n1A, node2=n2A) + str(Cx) + "\n"
+            lib += 'L{no} {node1} {node2} '.format(no=(ID + "A"), node1=n1A, node2=n2A) + str(Lx) + "\n"
+            lib += 'R{no} {node1} {node2} '.format(no=(ID + "A"), node1=n1A, node2=n2A) + str(Rx) + "\n"
+
+            lib += 'K{id} {L1} {L2} {K}'.format(id=ID, L1="L" + ID + "A", L2="L" + ID + "B", K="1") + "\n"
+
+            lib += 'C{no} {node1} {node2} '.format(no=(ID + "B"), node1=n1B, node2=n2B) + str(Cx) + "\n"
+            lib += 'L{no} {node1} {node2} '.format(no=(ID + "B"), node1=n1B, node2=n2B) + str(Lx) + "\n"
+            lib += 'R{no} {node1} {node2} '.format(no=(ID + "B"), node1=n1B, node2=n2B) + str(Rx) + "\n"
+
+            lib+= '\n'
+
+
+            nextnodeA = n2A
+            nextnodeB = n2B
+
+
+        ############### MAIN ELEMENT ###########################################################################
+
+
+
+        # Model closing
+        lib += '.ENDS {inductor}'.format(inductor=model_name) + "\n"
+
+
+        ############### OUTPUT #########################################################################################
+        # get output folder and path
+        out_path = os.path.split(self.outpath)[0]
+        dir_name = os.path.normpath(self.outpath).split(os.sep)[-2]
+        out_folder = os.path.join(out_path, "fit_results_%s" % dir_name)
+
+        # create the folder; should not be necessary to handle an exception; however folder could be write protected
+        try:
+            os.makedirs(out_folder, exist_ok=True)
+        except Exception:
+            raise
+
+        # write LTSpice .lib file
+        file = open(os.path.join(out_folder, "LT_Spice_Model_" + dir_name + ".lib"), "w+")
+        file.write(lib)
+        file.close()
+
     def generate_Netlist_2_port_single_point(self, parameters, fit_order, fit_type, saturation_table, captype = None):
         """
         Writes an LTSpice Netlist to the path that is stored in the IOhandlers instance variable.

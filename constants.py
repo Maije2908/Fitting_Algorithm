@@ -3,6 +3,7 @@
 class El:
     INDUCTOR: int = 1
     CAPACITOR: int = 2
+    CMC: int = 3
 
 PROMINENCE_DEFAULT = .5 #dB
 ACOUSTIC_RESONANCE_PROMINENCE = 1.0 #dB

@@ -176,30 +176,30 @@ class GUI:
         #create mode lables
         cmlabel = tk.Label(self.filelist_frame, text='Common Mode')
         dmlabel = tk.Label(self.filelist_frame, text='Differential Mode')
-        oclabel = tk.Label(self.filelist_frame, text='Open Circuit')
+        # oclabel = tk.Label(self.filelist_frame, text='Open Circuit')
         cmlabel.grid(column=0, row=1, sticky="w")
         dmlabel.grid(column=0, row=2, sticky="w")
-        oclabel.grid(column=0, row=3, sticky="w")
+        # oclabel.grid(column=0, row=3, sticky="w")
 
 
         #create buttons for file selection
         cmbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("CM"), text= "Load")
         dmbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("DM"), text= "Load")
-        ocbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("OC"), text= "Load")
+        # ocbutton = tk.Button(self.filelist_frame, command=lambda:self.load_cmc_file("OC"), text= "Load")
         cmbutton.grid(column=2, row=1)
         dmbutton.grid(column=2, row=2)
-        ocbutton.grid(column=2, row=3)
+        # ocbutton.grid(column=2, row=3)
 
         #create checkmark lables
         dmchecklabel = tk.Label(self.filelist_frame, text='')
         cmchecklabel = tk.Label(self.filelist_frame, text='')
-        occhecklabel = tk.Label(self.filelist_frame, text='')
+        # occhecklabel = tk.Label(self.filelist_frame, text='')
         cmchecklabel.grid(column=1, row=1)
         dmchecklabel.grid(column=1, row=2)
-        occhecklabel.grid(column=1, row=3)
+        # occhecklabel.grid(column=1, row=3)
         self.checklables["DM"] = dmchecklabel
         self.checklables["CM"] = cmchecklabel
-        self.checklables["OC"] = occhecklabel
+        # self.checklables["OC"] = occhecklabel
 
     def load_cmc_file(self, mode: str):
         try:
@@ -462,53 +462,23 @@ class GUI:
         checkkey = []
         for key in self.cmc_files:
             checkkey.append(key)
-
         # check if all required configurations for CMCs are present
         if not (set(config.CMC_REQUIRED_CONFIGURATIONS).issubset(set(checkkey))):
             raise Exception("not all required files present")
 
-        #instanciate cmc fitter with logger instance
+        cmc_parameters = {}
+        cmc_order ={}
+
+        # step through DM and CM Files and fit with the coil fitting process
         for mode, files in self.cmc_files.items():
             self.iohandler.files = files
             self.logger.info("Fitting CMC, "+mode+"\n")
-            self.fit_coil()
+            [saturation_table, parameters, order] = self.fit_coil()
+            cmc_parameters[mode] = parameters
+            cmc_order[mode] = order
 
-            #
-            #
-            #
-            #
-            #
-            #
-            #
-            #
-            # fitter_instance.set_file(self.cmc_files['CM'])
-            # fitter_instance.cmcmodel = cmctype.PLATEAU
-            #
-            #
-            #
-            #
-            # fitter_instance.calc_series_thru(Z0)
-            # fitter_instance._smooth_data()
-            # fitter_instance.get_main_resonance()
-            # fitter_instance.calculate_nominal_value()
-            # fitter_instance.get_resonances()
-            #
-            # fitter_instance.create_nominal_parameters_CM()
-            # fitter_instance.plot_curves_cmc(1)
-            # #for testing:
-            # fitter_instance.params_dict["DM"].pretty_print()
-            # fitter_instance.fit_cmc_main_res()
-            # fitter_instance.plot_curves_cmc(1)
-            # fitter_instance.params_dict["DM"].pretty_print()
-            # fitter_instance.create_higher_order_parameters()
-            # fitter_instance.plot_curves_cmc(0)
-            # fitter_instance.fit_cmc_higher_order_res()
-            # fitter_instance.plot_curves_cmc(0)
-            #
-            # pass
-        # fitter_instance.one_sided_params_to_sym_params()
-
-
+        self.iohandler.generate_Netlist_4_port_single_point(cmc_parameters["DM"],cmc_parameters["CM"], cmc_order["DM"],
+                                                            cmc_order["CM"])
 
         pass
 
@@ -684,16 +654,7 @@ class GUI:
             path_out = self.selected_s2p_files[0]
             self.iohandler.set_out_path(path_out)
 
-            #export parameters
-            self.iohandler.export_parameters(parameter_list, order, fit_type, captype)
-
-            if config.FORCE_SINGLE_POINT_MODEL or len(fitters) == 1:
-                self.iohandler.generate_Netlist_2_port_single_point(parameter_list[0], order, fit_type, saturation_table, captype=captype)
-            elif config.FULL_FIT:
-                self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],order, fit_type, saturation_table, captype=captype)
-            else:
-                self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table, captype=captype)
-
+            # Output plots
             for it, fitter in enumerate(fitters):
                 upper_frq_lim = config.FREQ_UPPER_LIMIT
 
@@ -706,6 +667,23 @@ class GUI:
                     fitter.data_ang[fitter.freq < upper_frq_lim],
                     fitter.model_data[fitter.freq < upper_frq_lim],
                     fitter.name)
+
+
+
+            # If we are using the coil fitter to fit a CMC, suppress the output and return parameters
+            if self.drop_down_var.get() == GUI_config.DROP_DOWN_ELEMENTS[2]:
+                return [saturation_table, parameter_list[0], order]
+
+
+            #export parameters
+            self.iohandler.export_parameters(parameter_list, order, fit_type, captype)
+
+            if config.FORCE_SINGLE_POINT_MODEL or len(fitters) == 1:
+                self.iohandler.generate_Netlist_2_port_single_point(parameter_list[0], order, fit_type, saturation_table, captype=captype)
+            elif config.FULL_FIT:
+                self.iohandler.generate_Netlist_2_port_full_fit(parameter_list[0],order, fit_type, saturation_table, captype=captype)
+            else:
+                self.iohandler.generate_Netlist_2_port(parameter_list[0],order, fit_type, saturation_table, captype=captype)
 
 
 
