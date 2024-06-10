@@ -66,6 +66,7 @@ class Fitter:
         if nominal_value is None:
             self.calculate_nominal_value()
         else:
+            self.calculate_nominal_value()
             self.nominal_value = nominal_value
 
         # Calculate series resistance, if not provided
