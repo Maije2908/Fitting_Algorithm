@@ -14,7 +14,7 @@ class IOhandler:
     It also takes care of the output, generating the LTSpice Netlists as well as generating the Bode-plots for output
     """
 
-    def __init__(self, logger_instance):
+    def __init__(self, logger_instance = logging.getLogger()):
         self.logger = logger_instance
         self.files = list()
         self.outpath = None
@@ -522,8 +522,8 @@ class IOhandler:
 
         lib += '\n\n'
 
-        nextnodeA = "MRA" if (fit_orderCM > 0 and fit_orderDM > 0) else node2
-        nextnodeB = "MRB" if (fit_orderCM > 0 and fit_orderDM > 0) else node4
+        nextnodeA = "MRA" if (fit_orderCM > 0 or fit_orderDM > 0) else node2
+        nextnodeB = "MRB" if (fit_orderCM > 0 or fit_orderDM > 0) else node4
 
         # CM main resonance
         L = parametersCM['L'].value * config.INDUNIT
@@ -756,6 +756,17 @@ class IOhandler:
                         Lx) + "\n"
                     lib += 'C{no} {node1} PORT2 '.format(no=circuit, node1=order + circuit) + str(Cx) + "\n"
 
+                # Add acoustic resonance if present
+                if captype == constants.captype.MLCC:
+                    RA = out['R_A'].value
+                    LA = out['L_A'].value*config.INDUNIT
+                    CA = out['C_A'].value*config.CAPUNIT
+
+                    lib += 'R{no} PORT1 {node2} '.format(no="A", node2="nA1") + str(RA) + "\n"
+                    lib += 'L{no} {node1} {node2} '.format(no="A", node1="nA1", node2="nA2") + str(
+                        LA) + "\n"
+                    lib += 'C{no} {node1} PORT2 '.format(no="A", node1="nA2") + str(CA) + "\n"
+
 
                 lib += '.ENDS {name}'.format(name=model_name) + "\n"
 
@@ -777,7 +788,7 @@ class IOhandler:
         file.write(lib)
         file.close()
 
-    def export_parameters(self, param_array, order, fit_type, captype):
+    def export_parameters(self, param_array, order, fit_type, captype = None):
         """
         Method to output the obtained model parameters as an .xlsx file to the directory in IOhandlers output path.
 

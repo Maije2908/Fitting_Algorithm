@@ -46,7 +46,7 @@ PERMITTED_MIN_PHASE = 75 #75
 
 
 #parameters for the smoothing filter
-SAVGOL_WIN_LENGTH = 52 #window length(samples) default:52
+SAVGOL_WIN_LENGTH_REL = 0.013 # relative savgol window length; yields 52 samples for 4001 point of measurement data
 SAVGOL_POLY_ORDER = 2 #polynomial order default:2
 
 

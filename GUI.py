@@ -482,6 +482,7 @@ class GUI:
 
         pass
 
+
     def fit_coil(self):
 
         fit_type = constants.El.INDUCTOR
@@ -543,13 +544,12 @@ class GUI:
 
                 correct_main_res = False
                 num_iterations = 4
-                # Create parameters for higher order resonances
 
+                # Create parameters for higher order resonances
                 for fitter in fitters:
                     fitter.create_higher_order_parameters()
 
                 # Correct parameters based on magnitude
-
                 for fitter in fitters:
                     fitter.correct_parameters(change_main=correct_main_res, num_it=num_iterations)
 
@@ -873,6 +873,7 @@ class GUI:
 
                 ################ END HIGHER ORDER RESONANCES - MULTIPROCESSING POOL ########################################
 
+                #TODO: single thread fit is missing here
 
             ############### MATCH PARAMETERS ###########################################################################
             parameter_list = []

@@ -53,7 +53,8 @@ class Fitter:
         self.z21_data = data
 
         # Smooth data
-        self._smooth_data(SAVGOL_WIN_LENGTH, SAVGOL_POLY_ORDER)
+        savgol_length = int(np.floor(SAVGOL_WIN_LENGTH_REL* len(freq))) if int(np.floor(SAVGOL_WIN_LENGTH_REL* len(freq))) > 2 else 3
+        self._smooth_data(savgol_length, SAVGOL_POLY_ORDER)
 
         # Calculate the linear range offset except for High_C model
         if captype != constants.captype.HIGH_C:
@@ -66,7 +67,6 @@ class Fitter:
         if nominal_value is None:
             self.calculate_nominal_value()
         else:
-            self.calculate_nominal_value()
             self.nominal_value = nominal_value
 
         # Calculate series resistance, if not provided
@@ -1038,14 +1038,22 @@ class Fitter:
             w_key = 'w%s' % key_number
 
             # Set the parameters in question to vary
-            self.change_parameter(param_set, R_key, vary=True)
-            self.change_parameter(param_set, C_key, vary=True)
-            self.change_parameter(param_set, L_key, vary=True)
-            self.change_parameter(param_set, w_key, vary=True)
+            if not param_set[R_key].expr: self.change_parameter(param_set, R_key, vary=True)
+            if not param_set[C_key].expr: self.change_parameter(param_set, C_key, vary=True)
+            if not param_set[L_key].expr: self.change_parameter(param_set, L_key, vary=True)
+            if not param_set[w_key].expr: self.change_parameter(param_set, w_key, vary=True)
+
+            # # Error calculation method for the fit:
+            # # choose a log-difference calculation for capacitors and a linear difference calculation for inductors
+            # if self.fit_type == El.CAPACITOR:
+            #     fit_weighing = fcnmode.FIT_LOG
+            # else:
+            #     fit_weighing = fcnmode.FIT
+
 
             # Do the fit
             out = minimize(self._calculate_Z, param_set,
-                           args=(fit_freq, fit_data, self.order, 0, FIT_BY,),
+                           args=(fit_freq, fit_data, self.order, 0, fcnmode.FIT,),
                            method='powell', options={'xtol': 1e-18, 'disp': True})
 
             # Write fit results to parameters and set their 'vary' to False
@@ -1095,7 +1103,8 @@ class Fitter:
             #at the start of each iteration correct main resonance
             curve_data = self._calculate_Z(params, self.freq, 2, self.order, 0, constants.fcnmode.OUTPUT)
             if self.fit_type == constants.El.INDUCTOR and change_main:
-                # get Q value
+                # Get Q value
+                #determine upper and lower 3dB-points
                 b_l = np.flipud(np.argwhere(np.logical_and(self.freq < self.f0, abs(self.z21_data) < abs(self.z21_data[self.freq == self.f0][0])/(np.sqrt(2)))))[0][0]
                 b_u = np.argwhere(np.logical_and(self.freq > self.f0, abs(self.z21_data) < abs(self.z21_data[self.freq == self.f0][0])/(np.sqrt(2)) ))[0][0]
                 w0 = (self.f0*2*np.pi)
