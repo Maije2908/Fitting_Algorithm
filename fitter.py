@@ -19,8 +19,7 @@ import logging
 import constants
 from constants import *
 import config
-# constants for this class
-FIT_BY = config.FIT_BY
+
 
 
 class Fitter:
@@ -48,9 +47,9 @@ class Fitter:
 
         self.name = name
 
-        # Set frequency vector and data
-        self.freq = freq
-        self.z21_data = data
+        # Set frequency vector and data #TODO: check if that hard limit is okay in regular operation
+        self.freq = freq[freq < config.FREQ_UPPER_LIMIT]
+        self.z21_data = data[freq < config.FREQ_UPPER_LIMIT]
 
         # Smooth data
         savgol_length = int(np.floor(SAVGOL_WIN_LENGTH_REL* len(freq))) if int(np.floor(SAVGOL_WIN_LENGTH_REL* len(freq))) > 2 else 3
@@ -165,12 +164,6 @@ class Fitter:
             the calculation less precise
         """
 
-        #TODO: this method needs an overhaul
-
-
-
-        #TODO: note that this method might throw an exception
-        # needs to output an error message
         try:
             self.get_main_resonance()
         except:
@@ -208,7 +201,7 @@ class Fitter:
 
                 #TODO: logging etc
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value))
-                self.logger.info("Nominal Inductance not provided, calculated: " + output_dec.to_eng_string())
+                self.logger.info("Nominal Inductance calculated: " + output_dec.to_eng_string())
 
 
             case El.CAPACITOR:
@@ -227,14 +220,27 @@ class Fitter:
                 for it, curve_sample in enumerate(zip(curve_data, w_data)):
                     C_vals.append(-1/(np.imag(curve_sample[0])*curve_sample[1]))
 
-                # find the 50% quantile of the slope data and define the max slope allowed
-                slope_quantile_50 = np.quantile(np.gradient(C_vals), 0.5)
+                #TODO: old detection method, check if new one works better/worse/equal
+
+                # # find the 50% quantile of the slope data and define the max slope allowed
+                # slope_quantile_50 = np.quantile(np.gradient(C_vals), 0.5)
+                # max_slope = slope_quantile_50 * QUANTILE_MULTIPLICATION_FACTOR
+                # # boolean index the data that has lower than max slope and calculate the mean
+                # C_vals_eff = np.array(C_vals)[abs(np.gradient(C_vals)) < abs(max_slope)]
+
+                #TODO: this is the new detection
+
+                # calculate the slope of the magnitude and get the 50% quantile of it; after that find the max slope
+                slope_quantile_50 = np.quantile(np.gradient(self.data_mag)[self.freq < self.f0], 0.5)
                 max_slope = slope_quantile_50 * QUANTILE_MULTIPLICATION_FACTOR
-                # boolean index the data that has lower than max slope and calculate the mean
-                C_vals_eff = np.array(C_vals)[abs(np.gradient(C_vals)) < abs(max_slope)]
+
+                # boolean index the data that has lower than max slope and calculate the mean of it
+                C_vals_eff = np.array(C_vals)[np.gradient(self.data_mag)[self.freq < self.f0][self._offset:] < max_slope]
+
                 self.nominal_value = np.median(C_vals_eff)
+
                 output_dec = decimal.Decimal("{value:.3E}".format(value=self.nominal_value))
-                self.logger.info("Nominal Capacitance not provided, calculated: " + output_dec.to_eng_string())
+                self.logger.info("Nominal Capacitance calculated: " + output_dec.to_eng_string())
 
     def calculate_nominal_Rs(self):
         """
@@ -323,37 +329,41 @@ class Fitter:
             else:
                 self.logger.info("Success")
 
-        # Set w0 to 0 in order to have feedback, if the method didn't work
-        w0 = 0
+        # Set f0 to 0 in order to have feedback, if the method didn't work
+        f0 = 0
 
         # Find zero crossing of the phase
         match self.fit_type:
             case El.INDUCTOR:
-                #TODO: index error exception handling
-                index_angle_smaller_zero = np.argwhere(self.data_ang[self._offset:] < 0)
-                index_ang_zero_crossing = self._offset + index_angle_smaller_zero[0][0]
+                try:
+                    index_angle_smaller_zero = np.argwhere(self.data_ang[self._offset:] < 0)
+                    index_ang_zero_crossing = self._offset + index_angle_smaller_zero[0][0]
+                except Exception:
+                    raise Exception("Could not find phase zero crossing for main resonance detection!")
                 # TODO: continuity check should not be performed by taking 10 samples after the f0, seems kind of arbitrary
                 continuity_check = index_angle_smaller_zero[10][0]
 
             case El.CAPACITOR:
-                index_angle_larger_zero = np.argwhere(self.data_ang[self._offset:] > 0)
-                index_ang_zero_crossing = index_angle_larger_zero[0][0] + self._offset
+                try:
+                    index_angle_larger_zero = np.argwhere(self.data_ang[self._offset:] > 0)
+                    index_ang_zero_crossing = index_angle_larger_zero[0][0] + self._offset
+                except Exception:
+                    raise Exception("Could not find phase zero crossing for main resonance detection!")
                 #TODO: see above
                 continuity_check = index_angle_larger_zero[10][0]
 
         if continuity_check:
             f0 = self.freq[index_ang_zero_crossing]
-            w0 = f0 * 2 * np.pi
             self.f0 = f0
             self._f0_index = index_ang_zero_crossing
 
-            #TODO: better logging / debug info
+
             output_dec = decimal.Decimal("{value:.3E}".format(value=f0))
             self.logger.info("Detected f0: "+ output_dec.to_eng_string())
             print("Detected f0: "+output_dec.to_eng_string())
 
 
-        if w0 == 0:
+        if f0 == 0:
             raise Exception('ERROR: Main resonant frequency could not be determined.')
 
         return f0
@@ -473,10 +483,7 @@ class Fitter:
             f_tuple = [freq[f_lower_index], res_fq, freq[f_upper_index]]
             bandwidth_list.append(f_tuple)
             peak_heights.append(abs(res_value))
-            #THIS IS FOR TESTING
-            if constants.DEBUG_BW_DETECTION:
-                markerson = [f_lower_index,res_index,f_upper_index]
-                plt.loglog(self.data_mag, '-bD', markevery=markerson)
+
 
         try:
             # here the last resonance can be "streched"; can be useful to "fill" the end zone of the curve
@@ -487,6 +494,12 @@ class Fitter:
 
         except IndexError:
             self.logger.info("INFO: No resonances found except the main resonance, consider a lower value for the prominence")
+
+        # THIS IS FOR TESTING
+        if constants.DEBUG_BW_DETECTION:
+            markerson=np.where(np.isin(self.freq, bandwidth_list))
+            plt.loglog(self.freq, self.data_mag, '-bD', markevery=list(markerson[0]))
+
 
         self.peak_heights = peak_heights
         self.bandwidths = bandwidth_list
@@ -585,7 +598,7 @@ class Fitter:
         modeldata = data[np.logical_and(freq > bl, freq < bu)]
 
         out1 = minimize(self._calculate_Z, params,
-                        args=(modelfreq, modeldata, 0, 0, constants.fcnmode.FIT,),
+                        args=(modelfreq, modeldata, 0, 0, config.FIT_BY,),
                         method='powell', options={'xtol': 1e-18, 'disp': True})
 
         # copy the parameters of the fit result
@@ -1053,7 +1066,7 @@ class Fitter:
 
             # Do the fit
             out = minimize(self._calculate_Z, param_set,
-                           args=(fit_freq, fit_data, self.order, 0, fcnmode.FIT,),
+                           args=(fit_freq, fit_data, self.order, 0, config.FIT_BY,),
                            method='powell', options={'xtol': 1e-18, 'disp': True})
 
             # Write fit results to parameters and set their 'vary' to False
@@ -1137,7 +1150,6 @@ class Fitter:
                 self.change_parameter(params, 'R_s', min=R_new * 0.8, max=R_new * 1.2, value=R_new, vary=False)
                 self.change_parameter(params, 'L', min=L_new * 0.8, max=L_new * 1.2, value=L_new, vary=False)
 
-            #TODO: the parameter correction does some weird stuff for some measurement sets, check it out
             for key_number in range(1, self.order + 1):
                 index = key_number - 1
                 if self.fit_type == constants.El.INDUCTOR:
@@ -1154,7 +1166,6 @@ class Fitter:
                         try:
 
                             r_peak = abs(self.z21_data[dataindex])
-                            #TODO: what was the rationale behind this code???
 
                             # data_lim = self.z21_data[np.logical_and(self.freq < band[2], self.freq > band[0])]
                             # peak = find_peaks(np.real(data_lim), height = 0)
@@ -1311,7 +1322,7 @@ class Fitter:
         if self.order:
             fit_main_resonance = 0
             out = minimize(self._calculate_Z, param_set,
-                           args=(freq_data_frq_lim, fit_data_frq_lim, self.order, fit_main_resonance, FIT_BY,),
+                           args=(freq_data_frq_lim, fit_data_frq_lim, self.order, fit_main_resonance, config.FIT_BY,),
                            method='powell', options={'xtol': 1e-18, 'disp': True})
 
             self.parameters = out.params
@@ -1331,7 +1342,6 @@ class Fitter:
         if param_set is None:
             param_set = self.parameters
 
-        mode = constants.fcnmode.FIT
 
         if constants.DEBUG_FIT: #debug plot -> main res before fit
             self.plot_curve(param_set, 0, 1)
@@ -1349,7 +1359,7 @@ class Fitter:
 
         # Start by fitting the main res with all parameters set to vary
         out = minimize(self._calculate_Z, param_set,
-                       args=(freq_for_fit, data_for_fit, self.order, fit_main_resonance, mode,),
+                       args=(freq_for_fit, data_for_fit, self.order, fit_main_resonance, config.FIT_BY,),
                        method='powell', options={'xtol': 1e-18, 'disp': True})
 
         # Set all parameters to not vary; let only R_s vary
@@ -1370,7 +1380,7 @@ class Fitter:
 
         # And fit again
         out = minimize(self._calculate_Z, out.params,
-                       args=(freq_for_fit, data_for_fit, self.order, fit_main_resonance, mode,),
+                       args=(freq_for_fit, data_for_fit, self.order, fit_main_resonance, config.FIT_BY,),
                        method='powell', options={'xtol': 1e-18, 'disp': True})
 
         # Write series resistance to class variable (important if other files are fit)
@@ -1395,7 +1405,7 @@ class Fitter:
             param_set = self.parameters
 
         # TODO: think about log-fiting all capacitors
-        mode = constants.fcnmode.FIT
+        mode = config.FIT_BY
         if self.captype == constants.captype.HIGH_C:
             mode = constants.fcnmode.FIT_LOG
 
@@ -1456,7 +1466,7 @@ class Fitter:
         if param_set is None:
             param_set = self.parameters
 
-        mode = constants.fcnmode.FIT
+        mode = config.FIT_BY
         fit_main_resonance = 1
 
         # Frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
@@ -1469,7 +1479,7 @@ class Fitter:
 
         # Fit main resonance
         out = minimize(self._calculate_Z, param_set,
-                       args=(freq_for_fit, data_for_fit, self.order, fit_main_resonance, mode,),
+                       args=(freq_for_fit, data_for_fit, self.order, fit_main_resonance, config.FIT_BY,),
                        method='powell', options={'xtol': 1e-18, 'disp': True})
 
         # Fix main resonance parameters in place
@@ -1490,7 +1500,6 @@ class Fitter:
         if param_set is None:
             param_set = self.parameters
 
-        mode = constants.fcnmode.FIT
         fit_main_resonance = 1
 
         # Frequency limit data (upper bound) so there are (ideally) no higher order resonances in the main res fit data
@@ -1503,7 +1512,7 @@ class Fitter:
 
         # Fit main resonance
         out = minimize(self._calculate_Z, param_set,
-                       args=(freq_for_fit, data_for_fit, self.order, fit_main_resonance, mode,),
+                       args=(freq_for_fit, data_for_fit, self.order, fit_main_resonance, config.FIT_BY,),
                        method='powell', options={'xtol': 1e-18, 'disp': True})
 
         # Fix main resonance parameters in place
@@ -1528,12 +1537,12 @@ class Fitter:
         """
 
         fit_main_resonance = False
-        mode = constants.fcnmode.OUTPUT
+
 
         model_data = []
         norm = []
         for it, param_set in enumerate(params):
-            model_data.append(self._calculate_Z(param_set, self.freq, [], self.order, fit_main_resonance, mode))
+            model_data.append(self._calculate_Z(param_set, self.freq, [], self.order, fit_main_resonance, constants.fcnmode.OUTPUT))
             norm.append(self.calculate_band_norm(model_data[it]))
 
         least_norm_mdl_index = np.argwhere(norm == min(norm))[0][0]
@@ -1630,10 +1639,9 @@ class Fitter:
         :return: None (stores the model data in an instance variable)
         """
         freq = self.freq
-        mode = constants.fcnmode.OUTPUT
         order = model_order
         fit_main_resonance = 0
-        self.model_data = self._calculate_Z(param_set, freq, [], order, fit_main_resonance, mode)
+        self.model_data = self._calculate_Z(param_set, freq, [], order, fit_main_resonance, constants.fcnmode.OUTPUT)
 
     @staticmethod
     def change_parameter(param_set, param_name, min=None, max=None, value=None, vary=None, expr=None):
@@ -1702,7 +1710,7 @@ class Fitter:
         if order is None:
             order = self.order
 
-        testdata = self._calculate_Z(param_set, self.freq, 2, order, main_res, 2)
+        testdata = self._calculate_Z(param_set, self.freq, 2, order, main_res, constants.fcnmode.OUTPUT)
         if angle:
             plt.figure()
             plt.semilogx(self.freq, np.rad2deg(np.angle(self.z21_data)))
